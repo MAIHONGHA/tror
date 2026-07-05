@@ -640,7 +640,7 @@ doc.end();
 const pdfBuffer = await pdfBufferPromise;
 
       await resend.emails.send({
-        from: "ArcPay <no-reply@arcblink.xyz>",
+        from: "ArcPay <no-reply@mail.arcpay.pro>",
         to: [item.employee_email],
         subject: `Your salary has been paid - ${item.final_amount} USDC`,
         html: `
@@ -830,7 +830,7 @@ app.post("/api/payroll-items/:id/send-payslip", async (req, res) => {
     const pdfBuffer = await pdfBufferPromise;
 
     await resend.emails.send({
-      from: "ArcPay <no-reply@arcblink.xyz>",
+      from: "ArcPay <no-reply@mail.arcpay.pro>",
       to: [item.employee_email],
       subject: `ArcPay Payslip - ${item.final_amount || 0} USDC`,
       html: `
@@ -2155,7 +2155,7 @@ app.post("/api/withdrawals/:id/status", async (req, res) => {
 const row = db.prepare("SELECT * FROM withdrawals WHERE id = ?").get(id);
 
 await resend.emails.send({
-  from: "ArcPay <no-reply@arcblink.xyz>",
+  from: "ArcPay <no-reply@mail.arcpay.pro>",
   to: [row.email],
   subject: `ArcPay withdrawal ${status}`,
   html: `
@@ -2469,15 +2469,15 @@ app.post("/api/demo/send-test-usdc", async (req, res) => {
     // generate claim link
     const APP_URL =
       process.env.APP_URL ||
-      "https://arcblink.xyz";
+      "https://arcpay.pro";
 
     const claimLink =
-      `${APP_URL}/?claim=${claimId}`;
+      `${APP_URL}/claim/${claimId}`;
 
     // send email
     await resend.emails.send({
       from:
-       "ArcPay <no-reply@arcblink.xyz>",
+       "ArcPay <no-reply@mail.arcpay.pro>",
 
       to: [email],
 
@@ -2538,16 +2538,6 @@ app.post("/api/demo/send-test-usdc", async (req, res) => {
 
   }
 
-});
-
-app.use(express.static(distPath));
-
-app.get("*", (req, res) => {
-  res.sendFile(path.join(distPath, "index.html"), (err) => {
-    if (err) {
-      res.status(404).send("Frontend not built. Use http://localhost:5173 for Vite dev.");
-    }
-  });
 });
 
 async function checkInvoicePaid(invoice) {
@@ -2669,7 +2659,7 @@ app.post("/api/claims/send-email", async (req, res) => {
     }
 
     const id = crypto.randomUUID();
-    const appUrl = String(process.env.APP_URL || "http://localhost:3000").replace(/\/+$/, "");
+    const appUrl = String(process.env.APP_URL || "http://localhost:5173").replace(/\/+$/, "");
     const claimLink = `${appUrl}/claim/${id}`;
 
     db.prepare(`
@@ -2685,7 +2675,7 @@ app.post("/api/claims/send-email", async (req, res) => {
     );
 
     const { data, error } = await resend.emails.send({
-  from: "ArcPay <no-reply@arcblink.xyz>",
+  from: "ArcPay <no-reply@mail.arcpay.pro>",
   to: recipientEmail,
   subject: `You have a message from ArcPay`,
 html: `
@@ -2848,7 +2838,7 @@ app.get("/api/claim/:id", (req, res) => {
 app.get("/test-email", async (req, res) => {
   try {
     const data = await resend.emails.send({
-      from: "ArcPay <no-reply@arcblink.xyz>",
+      from: "ArcPay <no-reply@mail.arcpay.pro>",
       to: ["maihongha14021992mhh12@gmail.com"],
       subject: "Test email from ArcPay 🚀",
       html: "<h1>ArcPay email is working!</h1>",
@@ -2907,7 +2897,7 @@ try {
   );
 
   await resend.emails.send({
-  from: "ArcPay <no-reply@arcblink.xyz>",
+  from: "ArcPay <no-reply@mail.arcpay.pro>",
 
   to: [
    inv.recipientEmail
@@ -3110,6 +3100,20 @@ app.get('/api/config', (req, res) => {
     config: {
       merchantAddress: process.env.MERCHANT_ADDRESS,
       transakApiKey: process.env.TRANSAK_API_KEY,
+    }
+  });
+});
+
+app.use(express.static(distPath));
+
+app.get("/claim/:id", (req, res) => {
+  res.sendFile(path.join(distPath, "app.html"));
+});
+
+app.get("*", (req, res) => {
+  res.sendFile(path.join(distPath, "index.html"), (err) => {
+    if (err) {
+      res.status(404).send("Frontend not built. Use http://localhost:5173 for Vite dev.");
     }
   });
 });
