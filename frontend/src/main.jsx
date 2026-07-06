@@ -359,7 +359,7 @@ document.getElementById("toggleVcCvv").onclick = () => {
     `;
 
     try {
-      const res = await fetch("/api/claims/send-email", {
+      const res = await fetch(`${API_BASE}/api/claims/send-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -409,7 +409,10 @@ document.getElementById("toggleVcCvv").onclick = () => {
 };
 
 // API base URL
-const API_BASE = window.location.origin;
+const API_BASE =
+  window.location.port === "5173"
+    ? "http://localhost:3000"
+    : window.location.origin;
 
 // Arc Network constants
 const ARC_CHAIN_ID = 5042002;
@@ -494,12 +497,7 @@ function clearWeb3WalletLocal() {
 
 // DOM element references
 const statusEl = document.getElementById("status");
-const params = new URLSearchParams(window.location.search);
-const claimId = params.get("claim");
 
-if (claimId) {
-  openClaimPopup(claimId);
-}
 const emailEl = document.getElementById("email");
 const circleWalletEl = document.getElementById("circleWallet");
 const metamaskWalletEl = document.getElementById("metamaskWallet");
@@ -2243,11 +2241,80 @@ async function loadDashboard() {
     const feed = document.getElementById("activityFeed");
     if (feed) {
       const items = data.recentActivity || [];
-      feed.innerHTML = items.length
-        ? items.map((item) => `<div class="activity-item">🟢 ${item.text}</div>`).join("")
-        : "No activity yet.";
-    }
-  } catch (err) {
+      const getActivityIcon = (text = "") => {
+  const value = text.toLowerCase();
+
+  if (value.includes("invoice paid")) return "✅";
+  if (value.includes("payroll")) return "💰";
+  if (value.includes("claim")) return "📧";
+  if (value.includes("failed") || value.includes("error")) return "❌";
+  if (value.includes("pending")) return "⏳";
+
+  return "🔹";
+};
+
+const getActivityClass = (text = "") => {
+  const value = text.toLowerCase();
+
+  if (value.includes("invoice paid")) return "activity-success";
+  if (value.includes("payroll")) return "activity-payroll";
+  if (value.includes("claim")) return "activity-claim";
+  if (value.includes("failed") || value.includes("error")) return "activity-failed";
+  if (value.includes("pending")) return "activity-pending";
+
+  return "activity-default";
+};
+
+feed.innerHTML = items.length
+  ? items
+      .map((item) => {
+        const text = item.text || "";
+        return `
+          <div class="activity-item ${getActivityClass(text)}">
+            <span class="activity-icon">${getActivityIcon(text)}</span>
+            <span>${text}</span>
+          </div>
+        `;
+      })
+      .join("")
+  : "No activity yet.";
+  const ticker = document.getElementById("activityTicker");
+
+if (ticker) {
+  const tickerItems = items.length ? items : [];
+
+  ticker.innerHTML = tickerItems.length
+    ? [...tickerItems, ...tickerItems]
+        .map((item) => {
+          const text = item.text || "";
+          const icon = getActivityIcon(text);
+
+          return `
+<button
+  type="button"
+  class="ticker-item"
+  data-text="${text.replace(/"/g, "&quot;")}"
+>
+  ${icon} ${text}
+</button>`;
+        })
+        .join("")
+    : `<button type="button" class="ticker-item">No recent activity yet.</button>`;
+
+  ticker.onclick = (event) => {
+    const item = event.target.closest(".ticker-item");
+    if (!item) return;
+
+    const text = (item.dataset.text || item.textContent || "").toLowerCase();
+
+    if (text.includes("invoice")) return document.querySelector('[data-tab="invoices"]')?.click();
+    if (text.includes("payroll")) return document.querySelector('[data-tab="payroll"]')?.click();
+    if (text.includes("claim")) return document.querySelector('[data-tab="gmail-claim"]')?.click();
+    if (text.includes("payout")) return document.querySelector('[data-tab="payouts"]')?.click();
+  };
+ }
+}
+ } catch (err) {
     console.error("loadDashboard error:", err);
   }
 }
@@ -2258,9 +2325,16 @@ async function loadDashboard() {
 
 async function loadClaimPage() {
   const path = window.location.pathname;
-  if (!path.startsWith("/claim/")) return;
 
-  const claimId = path.split("/claim/")[1];
+  let claimId = null;
+
+  if (path.startsWith("/claim/")) {
+    claimId = path.split("/claim/")[1]?.split("?")[0];
+  } else {
+    claimId = new URLSearchParams(window.location.search).get("claim");
+  }
+
+  if (!claimId) return;
 
   document.body.innerHTML = `
     <div style="padding:40px;max-width:500px;margin:auto;color:white;font-family:sans-serif;">
@@ -2554,7 +2628,12 @@ if (window.ethereum) {
    PAGE INIT
 ========================= */
 
-if (isClaimPage) {
+const initClaimId = new URLSearchParams(window.location.search).get("claim");
+
+if (window.location.pathname.startsWith("/claim/") || initClaimId) {
+  if (initClaimId) {
+    window.history.replaceState(null, "", `/claim/${initClaimId}`);
+  }
   loadClaimPage();
 } else {
   renderQR(null);
@@ -2710,7 +2789,15 @@ document.querySelectorAll("[data-tab]").forEach((link) => {
   });
 });
 
-showTab(window.location.hash.replace("#", "") || "dashboard");
+const isClaimRoute =
+  window.location.pathname.startsWith("/claim/") ||
+  new URLSearchParams(window.location.search).get("claim");
+
+if (isClaimRoute) {
+  loadClaimPage();
+} else {
+  showTab(window.location.hash.replace("#", "") || "dashboard");
+}
 
 /* =========================
    AI INVOICE API CALL
