@@ -7,7 +7,14 @@ import Web3 from "web3";
 import PayrollPanel from "./PayrollPanel.jsx";
 import { Html5Qrcode } from "html5-qrcode";
 import { ethers } from "ethers";
-import { CONTRACT_ADDRESS, CONTRACT_ABI, MEMO_ADDRESS, MEMO_ABI } from "./contract";
+import {
+  CONTRACT_ADDRESS,
+  CONTRACT_ABI,
+  MEMO_ADDRESS,
+  MEMO_ABI,
+  CLAIM_CONTRACT_ADDRESS,
+  CLAIM_CONTRACT_ABI
+} from "./contract";
 import { openAppKitWallet, wagmiAdapter } from "./appkit.js";
 import { getAccount, readContract, writeContract, waitForTransactionReceipt } from "@wagmi/core";
 import { parseUnits } from "viem";
@@ -679,12 +686,85 @@ function saveCustomer() {
 
 async function sendClaimEmail() {
   try {
+    const recipientEmail = claimEmailEl.value.trim().toLowerCase();
+    const amount = claimAmountEl.value;
+    const memo = claimMessageEl.value || "";
+
+    if (!recipientEmail || !amount) {
+      setStatus("Please enter recipient email and amount.", "error");
+      return;
+    }
+
+    if (!window.ethereum) {
+      setStatus("Please connect MetaMask first.", "error");
+      return;
+    }
+
+    setStatus("Preparing Gmail Claim on-chain...");
+
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    const signer = await provider.getSigner();
+
+    const amountUnits = ethers.parseUnits(String(amount), 6);
+    const emailHash = ethers.keccak256(
+      ethers.toUtf8Bytes(recipientEmail)
+    );
+
+    const expiresAt = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+
+    const usdc = new ethers.Contract(
+      USDC_TOKEN,
+      ERC20_ABI,
+      signer
+    );
+
+    setStatus("Approving USDC for Claim contract...");
+    const approveTx = await usdc.approve(
+      CLAIM_CONTRACT_ADDRESS,
+      amountUnits
+    );
+    await approveTx.wait();
+
+    const claimContract = new ethers.Contract(
+      CLAIM_CONTRACT_ADDRESS,
+      CLAIM_CONTRACT_ABI,
+      signer
+    );
+
+    setStatus("Creating Gmail Claim on-chain...");
+    const tx = await claimContract.createClaim(
+      emailHash,
+      amountUnits,
+      memo,
+      expiresAt
+    );
+
+    const receipt = await tx.wait();
+
+    let onchainClaimId = null;
+
+    for (const log of receipt.logs) {
+      try {
+        const parsed = claimContract.interface.parseLog(log);
+        if (parsed && parsed.name === "ClaimCreated") {
+          onchainClaimId = parsed.args.claimId.toString();
+          break;
+        }
+      } catch {}
+    }
+
+    if (!onchainClaimId) {
+      throw new Error("Could not read on-chain claimId.");
+    }
+
     const data = await api("/api/claims/send-email", {
       method: "POST",
       body: JSON.stringify({
-        recipientEmail: claimEmailEl.value,
-        amount: claimAmountEl.value,
-        message: claimMessageEl.value
+        claimId: onchainClaimId,
+        recipientEmail,
+        amount,
+        message: memo,
+        txHash: tx.hash
       })
     });
 

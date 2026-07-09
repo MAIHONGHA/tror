@@ -233,3 +233,38 @@ export const MEMO_ABI = [
     ]
   }
 ];
+
+export const CLAIM_CONTRACT_ADDRESS =
+  "0xc90F1016E868EAf0A4af3d741D9304420d189213";
+
+export const CLAIM_CONTRACT_ABI = [
+  {
+    inputs: [
+      { internalType: "bytes32", name: "emailHash", type: "bytes32" },
+      { internalType: "uint256", name: "amount", type: "uint256" },
+      { internalType: "string", name: "memo", type: "string" },
+      { internalType: "uint256", name: "expiresAt", type: "uint256" }
+    ],
+    name: "createClaim",
+    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [
+      { internalType: "uint256", name: "claimId", type: "uint256" },
+      { internalType: "address", name: "receiver", type: "address" }
+    ],
+    name: "claimToWallet",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [{ internalType: "uint256", name: "claimId", type: "uint256" }],
+    name: "refundExpired",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  }
+];

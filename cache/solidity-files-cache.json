@@ -37,6 +37,43 @@
         "ArcPayInvoice",
         "IERC20"
       ]
+    },
+    "C:\\Users\\maiho\\projects\\arcpay-min\\contracts\\ArcPayClaim.sol": {
+      "lastModificationDate": 1783615292825,
+      "contentHash": "10726628315dccac4f0e4cf8703503e6",
+      "sourceName": "contracts/ArcPayClaim.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "evmVersion": "paris",
+          "optimizer": {
+            "enabled": false,
+            "runs": 200
+          },
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "ArcPayClaim",
+        "IERC20Claim"
+      ]
     }
   }
 }

@@ -2652,27 +2652,28 @@ app.get("/api/dashboard", (req, res) => {
 
 app.post("/api/claims/send-email", async (req, res) => {
   try {
-    const { recipientEmail, amount, message } = req.body;
+    const { recipientEmail, amount, message, claimId, txHash } = req.body;
 
     if (!recipientEmail || !amount) {
       return res.status(400).json({ error: "recipientEmail and amount are required" });
     }
 
-    const id = crypto.randomUUID();
+    const id = claimId ? String(claimId) : crypto.randomUUID();
     const appUrl = String(process.env.APP_URL || "http://localhost:5173").replace(/\/+$/, "");
     const claimLink = `${appUrl}/claim/${id}`;
 
     db.prepare(`
-      INSERT INTO claims (id, recipientEmail, amount, message, status, createdAt)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO claims (id, recipientEmail, amount, message, status, createdAt, txHash)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(
-      id,
-      recipientEmail,
-      Number(amount),
-      message || "",
-      "PENDING",
-      new Date().toISOString()
-    );
+  id,
+  recipientEmail,
+  Number(amount),
+  message || "",
+  "FUNDED",
+  new Date().toISOString(),
+  txHash || null
+);
 
     const { data, error } = await resend.emails.send({
   from: "ArcPay <no-reply@mail.arcpay.pro>",
