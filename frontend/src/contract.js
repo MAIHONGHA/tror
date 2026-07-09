@@ -261,10 +261,13 @@ export const CLAIM_CONTRACT_ABI = [
     type: "function"
   },
   {
-    inputs: [{ internalType: "uint256", name: "claimId", type: "uint256" }],
-    name: "refundExpired",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function"
-  }
+  inputs: [{ internalType: "uint256", name: "claimId", type: "uint256" }],
+  name: "refundExpired",
+  outputs: [],
+  stateMutability: "nonpayable",
+  type: "function"
+},
+
+"event ClaimCreated(uint256 indexed claimId,address indexed sender,bytes32 indexed emailHash,uint256 amount,string memo,uint256 expiresAt)"
+
 ];

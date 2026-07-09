@@ -11,6 +11,13 @@ const cron = require("node-cron");
 const { Resend } = require("resend");
 const { Web3 } = require("web3");
 const ARC_MEMO_ADDRESS = "0x5294E9927c3306DcBaDb03fe70b92e01cCede505";
+const CLAIM_CONTRACT_ADDRESS =
+  process.env.CLAIM_CONTRACT_ADDRESS ||
+  "0xc90F1016E868EAf0A4af3d741D9304420d189213";
+
+const CLAIM_CONTRACT_ABI = [
+  "function claimToWallet(uint256 claimId, address receiver) external"
+];
 const fetch = (...args) =>
   import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
@@ -2771,16 +2778,14 @@ app.post("/api/claims/:id/claim", async (req, res) => {
 
     const payoutWallet = new ethers.Wallet(PAYOUT_PRIVATE_KEY, provider);
 
-    const usdc = new ethers.Contract(
-      USDC_ADDRESS,
-      CLAIM_USDC_ABI,
-      payoutWallet
-    );
+    const claimContract = new ethers.Contract(
+  CLAIM_CONTRACT_ADDRESS,
+  CLAIM_CONTRACT_ABI,
+  payoutWallet
+);
 
-    const amountUnits = ethers.parseUnits(String(claim.amount), USDC_DECIMALS);
-
-    const tx = await usdc.transfer(walletAddress, amountUnits);
-    await tx.wait();
+const tx = await claimContract.claimToWallet(id, walletAddress);
+await tx.wait();
 
     db.prepare(`
       UPDATE claims

@@ -781,12 +781,10 @@ async function sendClaimEmail() {
       <div id="claimInfo" style="margin-top:12px;"></div>
     `;
 
-    const claimId = data.claimId;
-
     // Poll claim status every 5 seconds
     setInterval(async () => {
       try {
-        const res = await fetch(`/api/claims/${claimId}`);
+        const res = await fetch(`/api/claims/${onchainClaimId}`);
         const claim = await res.json();
 
         if (claim.status === "CLAIMED") {
