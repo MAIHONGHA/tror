@@ -1207,6 +1207,90 @@ db.prepare(`
    HELPERS
 ========================= */
 
+async function getGoogleUserFromToken(accessToken) {
+  if (!accessToken) {
+    throw new Error("Missing Google access token");
+  }
+
+  const response = await fetch(
+    "https://www.googleapis.com/oauth2/v3/userinfo",
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    }
+  );
+
+  const user = await response.json();
+
+  if (!response.ok || !user.email) {
+    throw new Error("Invalid Google login");
+  }
+
+  return user;
+}
+
+async function verifyClaimRecipient(claimId, accessToken) {
+  const claim = db
+    .prepare("SELECT * FROM claims WHERE id = ?")
+    .get(String(claimId));
+
+  if (!claim) {
+    throw new Error("Claim not found");
+  }
+
+  const googleUser = await getGoogleUserFromToken(accessToken);
+
+  const googleEmail = String(googleUser.email || "")
+    .trim()
+    .toLowerCase();
+
+  const recipientEmail = String(claim.recipientEmail || "")
+    .trim()
+    .toLowerCase();
+
+  if (googleEmail !== recipientEmail) {
+    throw new Error(
+      "This Google account is not the intended recipient"
+    );
+  }
+
+  return {
+    claim,
+    googleUser
+  };
+}
+
+app.post("/api/claims/:id/verify-google", async (req, res) => {
+  try {
+    const { googleAccessToken } = req.body;
+
+    const { claim, googleUser } =
+      await verifyClaimRecipient(
+        req.params.id,
+        googleAccessToken
+      );
+
+    res.json({
+      success: true,
+      verified: true,
+      email: googleUser.email,
+      claim: {
+        id: claim.id,
+        amount: claim.amount,
+        message: claim.message,
+        status: claim.status
+      }
+    });
+  } catch (err) {
+    res.status(403).json({
+      success: false,
+      verified: false,
+      error: err.message
+    });
+  }
+});
+
 function requireCircle(res) {
   if (!CIRCLE_API_KEY) {
     res.status(500).json({
@@ -2755,8 +2839,14 @@ app.get("/api/claims/:id", (req, res) => {
 
 app.post("/api/claims/:id/claim", async (req, res) => {
   try {
-    const { walletAddress } = req.body;
-    const { id } = req.params;
+    const {
+  walletAddress,
+  googleAccessToken
+} = req.body;
+
+const { id } = req.params;
+
+await verifyClaimRecipient(id, googleAccessToken);
 
     if (!walletAddress || !walletAddress.startsWith("0x")) {
       return res.status(400).json({ error: "Valid wallet address is required" });

@@ -1095,9 +1095,20 @@ async function handleGoogleRedirect() {
   }
 
   localStorage.setItem("googleUser", JSON.stringify(user));
-  emailEl.textContent = user.email;
 
-  window.history.replaceState(null, "", "/app.html");
+if (emailEl) {
+  emailEl.textContent = user.email;
+}
+
+const claimReturnPath = localStorage.getItem("claimReturnPath");
+
+if (claimReturnPath) {
+  localStorage.removeItem("claimReturnPath");
+  window.location.href = claimReturnPath;
+  return;
+}
+
+window.history.replaceState(null, "", "/app.html");
   setStatus("Google login success. Preparing Circle user...");
 
   try {
@@ -2409,114 +2420,648 @@ async function loadClaimPage() {
   if (path.startsWith("/claim/")) {
     claimId = path.split("/claim/")[1]?.split("?")[0];
   } else {
-    claimId = new URLSearchParams(window.location.search).get("claim");
+    claimId = new URLSearchParams(
+      window.location.search
+    ).get("claim");
   }
 
   if (!claimId) return;
 
+  let claimData = null;
+  let googleVerified = false;
+
   document.body.innerHTML = `
-    <div style="padding:40px;max-width:500px;margin:auto;color:white;font-family:sans-serif;">
-      <h2>Claim your USDC</h2>
+    <div
+      style="
+        padding:40px 20px;
+        max-width:560px;
+        margin:auto;
+        color:white;
+        font-family:sans-serif;
+      "
+    >
+      <h2 style="margin-bottom:8px;">
+        Claim your USDC
+      </h2>
+
       <p id="claimInfo">Loading...</p>
-      <div style="display:flex;flex-direction:column;gap:16px;margin-top:20px;">
-        <button id="btnWalletOption" style="padding:18px;border:none;border-radius:16px;cursor:pointer;background:#2563eb;color:white;font-size:16px;">
-          Withdraw to Web3 Wallet
+
+      <!-- GOOGLE VERIFICATION -->
+      <div
+        id="googleVerifyBox"
+        style="
+          margin-top:24px;
+          padding:20px;
+          border-radius:18px;
+          background:rgba(255,255,255,0.08);
+        "
+      >
+        <h3 style="margin-top:0;">
+          Verify your Gmail
+        </h3>
+
+        <p style="color:#cbd5e1;line-height:1.5;">
+          Sign in with the Google account that received
+          this ArcPay claim.
+        </p>
+
+        <button
+          id="btnClaimGoogle"
+          style="
+            width:100%;
+            padding:16px;
+            border:none;
+            border-radius:14px;
+            cursor:pointer;
+            background:white;
+            color:#111827;
+            font-size:16px;
+            font-weight:bold;
+          "
+        >
+          Continue with Google
         </button>
-        <button id="btnBankOption" style="padding:18px;border:none;border-radius:16px;cursor:pointer;background:#16a34a;color:white;font-size:16px;">
+
+        <p
+          id="googleVerifyStatus"
+          style="margin-top:14px;"
+        ></p>
+      </div>
+
+      <!-- RECEIVE OPTIONS -->
+      <div
+        id="receiveOptions"
+        style="display:none;margin-top:28px;"
+      >
+        <h3 style="margin-bottom:8px;">
+          Choose how you want to receive your USDC
+        </h3>
+
+        <p style="color:#cbd5e1;margin-top:0;">
+          Select one receiving method.
+        </p>
+
+        <div
+          style="
+            display:flex;
+            flex-direction:column;
+            gap:14px;
+            margin-top:18px;
+          "
+        >
+          <button
+            id="btnWalletOption"
+            style="
+              padding:18px;
+              border:none;
+              border-radius:16px;
+              cursor:pointer;
+              background:linear-gradient(135deg,#38bdf8,#8b5cf6);
+              color:white;
+              font-size:16px;
+              text-align:left;
+            "
+          >
+            <b>🦊 Web3 Wallet</b><br>
+
+            <span style="font-size:13px;opacity:.88;">
+              MetaMask • OKX • Coinbase • WalletConnect
+            </span>
+          </button>
+
+          <button
+            id="btnCircleOption"
+            style="
+              padding:18px;
+              border:none;
+              border-radius:16px;
+              cursor:pointer;
+              background:linear-gradient(135deg,#6366f1,#d946ef);
+              color:white;
+              font-size:16px;
+              text-align:left;
+            "
+          >
+            <b>⭕ Circle Wallet</b><br>
+
+            <span style="font-size:13px;opacity:.88;">
+              Reuse existing wallet or create automatically
+            </span>
+          </button>
+
+          <button
+            id="btnBankOption"
+            style="
+              padding:18px;
+              border:none;
+              border-radius:16px;
+              cursor:pointer;
+              background:linear-gradient(135deg,#0ea5e9,#10b981);
+              color:white;
+              font-size:16px;
+              text-align:left;
+            "
+          >
+            <b>🏦 Withdraw to Bank</b><br>
+
+            <span style="font-size:13px;opacity:.88;">
+              Use the existing ArcPay withdrawal flow
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <!-- WEB3 WALLET BOX -->
+      <div
+        id="walletBox"
+        style="
+          display:none;
+          margin-top:24px;
+          padding:20px;
+          border-radius:18px;
+          background:rgba(255,255,255,0.07);
+        "
+      >
+        <h3 style="margin-top:0;">
+          Receive with Web3 Wallet
+        </h3>
+
+        <input
+          id="walletInput"
+          placeholder="0x..."
+          style="
+            width:100%;
+            padding:14px;
+            border-radius:12px;
+            border:none;
+            box-sizing:border-box;
+          "
+        />
+
+        <button
+          id="btnClaim"
+          style="
+            width:100%;
+            margin-top:16px;
+            padding:15px;
+            border:none;
+            border-radius:12px;
+            background:linear-gradient(135deg,#38bdf8,#d946ef);
+            color:white;
+            font-size:16px;
+            font-weight:bold;
+            cursor:pointer;
+          "
+        >
+          Claim to Web3 Wallet
+        </button>
+      </div>
+
+      <!-- CIRCLE WALLET BOX -->
+      <div
+        id="circleBox"
+        style="
+          display:none;
+          margin-top:24px;
+          padding:20px;
+          border-radius:18px;
+          background:rgba(255,255,255,0.07);
+        "
+      >
+        <h3 style="margin-top:0;">
+          Receive with Circle Wallet
+        </h3>
+
+        <p style="color:#cbd5e1;line-height:1.5;">
+          ArcPay will reuse your existing Circle Wallet.
+          If no wallet exists, ArcPay will guide you through
+          creating one.
+        </p>
+
+        <button
+          id="btnUseCircleWallet"
+          style="
+            width:100%;
+            padding:15px;
+            border:none;
+            border-radius:12px;
+            background:linear-gradient(135deg,#6366f1,#d946ef);
+            color:white;
+            font-size:16px;
+            font-weight:bold;
+            cursor:pointer;
+          "
+        >
+          Use Circle Wallet
+        </button>
+      </div>
+
+      <!-- BANK BOX -->
+      <div
+        id="bankBox"
+        style="
+          display:none;
+          margin-top:24px;
+          padding:20px;
+          border-radius:18px;
+          background:rgba(255,255,255,0.07);
+        "
+      >
+        <h3 style="margin-top:0;">
           Withdraw to Bank
-        </button>
-      </div>
+        </h3>
 
-      <div id="walletBox" style="display:none;margin-top:24px;">
-        <input id="walletInput" placeholder="Your wallet address" style="width:100%;padding:14px;border-radius:12px;border:none;" />
-        <button id="btnClaim" style="width:100%;margin-top:16px;padding:14px;border:none;border-radius:12px;background:#06b6d4;color:white;font-size:16px;cursor:pointer;">
-          Claim Now
-        </button>
-      </div>
+        <div
+          id="bankWithdrawForm"
+          style="
+            display:flex;
+            flex-direction:column;
+            gap:12px;
+          "
+        >
+          <input
+            id="bankCountry"
+            placeholder="Country"
+            style="
+              padding:14px;
+              border-radius:12px;
+              border:none;
+            "
+          />
 
-      <div id="bankBox" style="display:none;margin-top:24px;">
-        <div id="bankWithdrawForm" style="margin-top:16px;display:none;flex-direction:column;gap:12px;">
-          <input id="bankCountry" placeholder="Country" style="padding:14px;border-radius:12px;border:none;" />
-          <input id="bankName" placeholder="Bank Name" style="padding:14px;border-radius:12px;border:none;" />
-          <input id="bankAccount" placeholder="Account Number" style="padding:14px;border-radius:12px;border:none;" />
-          <input id="bankHolder" placeholder="Account Holder" style="padding:14px;border-radius:12px;border:none;" />
-          <button id="btnRequestWithdraw" style="padding:16px;border:none;border-radius:14px;background:#2563eb;color:white;font-weight:bold;cursor:pointer;">
+          <input
+            id="bankName"
+            placeholder="Bank Name"
+            style="
+              padding:14px;
+              border-radius:12px;
+              border:none;
+            "
+          />
+
+          <input
+            id="bankAccount"
+            placeholder="Account Number"
+            style="
+              padding:14px;
+              border-radius:12px;
+              border:none;
+            "
+          />
+
+          <input
+            id="bankHolder"
+            placeholder="Account Holder"
+            style="
+              padding:14px;
+              border-radius:12px;
+              border:none;
+            "
+          />
+
+          <button
+            id="btnRequestWithdraw"
+            style="
+              padding:16px;
+              border:none;
+              border-radius:14px;
+              background:linear-gradient(135deg,#0ea5e9,#10b981);
+              color:white;
+              font-weight:bold;
+              cursor:pointer;
+            "
+          >
             Request Bank Withdraw
           </button>
         </div>
       </div>
 
-      <p id="claimStatus" style="margin-top:20px;"></p>
+      <p
+        id="claimStatus"
+        style="
+          margin-top:22px;
+          line-height:1.5;
+        "
+      ></p>
     </div>
   `;
 
-  let claimData = null;
-
   try {
-    const data = await api(`/api/claims/${claimId}`);
-    claimData = data;
+    claimData = await api(`/api/claims/${claimId}`);
 
-    if (!data || !data.amount) {
-      document.body.innerHTML = "❌ Claim not found";
+    if (!claimData || !claimData.amount) {
+      document.body.innerHTML =
+        "<div style='padding:40px;color:white;'>❌ Claim not found</div>";
       return;
     }
 
-    document.getElementById("claimInfo").innerText = `You received ${data.amount} USDC`;
+    document.getElementById("claimInfo").innerText =
+      `You received ${claimData.amount} USDC`;
+
+    if (claimData.status === "CLAIMED") {
+      document.getElementById(
+        "googleVerifyBox"
+      ).style.display = "none";
+
+      document.getElementById(
+        "claimStatus"
+      ).innerText =
+        "This claim has already been claimed.";
+
+      return;
+    }
   } catch (err) {
-    document.body.innerHTML = "❌ Claim not found";
+    document.body.innerHTML =
+      "<div style='padding:40px;color:white;'>❌ Claim not found</div>";
+
     return;
   }
 
-  document.getElementById("btnWalletOption").onclick = () => {
-    document.getElementById("walletBox").style.display = "block";
-    document.getElementById("bankBox").style.display = "none";
-  };
+  async function verifyCurrentGoogleUser() {
+    const googleAccessToken =
+      localStorage.getItem("googleToken");
 
-  document.getElementById("btnBankOption").onclick = () => {
-    document.getElementById("bankBox").style.display = "block";
-    document.getElementById("walletBox").style.display = "none";
-    document.getElementById("bankWithdrawForm").style.display = "flex";
-  };
-
-  document.getElementById("btnClaim").onclick = async () => {
-    const wallet = document.getElementById("walletInput").value;
-    try {
-      const result = await api(`/api/claims/${claimId}/claim`, {
-        method: "POST",
-        body: JSON.stringify({ walletAddress: wallet })
-      });
-      document.getElementById("claimStatus").innerText = result.success ? "Claimed!" : "Error: " + result.error;
-    } catch (err) {
-      document.getElementById("claimStatus").innerText = "Error: " + err.message;
+    if (!googleAccessToken) {
+      return false;
     }
+
+    try {
+      const result = await api(
+        `/api/claims/${claimId}/verify-google`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            googleAccessToken
+          })
+        }
+      );
+
+      if (!result.verified) {
+        return false;
+      }
+
+      googleVerified = true;
+
+      document.getElementById(
+        "googleVerifyStatus"
+      ).innerText =
+        `Verified: ${result.email}`;
+
+      document.getElementById(
+        "googleVerifyStatus"
+      ).style.color = "#22c55e";
+
+      document.getElementById(
+        "btnClaimGoogle"
+      ).style.display = "none";
+
+      document.getElementById(
+        "receiveOptions"
+      ).style.display = "block";
+
+      return true;
+    } catch (err) {
+      googleVerified = false;
+
+      document.getElementById(
+        "googleVerifyStatus"
+      ).innerText =
+        err.message ||
+        "This Google account is not the intended recipient.";
+
+      document.getElementById(
+        "googleVerifyStatus"
+      ).style.color = "#f87171";
+
+      return false;
+    }
+  }
+
+  document.getElementById(
+    "btnClaimGoogle"
+  ).onclick = async () => {
+    const verified =
+      await verifyCurrentGoogleUser();
+
+    if (verified) return;
+
+    localStorage.setItem(
+      "claimReturnPath",
+      window.location.pathname
+    );
+
+    await connectGoogleCircle();
   };
 
-  document.getElementById("btnRequestWithdraw")?.addEventListener("click", async () => {
-    const country = document.getElementById("bankCountry").value;
-    const bankName = document.getElementById("bankName").value;
-    const account = document.getElementById("bankAccount").value;
-    const holder = document.getElementById("bankHolder").value;
+  await verifyCurrentGoogleUser();
 
-    const res = await fetch("/api/withdrawals", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: claimData?.recipientEmail || "",
-        amount: claimData?.amount || 0,
-        country,
-        bankName,
-        accountHolder: holder,
-        accountNumber: account
-      })
-    });
+  document.getElementById(
+    "btnWalletOption"
+  ).onclick = () => {
+    if (!googleVerified) return;
 
-    const data = await res.json();
-    if (!res.ok) {
-      alert(data.error || "Bank withdraw request failed");
+    document.getElementById(
+      "walletBox"
+    ).style.display = "block";
+
+    document.getElementById(
+      "circleBox"
+    ).style.display = "none";
+
+    document.getElementById(
+      "bankBox"
+    ).style.display = "none";
+  };
+
+  document.getElementById(
+    "btnCircleOption"
+  ).onclick = () => {
+    if (!googleVerified) return;
+
+    document.getElementById(
+      "circleBox"
+    ).style.display = "block";
+
+    document.getElementById(
+      "walletBox"
+    ).style.display = "none";
+
+    document.getElementById(
+      "bankBox"
+    ).style.display = "none";
+  };
+
+  document.getElementById(
+    "btnBankOption"
+  ).onclick = () => {
+    if (!googleVerified) return;
+
+    document.getElementById(
+      "bankBox"
+    ).style.display = "block";
+
+    document.getElementById(
+      "walletBox"
+    ).style.display = "none";
+
+    document.getElementById(
+      "circleBox"
+    ).style.display = "none";
+  };
+
+  document.getElementById(
+    "btnClaim"
+  ).onclick = async () => {
+    const walletAddress =
+      document.getElementById(
+        "walletInput"
+      ).value.trim();
+
+    const googleAccessToken =
+      localStorage.getItem("googleToken");
+
+    if (
+      !walletAddress ||
+      !ethers.isAddress(walletAddress)
+    ) {
+      document.getElementById(
+        "claimStatus"
+      ).innerText =
+        "Enter a valid Web3 wallet address.";
+
       return;
     }
-    alert("Bank withdraw request submitted");
-  });
+
+    if (!googleAccessToken) {
+      document.getElementById(
+        "claimStatus"
+      ).innerText =
+        "Please verify your Gmail first.";
+
+      return;
+    }
+
+    try {
+      const result = await api(
+        `/api/claims/${claimId}/claim`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            walletAddress,
+            googleAccessToken
+          })
+        }
+      );
+
+      document.getElementById(
+        "claimStatus"
+      ).innerText =
+        result.success
+          ? "Claimed successfully!"
+          : "Error: " + result.error;
+    } catch (err) {
+      document.getElementById(
+        "claimStatus"
+      ).innerText =
+        "Error: " + err.message;
+    }
+  };
+
+  document.getElementById(
+    "btnUseCircleWallet"
+  ).onclick = async () => {
+    if (!googleVerified) {
+      document.getElementById(
+        "claimStatus"
+      ).innerText =
+        "Please verify your Gmail first.";
+
+      return;
+    }
+
+    document.getElementById(
+      "claimStatus"
+    ).innerText =
+      "Circle Wallet reuse/create will be connected in the next step.";
+  };
+
+  document.getElementById(
+    "btnRequestWithdraw"
+  ).onclick = async () => {
+    if (!googleVerified) {
+      document.getElementById(
+        "claimStatus"
+      ).innerText =
+        "Please verify your Gmail first.";
+
+      return;
+    }
+
+    const country =
+      document.getElementById(
+        "bankCountry"
+      ).value.trim();
+
+    const bankName =
+      document.getElementById(
+        "bankName"
+      ).value.trim();
+
+    const account =
+      document.getElementById(
+        "bankAccount"
+      ).value.trim();
+
+    const holder =
+      document.getElementById(
+        "bankHolder"
+      ).value.trim();
+
+    if (
+      !country ||
+      !bankName ||
+      !account ||
+      !holder
+    ) {
+      document.getElementById(
+        "claimStatus"
+      ).innerText =
+        "Please complete all bank information.";
+
+      return;
+    }
+
+    try {
+      const result = await api(
+        "/api/withdrawals",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            email:
+              claimData?.recipientEmail || "",
+            amount:
+              claimData?.amount || 0,
+            country,
+            bankName,
+            accountHolder: holder,
+            accountNumber: account
+          })
+        }
+      );
+
+      document.getElementById(
+        "claimStatus"
+      ).innerText =
+        result.success === false
+          ? "Bank withdrawal request failed."
+          : "Bank withdrawal request submitted.";
+    } catch (err) {
+      document.getElementById(
+        "claimStatus"
+      ).innerText =
+        "Error: " + err.message;
+    }
+  };
 }
 
 /* =========================
