@@ -2530,26 +2530,6 @@ async function loadClaimPage() {
           </button>
 
           <button
-            id="btnCircleOption"
-            style="
-              padding:18px;
-              border:none;
-              border-radius:16px;
-              cursor:pointer;
-              background:linear-gradient(135deg,#6366f1,#d946ef);
-              color:white;
-              font-size:16px;
-              text-align:left;
-            "
-          >
-            <b>⭕ Circle Wallet</b><br>
-
-            <span style="font-size:13px;opacity:.88;">
-              Reuse existing wallet or create automatically
-            </span>
-          </button>
-
-          <button
             id="btnBankOption"
             style="
               padding:18px;
@@ -2614,45 +2594,6 @@ async function loadClaimPage() {
           "
         >
           Claim to Web3 Wallet
-        </button>
-      </div>
-
-      <!-- CIRCLE WALLET BOX -->
-      <div
-        id="circleBox"
-        style="
-          display:none;
-          margin-top:24px;
-          padding:20px;
-          border-radius:18px;
-          background:rgba(255,255,255,0.07);
-        "
-      >
-        <h3 style="margin-top:0;">
-          Receive with Circle Wallet
-        </h3>
-
-        <p style="color:#cbd5e1;line-height:1.5;">
-          ArcPay will reuse your existing Circle Wallet.
-          If no wallet exists, ArcPay will guide you through
-          creating one.
-        </p>
-
-        <button
-          id="btnUseCircleWallet"
-          style="
-            width:100%;
-            padding:15px;
-            border:none;
-            border-radius:12px;
-            background:linear-gradient(135deg,#6366f1,#d946ef);
-            color:white;
-            font-size:16px;
-            font-weight:bold;
-            cursor:pointer;
-          "
-        >
-          Use Circle Wallet
         </button>
       </div>
 
@@ -2874,24 +2815,6 @@ async function loadClaimPage() {
   };
 
   document.getElementById(
-    "btnCircleOption"
-  ).onclick = () => {
-    if (!googleVerified) return;
-
-    document.getElementById(
-      "circleBox"
-    ).style.display = "block";
-
-    document.getElementById(
-      "walletBox"
-    ).style.display = "none";
-
-    document.getElementById(
-      "bankBox"
-    ).style.display = "none";
-  };
-
-  document.getElementById(
     "btnBankOption"
   ).onclick = () => {
     if (!googleVerified) return;
@@ -2965,24 +2888,6 @@ async function loadClaimPage() {
       ).innerText =
         "Error: " + err.message;
     }
-  };
-
-  document.getElementById(
-    "btnUseCircleWallet"
-  ).onclick = async () => {
-    if (!googleVerified) {
-      document.getElementById(
-        "claimStatus"
-      ).innerText =
-        "Please verify your Gmail first.";
-
-      return;
-    }
-
-    document.getElementById(
-      "claimStatus"
-    ).innerText =
-      "Circle Wallet reuse/create will be connected in the next step.";
   };
 
   document.getElementById(
