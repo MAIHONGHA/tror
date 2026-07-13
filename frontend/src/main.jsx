@@ -695,104 +695,166 @@ async function sendClaimEmail() {
       return;
     }
 
-    if (!window.ethereum) {
-      setStatus("Please connect MetaMask first.", "error");
+    const config = wagmiAdapter.wagmiConfig;
+    const account = getAccount(config);
+
+    if (!account.isConnected || !account.address) {
+      setStatus("Please connect a Web3 wallet first.", "error");
+      await openAppKitWallet();
       return;
     }
 
     setStatus("Preparing Gmail Claim on-chain...");
 
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    const signer = await provider.getSigner();
-
     const amountUnits = ethers.parseUnits(String(amount), 6);
+
     const emailHash = ethers.keccak256(
       ethers.toUtf8Bytes(recipientEmail)
     );
 
-    const expiresAt = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
-
-    const usdc = new ethers.Contract(
-      USDC_TOKEN,
-      ERC20_ABI,
-      signer
-    );
+    const expiresAt =
+      Math.floor(Date.now() / 1000) +
+      30 * 24 * 60 * 60;
 
     setStatus("Approving USDC for Claim contract...");
-    const approveTx = await usdc.approve(
-      CLAIM_CONTRACT_ADDRESS,
-      amountUnits
-    );
-    await approveTx.wait();
 
-    const claimContract = new ethers.Contract(
-      CLAIM_CONTRACT_ADDRESS,
-      CLAIM_CONTRACT_ABI,
-      signer
-    );
+    const approveHash = await writeContract(config, {
+      address: USDC_TOKEN,
+      abi: ERC20_ABI,
+      functionName: "approve",
+      args: [
+        CLAIM_CONTRACT_ADDRESS,
+        amountUnits
+      ],
+      account: account.address,
+      chainId: 5042002
+    });
+
+    await waitForTransactionReceipt(config, {
+      hash: approveHash
+    });
 
     setStatus("Creating Gmail Claim on-chain...");
-    const tx = await claimContract.createClaim(
-      emailHash,
-      amountUnits,
-      memo,
-      expiresAt
-    );
 
-    const receipt = await tx.wait();
+    const createHash = await writeContract(config, {
+      address: CLAIM_CONTRACT_ADDRESS,
+      abi: CLAIM_CONTRACT_ABI,
+      functionName: "createClaim",
+      args: [
+        emailHash,
+        amountUnits,
+        memo,
+        BigInt(expiresAt)
+      ],
+      account: account.address,
+      chainId: 5042002
+    });
+
+    const receipt = await waitForTransactionReceipt(config, {
+      hash: createHash
+    });
 
     let onchainClaimId = null;
 
-    for (const log of receipt.logs) {
+    const claimInterface = new ethers.Interface(
+      CLAIM_CONTRACT_ABI
+    );
+
+    for (const log of receipt.logs || []) {
       try {
-        const parsed = claimContract.interface.parseLog(log);
-        if (parsed && parsed.name === "ClaimCreated") {
-          onchainClaimId = parsed.args.claimId.toString();
+        const parsed = claimInterface.parseLog({
+          topics: log.topics,
+          data: log.data
+        });
+
+        if (
+          parsed &&
+          parsed.name === "ClaimCreated"
+        ) {
+          onchainClaimId =
+            parsed.args.claimId.toString();
+
           break;
         }
       } catch {}
     }
 
     if (!onchainClaimId) {
-      throw new Error("Could not read on-chain claimId.");
+      throw new Error(
+        "Could not read on-chain claimId."
+      );
     }
 
-    const data = await api("/api/claims/send-email", {
-      method: "POST",
-      body: JSON.stringify({
-        claimId: onchainClaimId,
-        recipientEmail,
-        amount,
-        message: memo,
-        txHash: tx.hash
-      })
-    });
+    const data = await api(
+      "/api/claims/send-email",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          claimId: onchainClaimId,
+          recipientEmail,
+          amount,
+          message: memo,
+          txHash: createHash
+        })
+      }
+    );
 
     claimResultEl.innerHTML = `
       <div style="margin-bottom:12px;">
-        Status: <span id="claimStatus">PENDING</span>
+        Status:
+        <span id="claimStatus">PENDING</span>
       </div>
+
       <div style="margin-bottom:12px;">
-        <a href="${data.claimLink}" target="_blank" style="color:#67e8f9;font-weight:bold;">
+        <a
+          href="${data.claimLink}"
+          target="_blank"
+          style="color:#67e8f9;font-weight:bold;"
+        >
           Open Claim Page
         </a>
       </div>
-      <div style="word-break:break-all;">${data.claimLink}</div>
-      <div id="claimInfo" style="margin-top:12px;"></div>
+
+      <div style="word-break:break-all;">
+        ${data.claimLink}
+      </div>
+
+      <div
+        id="claimInfo"
+        style="margin-top:12px;"
+      ></div>
     `;
 
-    // Poll claim status every 5 seconds
     setInterval(async () => {
       try {
-        const res = await fetch(`/api/claims/${onchainClaimId}`);
+        const res = await fetch(
+          `/api/claims/${onchainClaimId}`
+        );
+
         const claim = await res.json();
 
         if (claim.status === "CLAIMED") {
-          document.getElementById("claimStatus").innerHTML = "CLAIMED ✅";
-          document.getElementById("claimInfo").innerHTML = `
-            <div>Wallet: ${claim.walletAddress || "-"}</div>
-            <div>Tx: ${claim.txHash || "-"}</div>
-            <div>Claimed At: ${claim.claimedAt || "-"}</div>
+          document.getElementById(
+            "claimStatus"
+          ).innerHTML = "CLAIMED ✅";
+
+          document.getElementById(
+            "claimInfo"
+          ).innerHTML = `
+            <div>
+              Wallet:
+              ${claim.walletAddress || "-"}
+            </div>
+
+            <div>
+              Tx:
+              ${claim.txHash || "-"}
+            </div>
+
+            <div>
+              Claimed At:
+              ${claim.claimedAt || "-"}
+            </div>
           `;
         }
       } catch (err) {
@@ -800,13 +862,26 @@ async function sendClaimEmail() {
       }
     }, 5000);
 
-    document.getElementById("btnCardPayment")?.addEventListener("click", () => {
-      alert("Visa/Mastercard flow coming soon");
+    document.getElementById(
+      "btnCardPayment"
+    )?.addEventListener("click", () => {
+      alert(
+        "Visa/Mastercard flow coming soon"
+      );
     });
 
-    setStatus("Claim email sent.", "success");
+    setStatus(
+      "Claim email sent.",
+      "success"
+    );
   } catch (err) {
-    setStatus("Send claim email failed: " + err.message, "error");
+    console.error("Send claim error:", err);
+
+    setStatus(
+      "Send claim email failed: " +
+      (err.message || String(err)),
+      "error"
+    );
   }
 }
 
