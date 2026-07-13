@@ -756,9 +756,9 @@ async function sendClaimEmail() {
 
     let onchainClaimId = null;
 
-    const claimInterface = new ethers.Interface(
-      CLAIM_CONTRACT_ABI
-    );
+    const claimInterface = new ethers.Interface([
+  "event ClaimCreated(uint256 indexed claimId, address indexed sender, bytes32 indexed emailHash, uint256 amount, string memo, uint256 expiresAt)"
+]);
 
     for (const log of receipt.logs || []) {
       try {
