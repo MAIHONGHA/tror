@@ -736,9 +736,26 @@ async function sendClaimEmail() {
 
     setStatus("Creating Gmail Claim on-chain...");
 
+const CREATE_CLAIM_ABI = [
+  {
+    type: "function",
+    name: "createClaim",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "emailHash", type: "bytes32" },
+      { name: "amount", type: "uint256" },
+      { name: "memo", type: "string" },
+      { name: "expiresAt", type: "uint256" }
+    ],
+    outputs: [
+      { name: "", type: "uint256" }
+    ]
+  }
+];
+
     const createHash = await writeContract(config, {
       address: CLAIM_CONTRACT_ADDRESS,
-      abi: CLAIM_CONTRACT_ABI,
+      abi: CREATE_CLAIM_ABI,
       functionName: "createClaim",
       args: [
         emailHash,
