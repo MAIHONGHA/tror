@@ -2154,3 +2154,146 @@ body > .wallet-chip   { display: none !important; }
   color:#7dd3fc;
   transform:scale(1.05);
 }
+
+/* =========================
+   EMPLOYEE MANAGEMENT
+========================= */
+
+#employeeManagement {
+  margin: 20px 0 24px;
+  padding: 20px;
+  border-radius: 20px;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(56, 189, 248, 0.08),
+      rgba(139, 92, 246, 0.08)
+    ),
+    rgba(15, 23, 42, 0.76);
+  border: 1px solid rgba(103, 232, 249, 0.18);
+  box-shadow: 0 18px 45px rgba(2, 6, 23, 0.3);
+}
+
+#employeeForm {
+  display: none;
+  margin-bottom: 20px;
+  padding: 18px;
+  border-radius: 16px;
+  background: rgba(2, 6, 23, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+#employeeForm input,
+#employeeForm select {
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 13px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.9);
+  color: #f8fafc;
+  outline: none;
+}
+
+#employeeForm input:focus,
+#employeeForm select:focus {
+  border-color: rgba(56, 189, 248, 0.72);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+}
+
+#employeeForm input::placeholder {
+  color: #64748b;
+}
+
+#employeesList {
+  display: grid;
+  gap: 12px;
+}
+
+.employee-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.employee-card h4 {
+  margin: 0 0 7px;
+  color: #f8fafc;
+}
+
+.employee-card p {
+  margin: 4px 0;
+  color: #94a3b8;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.employee-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.employee-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 9px;
+  margin-top: 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+}
+
+.employee-status-active {
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.14);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.employee-status-inactive {
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.employee-status-terminated {
+  color: #fda4af;
+  background: rgba(244, 63, 94, 0.14);
+  border: 1px solid rgba(244, 63, 94, 0.3);
+}
+
+.employee-filter.is-active {
+  border-color: rgba(56, 189, 248, 0.75);
+  background: linear-gradient(
+    135deg,
+    rgba(56, 189, 248, 0.24),
+    rgba(139, 92, 246, 0.24)
+  );
+}
+
+#employeeFormStatus {
+  min-height: 20px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  #employeeManagement {
+    padding: 15px;
+  }
+
+  .employee-card {
+    grid-template-columns: 1fr;
+  }
+
+  .employee-card-actions {
+    justify-content: flex-start;
+  }
+}

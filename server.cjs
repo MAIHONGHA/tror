@@ -224,6 +224,27 @@ CREATE TABLE IF NOT EXISTS withdrawals (
 )
 `).run();
 
+// employees master table
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS employees (
+    id TEXT PRIMARY KEY,
+    employee_name TEXT NOT NULL,
+    employee_email TEXT,
+    wallet TEXT,
+    base_salary REAL DEFAULT 0,
+    employment_status TEXT DEFAULT 'ACTIVE',
+    started_at TEXT,
+    ended_at TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`).run();
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_employees_status
+  ON employees(employment_status)
+`).run();
+
 // payroll batches
 db.prepare(`
   CREATE TABLE IF NOT EXISTS payroll_batches (
@@ -339,6 +360,132 @@ app.use(cors({
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+/* =========================
+   EMPLOYEES
+========================= */
+
+// Get employee list
+app.get("/api/employees", (req, res) => {
+  try {
+    const status = String(req.query.status || "")
+      .trim()
+      .toUpperCase();
+
+    const allowedStatuses = [
+      "ACTIVE",
+      "INACTIVE",
+      "TERMINATED"
+    ];
+
+    let rows;
+
+    if (status && allowedStatuses.includes(status)) {
+      rows = db.prepare(`
+        SELECT *
+        FROM employees
+        WHERE employment_status = ?
+        ORDER BY created_at DESC
+      `).all(status);
+    } else {
+      rows = db.prepare(`
+        SELECT *
+        FROM employees
+        ORDER BY created_at DESC
+      `).all();
+    }
+
+    res.json(rows);
+  } catch (err) {
+    console.error("Load employees error:", err);
+
+    res.status(500).json({
+      error: "Failed to load employees"
+    });
+  }
+});
+
+// Create a new employee
+app.post("/api/employees", (req, res) => {
+  try {
+    const {
+      employeeName,
+      employeeEmail,
+      wallet,
+      baseSalary,
+      startedAt
+    } = req.body;
+
+    const name = String(employeeName || "").trim();
+    const email = String(employeeEmail || "")
+      .trim()
+      .toLowerCase();
+
+    const walletAddress = String(wallet || "").trim();
+    const salary = Number(baseSalary || 0);
+    const startDate =
+      startedAt || new Date().toISOString();
+
+    if (!name) {
+      return res.status(400).json({
+        error: "Employee name is required"
+      });
+    }
+
+    if (!Number.isFinite(salary) || salary < 0) {
+      return res.status(400).json({
+        error: "Invalid base salary"
+      });
+    }
+
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      INSERT INTO employees (
+        id,
+        employee_name,
+        employee_email,
+        wallet,
+        base_salary,
+        employment_status,
+        started_at,
+        ended_at,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      name,
+      email || null,
+      walletAddress || null,
+      salary,
+      "ACTIVE",
+      startDate,
+      null,
+      now,
+      now
+    );
+
+    const employee = db.prepare(`
+      SELECT *
+      FROM employees
+      WHERE id = ?
+    `).get(id);
+
+    res.status(201).json({
+      success: true,
+      employee
+    });
+  } catch (err) {
+    console.error("Create employee error:", err);
+
+    res.status(500).json({
+      error: "Failed to create employee"
+    });
+  }
+});
 
 app.get("/api/payroll-batches", (req, res) => {
   const rows = db.prepare(`
