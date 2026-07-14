@@ -4002,6 +4002,250 @@ async function parseInvoicePrompt(prompt) {
    WITHDRAWALS
 ========================= */
 
+/* =========================
+   EMPLOYEES
+========================= */
+
+let currentEmployeeStatus = "";
+
+function getEmployeeStatusClass(status) {
+  const value = String(status || "").toUpperCase();
+
+  if (value === "ACTIVE") return "employee-status-active";
+  if (value === "INACTIVE") return "employee-status-inactive";
+  return "employee-status-terminated";
+}
+
+async function loadEmployees(status = currentEmployeeStatus) {
+  try {
+    currentEmployeeStatus = status || "";
+
+    const query = currentEmployeeStatus
+      ? `?status=${encodeURIComponent(currentEmployeeStatus)}`
+      : "";
+
+    const rows = await api(`/api/employees${query}`);
+    const list = document.getElementById("employeesList");
+
+    if (!list) return;
+
+    document.querySelectorAll(".employee-filter").forEach((button) => {
+      const buttonStatus = button.dataset.employeeStatus || "";
+
+      button.classList.toggle(
+        "is-active",
+        buttonStatus === currentEmployeeStatus
+      );
+    });
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      list.innerHTML = "No employees yet.";
+      return;
+    }
+
+    list.innerHTML = rows
+      .map((employee) => {
+        const status =
+          String(employee.employment_status || "ACTIVE").toUpperCase();
+
+        return `
+          <div class="employee-card">
+            <div>
+              <h4>${employee.employee_name || "-"}</h4>
+
+              <p>Email: ${employee.employee_email || "-"}</p>
+
+              <p>Wallet: ${employee.wallet || "-"}</p>
+
+              <p>
+                Base salary:
+                ${Number(employee.base_salary || 0).toFixed(2)} USDC
+              </p>
+
+              <span class="
+                employee-status
+                ${getEmployeeStatusClass(status)}
+              ">
+                ${status}
+              </span>
+            </div>
+
+            <div class="employee-card-actions">
+              ${
+                status !== "ACTIVE"
+                  ? `
+                    <button
+                      type="button"
+                      onclick="updateEmployeeStatus(
+                        '${employee.id}',
+                        'ACTIVE'
+                      )"
+                    >
+                      Activate
+                    </button>
+                  `
+                  : `
+                    <button
+                      type="button"
+                      onclick="updateEmployeeStatus(
+                        '${employee.id}',
+                        'INACTIVE'
+                      )"
+                    >
+                      Inactive
+                    </button>
+                  `
+              }
+
+              ${
+                status !== "TERMINATED"
+                  ? `
+                    <button
+                      type="button"
+                      onclick="updateEmployeeStatus(
+                        '${employee.id}',
+                        'TERMINATED'
+                      )"
+                    >
+                      Mark as Left
+                    </button>
+                  `
+                  : ""
+              }
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+  } catch (err) {
+    console.error("Load employees error:", err);
+
+    const list = document.getElementById("employeesList");
+
+    if (list) {
+      list.textContent = `Error: ${err.message}`;
+    }
+  }
+}
+
+window.updateEmployeeStatus = async function (id, status) {
+  try {
+    await api(`/api/employees/${id}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status })
+    });
+
+    await loadEmployees();
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+document
+  .getElementById("btnToggleEmployeeForm")
+  ?.addEventListener("click", () => {
+    const form = document.getElementById("employeeForm");
+
+    if (form) {
+      form.style.display =
+        form.style.display === "block" ? "none" : "block";
+    }
+  });
+
+document
+  .getElementById("btnCancelEmployee")
+  ?.addEventListener("click", () => {
+    const form = document.getElementById("employeeForm");
+
+    if (form) {
+      form.style.display = "none";
+    }
+  });
+
+document
+  .getElementById("btnSaveEmployee")
+  ?.addEventListener("click", async () => {
+    const name =
+      document.getElementById("employeeName")?.value.trim() || "";
+
+    const email =
+      document.getElementById("employeeEmail")?.value.trim() || "";
+
+    const wallet =
+      document.getElementById("employeeWallet")?.value.trim() || "";
+
+    const salary =
+      document.getElementById("employeeSalary")?.value || "0";
+
+    const startedAt =
+      document.getElementById("employeeStartDate")?.value || "";
+
+    const statusEl =
+      document.getElementById("employeeFormStatus");
+
+    if (!name) {
+      if (statusEl) {
+        statusEl.textContent = "Employee name is required.";
+      }
+      return;
+    }
+
+    try {
+      if (statusEl) {
+        statusEl.textContent = "Saving employee...";
+      }
+
+      await api("/api/employees", {
+        method: "POST",
+        body: JSON.stringify({
+          employeeName: name,
+          employeeEmail: email,
+          wallet,
+          baseSalary: Number(salary),
+          startedAt
+        })
+      });
+
+      document.getElementById("employeeName").value = "";
+      document.getElementById("employeeEmail").value = "";
+      document.getElementById("employeeWallet").value = "";
+      document.getElementById("employeeSalary").value = "";
+      document.getElementById("employeeStartDate").value = "";
+
+      const form = document.getElementById("employeeForm");
+
+      if (form) {
+        form.style.display = "none";
+      }
+
+      if (statusEl) {
+        statusEl.textContent = "Employee added successfully.";
+      }
+
+      await loadEmployees();
+    } catch (err) {
+      if (statusEl) {
+        statusEl.textContent = `Error: ${err.message}`;
+      }
+    }
+  });
+
+document
+  .getElementById("btnRefreshEmployees")
+  ?.addEventListener("click", () => {
+    loadEmployees();
+  });
+
+document
+  .querySelectorAll(".employee-filter")
+  .forEach((button) => {
+    button.addEventListener("click", () => {
+      loadEmployees(button.dataset.employeeStatus || "");
+    });
+  });
+
+loadEmployees();
+
 async function loadWithdrawals() {
   try {
     const rows = await api("/api/withdrawals");

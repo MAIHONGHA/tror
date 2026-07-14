@@ -487,6 +487,78 @@ app.post("/api/employees", (req, res) => {
   }
 });
 
+// Update employee employment status
+app.post("/api/employees/:id/status", (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const status = String(req.body.status || "")
+      .trim()
+      .toUpperCase();
+
+    const allowedStatuses = [
+      "ACTIVE",
+      "INACTIVE",
+      "TERMINATED"
+    ];
+
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        error: "Invalid employee status"
+      });
+    }
+
+    const employee = db.prepare(`
+      SELECT *
+      FROM employees
+      WHERE id = ?
+    `).get(id);
+
+    if (!employee) {
+      return res.status(404).json({
+        error: "Employee not found"
+      });
+    }
+
+    const now = new Date().toISOString();
+
+    const endedAt =
+      status === "TERMINATED"
+        ? now
+        : null;
+
+    db.prepare(`
+      UPDATE employees
+      SET employment_status = ?,
+          ended_at = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(
+      status,
+      endedAt,
+      now,
+      id
+    );
+
+    const updatedEmployee = db.prepare(`
+      SELECT *
+      FROM employees
+      WHERE id = ?
+    `).get(id);
+
+    res.json({
+      success: true,
+      employee: updatedEmployee
+    });
+  } catch (err) {
+    console.error("Update employee status error:", err);
+
+    res.status(500).json({
+      error: "Failed to update employee status"
+    });
+  }
+});
+
 app.get("/api/payroll-batches", (req, res) => {
   const rows = db.prepare(`
     SELECT
