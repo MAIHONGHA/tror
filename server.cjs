@@ -2230,7 +2230,7 @@ if (existing) {
       status,
       created_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     email,
