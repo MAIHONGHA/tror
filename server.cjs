@@ -2250,6 +2250,39 @@ if (existing) {
   });
 });
 
+app.get("/api/withdrawals/claim/:claimId", (req, res) => {
+  try {
+    const { claimId } = req.params;
+
+    if (!claimId) {
+      return res.status(400).json({
+        error: "Missing claimId"
+      });
+    }
+
+    const withdrawal = db.prepare(`
+      SELECT *
+      FROM withdrawals
+      WHERE claim_id = ?
+      LIMIT 1
+    `).get(claimId);
+
+    if (!withdrawal) {
+      return res.status(404).json({
+        error: "Withdrawal not found"
+      });
+    }
+
+    res.json(withdrawal);
+  } catch (err) {
+    console.error("Get withdrawal by claim error:", err);
+
+    res.status(500).json({
+      error: err.message || "Failed to load withdrawal"
+    });
+  }
+});
+
 app.get("/api/withdrawals", (req, res) => {
   const rows = db.prepare(`
     SELECT *

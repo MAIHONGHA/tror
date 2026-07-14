@@ -2788,6 +2788,105 @@ if (ticker) {
    CLAIM PAGE
 ========================= */
 
+async function loadClaimWithdrawalStatus(claimId) {
+  try {
+    const response = await fetch(
+      `/api/withdrawals/claim/${encodeURIComponent(claimId)}`
+    );
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to load withdrawal status");
+    }
+
+    const button = document.getElementById("btnRequestWithdraw");
+    const statusEl = document.getElementById("claimStatus");
+    const bankForm = document.getElementById("bankWithdrawForm");
+
+    if (data.status === "PENDING") {
+      if (button) {
+        button.disabled = true;
+        button.textContent = "Withdrawal Requested";
+      }
+
+      if (statusEl) {
+        statusEl.innerText = "Bank withdrawal request submitted.";
+      }
+    }
+
+    if (data.status === "REVIEW") {
+      if (button) {
+        button.disabled = true;
+        button.textContent = "Under Review";
+      }
+
+      if (statusEl) {
+        statusEl.innerText = "Your bank withdrawal is under review.";
+      }
+    }
+
+    if (data.status === "APPROVED") {
+      if (button) {
+        button.disabled = true;
+        button.textContent = "Withdrawal Approved";
+      }
+
+      if (statusEl) {
+        statusEl.innerText =
+          "Your bank withdrawal has been approved and is being processed.";
+      }
+    }
+
+    if (data.status === "COMPLETED") {
+      if (button) {
+        button.disabled = true;
+        button.textContent = "Withdrawal Completed";
+      }
+
+      if (bankForm) {
+        bankForm.style.display = "none";
+      }
+
+      if (statusEl) {
+        statusEl.innerHTML = `
+          <div style="
+            padding:16px;
+            border-radius:12px;
+            background:rgba(34,197,94,0.12);
+            border:1px solid rgba(34,197,94,0.35);
+            color:#86efac;
+            font-weight:700;
+          ">
+            ✅ Your bank withdrawal has been completed.
+          </div>
+        `;
+      }
+    }
+
+    if (data.status === "REJECTED") {
+      if (button) {
+        button.disabled = true;
+        button.textContent = "Withdrawal Rejected";
+      }
+
+      if (statusEl) {
+        statusEl.innerText =
+          "Your bank withdrawal request was rejected. Please contact support.";
+      }
+    }
+
+    return data;
+  } catch (err) {
+    console.error("Load withdrawal status error:", err);
+    return null;
+  }
+}
+
 async function loadClaimPage() {
   const path = window.location.pathname;
 
@@ -3171,6 +3270,8 @@ async function loadClaimPage() {
   };
 
   await verifyCurrentGoogleUser();
+
+  await loadClaimWithdrawalStatus(claimData.id);
 
   document.getElementById(
     "btnWalletOption"
