@@ -2239,7 +2239,7 @@ if (existing) {
     bankName,
     accountHolder,
     accountNumber,
-    claimid,
+    claimId,
     "PENDING",
     new Date().toISOString()
   );
