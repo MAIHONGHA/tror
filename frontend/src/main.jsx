@@ -2817,28 +2817,44 @@ async function loadClaimWithdrawalStatus(claimId) {
 
     const currentStatusIndex = statusOrder.indexOf(data.status);
 
+const formatStatusTime = (value) => {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleString();
+};
+
     const timelineSteps = [
-      {
-        status: "PENDING",
-        title: "Withdrawal Requested",
-        description: "Your bank withdrawal request has been submitted."
-      },
-      {
-        status: "REVIEW",
-        title: "Under Review",
-        description: "ArcPay is reviewing your withdrawal request."
-      },
-      {
-        status: "APPROVED",
-        title: "Approved",
-        description: "Your withdrawal has been approved for processing."
-      },
-      {
-        status: "COMPLETED",
-        title: "Completed",
-        description: "Your bank withdrawal has been completed."
-      }
-    ];
+  {
+    status: "PENDING",
+    title: "Withdrawal Requested",
+    description: "Your bank withdrawal request has been submitted.",
+    time: data.created_at
+  },
+  {
+    status: "REVIEW",
+    title: "Under Review",
+    description: "ArcPay is reviewing your withdrawal request.",
+    time: data.reviewed_at
+  },
+  {
+    status: "APPROVED",
+    title: "Approved",
+    description: "Your withdrawal has been approved for processing.",
+    time: data.approved_at
+  },
+  {
+    status: "COMPLETED",
+    title: "Completed",
+    description: "Your bank withdrawal has been completed.",
+    time: data.completed_at
+  }
+];
 
     if (button) {
       button.disabled = true;
@@ -2984,6 +3000,19 @@ async function loadClaimWithdrawalStatus(claimId) {
                         };
                       ">
                         ${step.description}
+                        ${
+  step.time
+    ? `
+      <div style="
+        margin-top:5px;
+        font-size:12px;
+        color:#94a3b8;
+      ">
+        ${formatStatusTime(step.time)}
+      </div>
+    `
+    : ""
+}
                       </div>
                     </div>
                   </div>

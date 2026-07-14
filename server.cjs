@@ -273,6 +273,34 @@ try {
   `).run();
 } catch {}
 
+try {
+  db.prepare(`
+    ALTER TABLE withdrawals
+    ADD COLUMN reviewed_at TEXT
+  `).run();
+} catch {}
+
+try {
+  db.prepare(`
+    ALTER TABLE withdrawals
+    ADD COLUMN approved_at TEXT
+  `).run();
+} catch {}
+
+try {
+  db.prepare(`
+    ALTER TABLE withdrawals
+    ADD COLUMN completed_at TEXT
+  `).run();
+} catch {}
+
+try {
+  db.prepare(`
+    ALTER TABLE withdrawals
+    ADD COLUMN rejected_at TEXT
+  `).run();
+} catch {}
+
 db.prepare(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_withdrawals_claim_id
   ON withdrawals(claim_id)
@@ -2304,11 +2332,31 @@ app.post("/api/withdrawals/:id/status", async (req, res) => {
       return res.status(400).json({ error: "Invalid withdrawal status" });
     }
 
-    db.prepare(`
-      UPDATE withdrawals
-      SET status = ?
-      WHERE id = ?
-    `).run(status, id);
+    const timestampColumn = {
+  REVIEW: "reviewed_at",
+  APPROVED: "approved_at",
+  COMPLETED: "completed_at",
+  REJECTED: "rejected_at"
+}[status];
+
+if (timestampColumn) {
+  db.prepare(`
+    UPDATE withdrawals
+    SET status = ?,
+        ${timestampColumn} = ?
+    WHERE id = ?
+  `).run(
+    status,
+    new Date().toISOString(),
+    id
+  );
+} else {
+  db.prepare(`
+    UPDATE withdrawals
+    SET status = ?
+    WHERE id = ?
+  `).run(status, id);
+}
 
 const row = db.prepare("SELECT * FROM withdrawals WHERE id = ?").get(id);
 
