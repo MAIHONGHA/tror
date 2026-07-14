@@ -4024,10 +4024,23 @@ async function loadEmployees(status = currentEmployeeStatus) {
       ? `?status=${encodeURIComponent(currentEmployeeStatus)}`
       : "";
 
-    const rows = await api(`/api/employees${query}`);
-    const list = document.getElementById("employeesList");
+    const [rows, allEmployees] = await Promise.all([
+  api(`/api/employees${query}`),
+  api("/api/employees")
+]);
 
-    if (!list) return;
+const totalEmployeesEl =
+  document.getElementById("payrollEmployees");
+
+if (totalEmployeesEl) {
+  totalEmployeesEl.textContent = Array.isArray(allEmployees)
+    ? allEmployees.length
+    : 0;
+}
+
+const list = document.getElementById("employeesList");
+
+if (!list) return;
 
     document.querySelectorAll(".employee-filter").forEach((button) => {
       const buttonStatus = button.dataset.employeeStatus || "";
