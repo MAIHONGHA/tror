@@ -3338,11 +3338,18 @@ async function loadClaimPage() {
           ? "Bank withdrawal request failed."
           : "Bank withdrawal request submitted.";
     } catch (err) {
-      document.getElementById(
-        "claimStatus"
-      ).innerText =
-        "Error: " + err.message;
-    }
+  console.error("Bank withdrawal error:", err);
+
+  document.getElementById(
+    "claimStatus"
+  ).innerText =
+    "Error: " +
+    (
+      err?.message ||
+      err?.error ||
+      JSON.stringify(err)
+    );
+}
   };
 }
 
