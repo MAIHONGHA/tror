@@ -2066,7 +2066,9 @@ const memoText =
     ? paymentMemo
     : `ArcPay invoice payment | invoiceId=${selectedInvoice.id} | onchainId=${contractInvoiceId} | amount=${selectedInvoice.amount} USDC`;
 
-const memoData = ethers.toUtf8Bytes(memoText);
+const memoData = ethers.hexlify(
+  ethers.toUtf8Bytes(memoText)
+);
 
 const hash = await writeContract(wagmiAdapter.wagmiConfig, {
   address: MEMO_ADDRESS,
