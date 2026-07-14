@@ -268,6 +268,19 @@ try {
 
 try {
   db.prepare(`
+    ALTER TABLE withdrawals
+    ADD COLUMN claim_id TEXT
+  `).run();
+} catch {}
+
+db.prepare(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_withdrawals_claim_id
+  ON withdrawals(claim_id)
+  WHERE claim_id IS NOT NULL
+`).run();
+
+try {
+  db.prepare(`
     ALTER TABLE payroll_batches
     ADD COLUMN frequency TEXT DEFAULT 'once'
   `).run();
@@ -2180,10 +2193,29 @@ app.post("/api/withdrawals", (req, res) => {
     country,
     bankName,
     accountHolder,
-    accountNumber
+    accountNumber,
+    claimId
   } = req.body;
 
   const id = crypto.randomUUID();
+
+if (!claimId) {
+  return res.status(409).json({
+    error: "Missing claimId"
+  });
+}
+
+const existing = db.prepare(`
+  SELECT id
+  FROM withdrawals
+  WHERE claim_id = ?
+`).get(claimId);
+
+if (existing) {
+  return res.status(400).json({
+    error: "This claim has already been withdrawn."
+  });
+}
 
   db.prepare(`
     INSERT INTO withdrawals (
@@ -2194,6 +2226,7 @@ app.post("/api/withdrawals", (req, res) => {
       bank_name,
       account_holder,
       account_number,
+      claim_id,
       status,
       created_at
     )
@@ -2206,6 +2239,7 @@ app.post("/api/withdrawals", (req, res) => {
     bankName,
     accountHolder,
     accountNumber,
+    claimid,
     "PENDING",
     new Date().toISOString()
   );

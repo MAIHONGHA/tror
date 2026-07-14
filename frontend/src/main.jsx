@@ -3325,7 +3325,8 @@ async function loadClaimPage() {
             country,
             bankName,
             accountHolder: holder,
-            accountNumber: account
+            accountNumber: account,
+            claimId: claimData?.id
           })
         }
       );
