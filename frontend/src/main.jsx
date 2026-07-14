@@ -2808,75 +2808,190 @@ async function loadClaimWithdrawalStatus(claimId) {
     const statusEl = document.getElementById("claimStatus");
     const bankForm = document.getElementById("bankWithdrawForm");
 
-    if (data.status === "PENDING") {
-      if (button) {
-        button.disabled = true;
+    const statusOrder = [
+      "PENDING",
+      "REVIEW",
+      "APPROVED",
+      "COMPLETED"
+    ];
+
+    const currentStatusIndex = statusOrder.indexOf(data.status);
+
+    const timelineSteps = [
+      {
+        status: "PENDING",
+        title: "Withdrawal Requested",
+        description: "Your bank withdrawal request has been submitted."
+      },
+      {
+        status: "REVIEW",
+        title: "Under Review",
+        description: "ArcPay is reviewing your withdrawal request."
+      },
+      {
+        status: "APPROVED",
+        title: "Approved",
+        description: "Your withdrawal has been approved for processing."
+      },
+      {
+        status: "COMPLETED",
+        title: "Completed",
+        description: "Your bank withdrawal has been completed."
+      }
+    ];
+
+    if (button) {
+      button.disabled = true;
+
+      if (data.status === "PENDING") {
         button.textContent = "Withdrawal Requested";
-      }
-
-      if (statusEl) {
-        statusEl.innerText = "Bank withdrawal request submitted.";
-      }
-    }
-
-    if (data.status === "REVIEW") {
-      if (button) {
-        button.disabled = true;
+      } else if (data.status === "REVIEW") {
         button.textContent = "Under Review";
-      }
-
-      if (statusEl) {
-        statusEl.innerText = "Your bank withdrawal is under review.";
-      }
-    }
-
-    if (data.status === "APPROVED") {
-      if (button) {
-        button.disabled = true;
+      } else if (data.status === "APPROVED") {
         button.textContent = "Withdrawal Approved";
-      }
-
-      if (statusEl) {
-        statusEl.innerText =
-          "Your bank withdrawal has been approved and is being processed.";
+      } else if (data.status === "COMPLETED") {
+        button.textContent = "Withdrawal Completed";
+      } else if (data.status === "REJECTED") {
+        button.textContent = "Withdrawal Rejected";
       }
     }
 
-    if (data.status === "COMPLETED") {
-      if (button) {
-        button.disabled = true;
-        button.textContent = "Withdrawal Completed";
-      }
+    if (data.status === "COMPLETED" && bankForm) {
+      bankForm.style.display = "none";
+    }
 
-      if (bankForm) {
-        bankForm.style.display = "none";
-      }
-
-      if (statusEl) {
+    if (statusEl) {
+      if (data.status === "REJECTED") {
         statusEl.innerHTML = `
           <div style="
             padding:16px;
             border-radius:12px;
-            background:rgba(34,197,94,0.12);
-            border:1px solid rgba(34,197,94,0.35);
-            color:#86efac;
+            background:rgba(239,68,68,0.12);
+            border:1px solid rgba(239,68,68,0.35);
+            color:#fca5a5;
             font-weight:700;
           ">
-            ✅ Your bank withdrawal has been completed.
+            ❌ Your bank withdrawal request was rejected.
           </div>
         `;
-      }
-    }
+      } else {
+        statusEl.innerHTML = `
+          <div style="
+            margin-top:16px;
+            padding:18px;
+            border-radius:16px;
+            background:rgba(15,23,42,0.72);
+            border:1px solid rgba(148,163,184,0.18);
+          ">
+            <div style="
+              font-size:16px;
+              font-weight:800;
+              margin-bottom:16px;
+              color:#ffffff;
+            ">
+              Bank withdrawal progress
+            </div>
 
-    if (data.status === "REJECTED") {
-      if (button) {
-        button.disabled = true;
-        button.textContent = "Withdrawal Rejected";
-      }
+            ${timelineSteps
+              .map((step, index) => {
+                const isCompleted =
+                  currentStatusIndex >= index &&
+                  currentStatusIndex !== -1;
 
-      if (statusEl) {
-        statusEl.innerText =
-          "Your bank withdrawal request was rejected. Please contact support.";
+                const isCurrent =
+                  data.status === step.status;
+
+                return `
+                  <div style="
+                    display:flex;
+                    gap:12px;
+                    position:relative;
+                    padding-bottom:${index === timelineSteps.length - 1 ? "0" : "18px"};
+                  ">
+                    <div style="
+                      display:flex;
+                      flex-direction:column;
+                      align-items:center;
+                    ">
+                      <div style="
+                        width:28px;
+                        height:28px;
+                        border-radius:50%;
+                        display:flex;
+                        align-items:center;
+                        justify-content:center;
+                        font-weight:800;
+                        background:${
+                          isCompleted
+                            ? "rgba(34,197,94,0.2)"
+                            : "rgba(148,163,184,0.12)"
+                        };
+                        border:1px solid ${
+                          isCompleted
+                            ? "rgba(34,197,94,0.55)"
+                            : "rgba(148,163,184,0.22)"
+                        };
+                        color:${
+                          isCompleted
+                            ? "#86efac"
+                            : "#64748b"
+                        };
+                      ">
+                        ${isCompleted ? "✓" : index + 1}
+                      </div>
+
+                      ${
+                        index !== timelineSteps.length - 1
+                          ? `
+                            <div style="
+                              width:2px;
+                              flex:1;
+                              min-height:34px;
+                              background:${
+                                currentStatusIndex > index
+                                  ? "rgba(34,197,94,0.45)"
+                                  : "rgba(148,163,184,0.18)"
+                              };
+                              margin-top:4px;
+                            "></div>
+                          `
+                          : ""
+                      }
+                    </div>
+
+                    <div style="padding-top:3px;">
+                      <div style="
+                        font-weight:800;
+                        color:${
+                          isCurrent
+                            ? "#ffffff"
+                            : isCompleted
+                            ? "#cbd5e1"
+                            : "#64748b"
+                        };
+                      ">
+                        ${step.title}
+                      </div>
+
+                      <div style="
+                        margin-top:4px;
+                        font-size:13px;
+                        line-height:1.45;
+                        color:${
+                          isCompleted
+                            ? "#94a3b8"
+                            : "#475569"
+                        };
+                      ">
+                        ${step.description}
+                      </div>
+                    </div>
+                  </div>
+                `;
+              })
+              .join("")}
+          </div>
+        `;
       }
     }
 
