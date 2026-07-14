@@ -1982,7 +1982,9 @@ const paymentMemo =
     ? paymentMemo
     : `ArcPay invoice payment | invoiceId=${selectedInvoice.id} | onchainId=${selectedInvoice.onchainId} | amount=${selectedInvoice.amount} USDC`;
 
-const memoData = ethers.toUtf8Bytes(memoText);
+const memoData = ethers.hexlify(
+  ethers.toUtf8Bytes(memoText)
+);
 
     setStatus("Paying invoice with Arc Memo...");
 
