@@ -2753,7 +2753,7 @@ if (ticker) {
   const tickerItems = items.length ? items : [];
 
   ticker.innerHTML = tickerItems.length
-    ? [...tickerItems, ...tickerItems]
+    ? tickerItems
         .map((item) => {
           const text = item.text || "";
           const icon = getActivityIcon(text);
