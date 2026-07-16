@@ -573,6 +573,33 @@ async function viewBatchItems(batchId) {
   )}
 </div>
 
+<div
+  style={{
+    marginTop: 16,
+    padding: 14,
+    borderRadius: 14,
+    background: "rgba(59,130,246,0.12)",
+    border: "1px solid rgba(96,165,250,0.25)",
+    fontWeight: 800
+  }}
+>
+  Payroll Total:{" "}
+  {newPayroll.employees
+    .reduce((sum, emp) => {
+      return (
+        sum +
+        Number(emp.base_salary || 0) +
+        Number(emp.overtime_hours || 0) *
+          Number(emp.overtime_rate || 0) +
+        Number(emp.allowance || 0) +
+        Number(emp.bonus || 0) -
+        Number(emp.deduction || 0)
+      );
+    }, 0)
+    .toFixed(2)}{" "}
+  USDC
+</div>
+
 <h3>Import Employees CSV</h3>
 
 <textarea
