@@ -576,10 +576,25 @@ app.get("/api/payroll-batches", (req, res) => {
 
 app.get("/api/payroll-items", (req, res) => {
   const latestBatch = db.prepare(`
-    SELECT * FROM payroll_batches
-    ORDER BY created_at DESC
-    LIMIT 1
-  `).get();
+  SELECT b.*
+  FROM payroll_batches b
+  WHERE EXISTS (
+    SELECT 1
+    FROM payroll_items i
+    WHERE i.batch_id = b.id
+  )
+  ORDER BY
+    CASE b.status
+      WHEN 'REVIEW' THEN 1
+      WHEN 'APPROVED' THEN 2
+      WHEN 'DRAFT' THEN 3
+      WHEN 'PAID' THEN 4
+      WHEN 'CANCELLED' THEN 5
+      ELSE 6
+    END,
+    b.created_at DESC
+  LIMIT 1
+`).get();
 
   if (!latestBatch) {
     return res.json([]);
@@ -798,11 +813,11 @@ app.post("/api/payroll-batches/:id/execute", async (req, res) => {
     });
   }
 
-  if (batch.status !== "REVIEW") {
-    return res.status(400).json({
-      error: "Only REVIEW payroll batch can be executed"
-    });
-  }
+  if (!["APPROVED", "REVIEW"].includes(batch.status)) {
+  return res.status(400).json({
+    error: "Only APPROVED or REVIEW payroll batch can be executed"
+  });
+}
 
   const items = db.prepare(`
     SELECT *
@@ -824,10 +839,10 @@ app.post("/api/payroll-batches/:id/execute", async (req, res) => {
       continue;
     }
 
-    if (item.status !== "REVIEW") {
-      console.log("⚠️ Payroll item not ready:", item.id);
-      continue;
-    }
+    if (!["APPROVED", "REVIEW"].includes(item.status)) {
+  console.log("⚠️ Payroll item not ready:", item.id);
+  continue;
+}
 
     const payoutId = crypto.randomUUID();
 
@@ -1144,6 +1159,12 @@ app.post("/api/payroll-batches", (req, res) => {
     frequency = "once",
     employees = []
   } = req.body;
+
+if (!Array.isArray(employees) || employees.length === 0) {
+  return res.status(400).json({
+    error: "Cannot create a payroll batch without employees"
+  });
+}
 
   db.prepare(`
     INSERT INTO payroll_batches (
@@ -3477,50 +3498,6 @@ cron.schedule("* * * * *", () => {
 
     console.log("Payroll needs final review:", payroll.id);
 
-    // CREATE NEXT MONTHLY PAYROLL
-    if (payroll.frequency === "monthly") {
-
-      const nextDate = new Date(payroll.pay_date);
-
-      nextDate.setMonth(nextDate.getMonth() + 1);
-
-const existingNextPayroll = db.prepare(`
-  SELECT id
-  FROM payroll_batches
-  WHERE title = ?
-    AND frequency = 'monthly'
-    AND date(pay_date) = date(?)
-  LIMIT 1
-`).get(payroll.title, nextDate.toISOString());
-
-if (existingNextPayroll) {
-  console.log("⚠️ Next monthly payroll already exists:", existingNextPayroll.id);
-  continue;
-}
-
-      db.prepare(`
-        INSERT INTO payroll_batches (
-          id,
-          title,
-          pay_date,
-          status,
-          frequency,
-          auto_execute,
-          requires_approval
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        crypto.randomUUID(),
-        payroll.title,
-        nextDate.toISOString(),
-        "DRAFT",
-        "monthly",
-        payroll.auto_execute || 0,
-        payroll.requires_approval || 1
-      );
-
-      console.log("✅ Next monthly payroll created");
-    }
   }
 });
 
