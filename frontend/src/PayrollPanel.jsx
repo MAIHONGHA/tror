@@ -8,24 +8,13 @@ export default function PayrollPanel() {
   const [batches, setBatches] = useState([]);
   const [selectedBatchItems, setSelectedBatchItems] = useState([]);
   const [csvText, setCsvText] = useState("");
+  const [employeesLoading, setEmployeesLoading] = useState(false);
 
   const [newPayroll, setNewPayroll] = useState({
   title: "Monthly Payroll",
   frequency: "monthly",
   pay_date: "",
-  employees: [
-    {
-      employee_name: "",
-      employee_email: "",
-      wallet: "",
-      base_salary: "",
-      overtime_hours: "0",
-      overtime_rate: "0",
-      allowance: "0",
-      bonus: "0",
-      deduction: "0",
-    },
-  ],
+  employees: [],
 });
 
   async function loadPayroll() {
@@ -48,6 +37,49 @@ export default function PayrollPanel() {
     const data = await res.json();
     setBatches(data);
   }
+
+async function loadActiveEmployees() {
+  setEmployeesLoading(true);
+
+  try {
+    const res = await fetch(
+      `${API_BASE}/api/employees?status=ACTIVE`
+    );
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(
+        data.error || "Failed to load active employees"
+      );
+    }
+
+    const employees = Array.isArray(data)
+      ? data.map((employee) => ({
+          employee_id: employee.id,
+          employee_name: employee.employee_name || "",
+          employee_email: employee.employee_email || "",
+          wallet: employee.wallet || "",
+          base_salary: String(employee.base_salary || 0),
+          overtime_hours: "0",
+          overtime_rate: "0",
+          allowance: "0",
+          bonus: "0",
+          deduction: "0",
+        }))
+      : [];
+
+    setNewPayroll((current) => ({
+      ...current,
+      employees,
+    }));
+  } catch (err) {
+    console.error("Load active employees error:", err);
+    alert(err.message);
+  } finally {
+    setEmployeesLoading(false);
+  }
+}
 
 function importEmployeesFromCsv() {
   const lines = csvText.trim().split("\n");
@@ -78,6 +110,24 @@ function importEmployeesFromCsv() {
 }
 
 async function createPayrollBatch() {
+    if (newPayroll.employees.length === 0) {
+    alert("No active employees available.");
+    return;
+  }
+
+  const invalidEmployee = newPayroll.employees.find(
+    (employee) =>
+      !employee.employee_name ||
+      !employee.wallet ||
+      Number(employee.base_salary || 0) <= 0
+  );
+
+  if (invalidEmployee) {
+    alert(
+      "Each employee must have a name, wallet and base salary greater than 0."
+    );
+    return;
+  }
   const res = await fetch(`${API_BASE}/api/payroll-batches`, {
     method: "POST",
     headers: {
@@ -289,9 +339,10 @@ async function viewBatchItems(batchId) {
   }
 
   useEffect(() => {
-    loadPayroll();
-    loadPayrollBatches();
-  }, []);
+  loadPayroll();
+  loadPayrollBatches();
+  loadActiveEmployees();
+}, []);
 
   const total = items.reduce(
     (sum, item) => sum + Number(item.final_amount || 0),
@@ -329,69 +380,178 @@ async function viewBatchItems(batchId) {
     }
   />
 
-  {newPayroll.employees.map((emp, index) => (
+  <div style={{ marginBottom: 16 }}>
   <div
-    key={index}
-    className="card"
-    style={{ marginBottom: 12 }}
+    style={{
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+      flexWrap: "wrap",
+      marginBottom: 12,
+    }}
   >
-    <input
-      placeholder="Employee name"
-      value={emp.employee_name}
-      onChange={(e) => {
-        const updated = [...newPayroll.employees];
-        updated[index].employee_name = e.target.value;
+    <h3 style={{ margin: 0 }}>
+      Active Employees ({newPayroll.employees.length})
+    </h3>
 
-        setNewPayroll({
-          ...newPayroll,
-          employees: updated,
-        });
-      }}
-    />
-
-    <input
-      placeholder="Employee email"
-      value={emp.employee_email}
-      onChange={(e) => {
-        const updated = [...newPayroll.employees];
-        updated[index].employee_email = e.target.value;
-
-        setNewPayroll({
-          ...newPayroll,
-          employees: updated,
-        });
-      }}
-    />
-
-    <input
-      placeholder="Employee wallet"
-      value={emp.wallet}
-      onChange={(e) => {
-        const updated = [...newPayroll.employees];
-        updated[index].wallet = e.target.value;
-
-        setNewPayroll({
-          ...newPayroll,
-          employees: updated,
-        });
-      }}
-    />
-
-    <input
-      placeholder="Base salary"
-      value={emp.base_salary}
-      onChange={(e) => {
-        const updated = [...newPayroll.employees];
-        updated[index].base_salary = e.target.value;
-
-        setNewPayroll({
-          ...newPayroll,
-          employees: updated,
-        });
-      }}
-    />
+    <button
+      type="button"
+      onClick={loadActiveEmployees}
+      disabled={employeesLoading}
+    >
+      {employeesLoading
+        ? "Loading Employees..."
+        : "Reload Active Employees"}
+    </button>
   </div>
-))}
+
+  {newPayroll.employees.length === 0 ? (
+    <div className="card">
+      No active employees found. Add or activate an employee
+      in Employee Management first.
+    </div>
+  ) : (
+    newPayroll.employees.map((emp, index) => (
+      <div
+        key={emp.employee_id || index}
+        className="card"
+        style={{ marginBottom: 12 }}
+      >
+        <b>{emp.employee_name}</b>
+
+        <div>Email: {emp.employee_email || "-"}</div>
+        <div>Wallet: {emp.wallet || "-"}</div>
+
+        <label>Base salary USDC</label>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={emp.base_salary}
+          onChange={(e) => {
+            const updated = [...newPayroll.employees];
+
+            updated[index] = {
+              ...updated[index],
+              base_salary: e.target.value,
+            };
+
+            setNewPayroll({
+              ...newPayroll,
+              employees: updated,
+            });
+          }}
+        />
+
+        <label>Overtime hours</label>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={emp.overtime_hours}
+          onChange={(e) => {
+            const updated = [...newPayroll.employees];
+
+            updated[index] = {
+              ...updated[index],
+              overtime_hours: e.target.value,
+            };
+
+            setNewPayroll({
+              ...newPayroll,
+              employees: updated,
+            });
+          }}
+        />
+
+        <label>Overtime rate</label>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={emp.overtime_rate}
+          onChange={(e) => {
+            const updated = [...newPayroll.employees];
+
+            updated[index] = {
+              ...updated[index],
+              overtime_rate: e.target.value,
+            };
+
+            setNewPayroll({
+              ...newPayroll,
+              employees: updated,
+            });
+          }}
+        />
+
+        <label>Allowance</label>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={emp.allowance}
+          onChange={(e) => {
+            const updated = [...newPayroll.employees];
+
+            updated[index] = {
+              ...updated[index],
+              allowance: e.target.value,
+            };
+
+            setNewPayroll({
+              ...newPayroll,
+              employees: updated,
+            });
+          }}
+        />
+
+        <label>Bonus</label>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={emp.bonus}
+          onChange={(e) => {
+            const updated = [...newPayroll.employees];
+
+            updated[index] = {
+              ...updated[index],
+              bonus: e.target.value,
+            };
+
+            setNewPayroll({
+              ...newPayroll,
+              employees: updated,
+            });
+          }}
+        />
+
+        <label>Deduction</label>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={emp.deduction}
+          onChange={(e) => {
+            const updated = [...newPayroll.employees];
+
+            updated[index] = {
+              ...updated[index],
+              deduction: e.target.value,
+            };
+
+            setNewPayroll({
+              ...newPayroll,
+              employees: updated,
+            });
+          }}
+        />
+      </div>
+    ))
+  )}
+</div>
 
 <h3>Import Employees CSV</h3>
 
@@ -405,30 +565,6 @@ An,an@test.com,0xdef...,80,0`}
 
 <button onClick={importEmployeesFromCsv}>
   Import CSV
-</button>
-
-<button
-  onClick={() => {
-    setNewPayroll({
-      ...newPayroll,
-      employees: [
-        ...newPayroll.employees,
-        {
-          employee_name: "",
-          employee_email: "",
-          wallet: "",
-          base_salary: "",
-          overtime_hours: "0",
-          overtime_rate: "0",
-          allowance: "0",
-          bonus: "0",
-          deduction: "0",
-        },
-      ],
-    });
-  }}
->
-  Add Employee
 </button>
 
   <button onClick={createPayrollBatch}>
