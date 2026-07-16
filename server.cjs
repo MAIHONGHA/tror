@@ -848,105 +848,175 @@ app.post("/api/payroll-batches/:id/cancel", (req, res) => {
     const results = [];
 
     for (const item of items) {
-      if (item.status === "PAID") {
-        continue;
-      }
+  if (item.status === "PAID") {
+    results.push({
+      employee: item.employee_name,
+      amount: item.final_amount,
+      status: "PAID",
+      skipped: true,
+      txHash: item.tx_hash || null
+    });
 
-      if (!["APPROVED", "REVIEW"].includes(item.status)) {
-        continue;
-      }
+    continue;
+  }
 
-      if (!ethers.isAddress(item.wallet)) {
-        throw new Error(
-          `Invalid employee wallet for ${item.employee_name}`
-        );
-      }
+  if (!["APPROVED", "REVIEW", "FAILED"].includes(item.status)) {
+    results.push({
+      employee: item.employee_name,
+      amount: item.final_amount,
+      status: item.status,
+      skipped: true
+    });
 
-      if (!Number.isFinite(Number(item.final_amount)) ||
-          Number(item.final_amount) <= 0) {
-        throw new Error(
-          `Invalid payroll amount for ${item.employee_name}`
-        );
-      }
+    continue;
+  }
 
-      let payout = db.prepare(`
+  try {
+    if (!ethers.isAddress(item.wallet)) {
+      throw new Error(
+        `Invalid employee wallet for ${item.employee_name}`
+      );
+    }
+
+    if (
+      !Number.isFinite(Number(item.final_amount)) ||
+      Number(item.final_amount) <= 0
+    ) {
+      throw new Error(
+        `Invalid payroll amount for ${item.employee_name}`
+      );
+    }
+
+    db.prepare(`
+      UPDATE payroll_items
+      SET status = 'PROCESSING'
+      WHERE id = ?
+    `).run(item.id);
+
+    let payout = db.prepare(`
+      SELECT *
+      FROM payouts
+      WHERE payroll_item_id = ?
+      LIMIT 1
+    `).get(item.id);
+
+    if (!payout) {
+      const payoutId = crypto.randomUUID();
+
+      db.prepare(`
+        INSERT INTO payouts (
+          id,
+          recipient,
+          amount,
+          status,
+          mode,
+          frequency,
+          payroll_item_id
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        payoutId,
+        item.wallet,
+        item.final_amount,
+        "APPROVED",
+        "payroll",
+        "once",
+        item.id
+      );
+
+      payout = db.prepare(`
         SELECT *
         FROM payouts
-        WHERE payroll_item_id = ?
-        LIMIT 1
-      `).get(item.id);
-
-      if (!payout) {
-        const payoutId = crypto.randomUUID();
-
-        db.prepare(`
-          INSERT INTO payouts (
-            id,
-            recipient,
-            amount,
-            status,
-            mode,
-            frequency,
-            payroll_item_id
-          )
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          payoutId,
-          item.wallet,
-          item.final_amount,
-          "APPROVED",
-          "payroll",
-          "once",
-          item.id
-        );
-
-        payout = db.prepare(`
-          SELECT *
-          FROM payouts
-          WHERE id = ?
-        `).get(payoutId);
-      }
-
-      const payoutResult = await executePayoutById(payout.id);
-
-      const txHash =
-        payoutResult.txHash ||
-        payoutResult.payout?.tx_hash;
-
-      db.prepare(`
-        UPDATE payroll_items
-        SET status = 'PAID',
-            tx_hash = ?
         WHERE id = ?
-      `).run(txHash, item.id);
-
-      results.push({
-        employee: item.employee_name,
-        amount: item.final_amount,
-        txHash
-      });
+      `).get(payoutId);
     }
 
-    const unpaid = db.prepare(`
-      SELECT COUNT(*) AS count
-      FROM payroll_items
-      WHERE batch_id = ?
+    const payoutResult = await executePayoutById(payout.id);
+
+    const txHash =
+      payoutResult.txHash ||
+      payoutResult.payout?.tx_hash ||
+      payout.tx_hash ||
+      null;
+
+    db.prepare(`
+      UPDATE payroll_items
+      SET status = 'PAID',
+          tx_hash = ?
+      WHERE id = ?
+    `).run(txHash, item.id);
+
+    results.push({
+      employee: item.employee_name,
+      amount: item.final_amount,
+      status: "PAID",
+      txHash
+    });
+  } catch (itemErr) {
+    console.error(
+      "PAYROLL ITEM FAILED:",
+      item.employee_name,
+      itemErr
+    );
+
+    db.prepare(`
+      UPDATE payroll_items
+      SET status = 'FAILED'
+      WHERE id = ?
         AND status != 'PAID'
-    `).get(id);
+    `).run(item.id);
 
-    if (unpaid.count === 0) {
-      db.prepare(`
-        UPDATE payroll_batches
-        SET status = 'PAID'
-        WHERE id = ?
-      `).run(id);
-    }
+    results.push({
+      employee: item.employee_name,
+      amount: item.final_amount,
+      status: "FAILED",
+      error:
+        itemErr?.error?.message ||
+        itemErr?.shortMessage ||
+        itemErr?.message ||
+        "Unknown payroll item error"
+    });
+
+    continue;
+  }
+}
+
+    const summary = db.prepare(`
+  SELECT
+    COUNT(*) AS total_count,
+    SUM(CASE WHEN status = 'PAID' THEN 1 ELSE 0 END) AS paid_count,
+    SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS failed_count,
+    SUM(CASE WHEN status = 'PROCESSING' THEN 1 ELSE 0 END) AS processing_count
+  FROM payroll_items
+  WHERE batch_id = ?
+`).get(id);
+
+const nextBatchStatus =
+  summary.total_count > 0 &&
+  summary.paid_count === summary.total_count
+    ? "PAID"
+    : summary.failed_count > 0
+      ? "REVIEW"
+      : "APPROVED";
+
+db.prepare(`
+  UPDATE payroll_batches
+  SET status = ?
+  WHERE id = ?
+`).run(nextBatchStatus, id);
 
     return res.json({
-      success: true,
-      payrollBatch: id,
-      results
-    });
+  success: true,
+  payrollBatch: id,
+  batchStatus: nextBatchStatus,
+  summary: {
+    total: Number(summary.total_count || 0),
+    paid: Number(summary.paid_count || 0),
+    failed: Number(summary.failed_count || 0),
+    processing: Number(summary.processing_count || 0)
+  },
+  results
+});
   } catch (err) {
     console.error("PAYROLL EXECUTE ERROR:", err);
 
