@@ -1057,8 +1057,15 @@ app.post("/api/payroll-items/:id/update", (req, res) => {
   const bonus = Number(req.body.bonus || 0);
   const deduction = Number(req.body.deduction || 0);
 
-  const finalAmount =
-    base + overtimeHours * overtimeRate + allowance + bonus - deduction;
+  const finalAmount = Number(
+  (
+    Number(baseSalary || 0) +
+    Number(overtimeHours || 0) * Number(overtimeRate || 0) +
+    Number(allowance || 0) +
+    Number(bonus || 0) -
+    Number(deduction || 0)
+  ).toFixed(6)
+);
 
   db.prepare(`
     UPDATE payroll_items
@@ -1422,7 +1429,14 @@ async function executePayoutById(id) {
     payoutWallet
   );
 
-  const amountUnits = ethers.parseUnits(String(payout.amount), 6);
+  const numericAmount = Number(payout.amount);
+
+if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+  throw new Error(`Invalid payout amount: ${payout.amount}`);
+}
+
+const normalizedAmount = numericAmount.toFixed(6);
+const amountUnits = ethers.parseUnits(normalizedAmount, 6);
 
   const tx = await usdc.transfer(payout.recipient, amountUnits);
   await tx.wait();
