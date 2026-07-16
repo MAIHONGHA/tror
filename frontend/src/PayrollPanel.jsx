@@ -548,6 +548,26 @@ async function viewBatchItems(batchId) {
             });
           }}
         />
+        <div
+  style={{
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    background: "rgba(15, 23, 42, 0.65)",
+    fontWeight: 700,
+  }}
+>
+  Final Amount:{" "}
+  {(
+    Number(emp.base_salary || 0) +
+    Number(emp.overtime_hours || 0) *
+      Number(emp.overtime_rate || 0) +
+    Number(emp.allowance || 0) +
+    Number(emp.bonus || 0) -
+    Number(emp.deduction || 0)
+  ).toFixed(2)}{" "}
+  USDC
+</div>
       </div>
     ))
   )}
