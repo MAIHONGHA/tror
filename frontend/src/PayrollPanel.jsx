@@ -707,7 +707,7 @@ An,an@test.com,0xdef...,80,0`}
 
     <hr />
 
-    <b>Final Amount: {item.final_amount} USDC</b>
+    <b>Final Amount: {Number(item.final_amount || 0).toFixed(2)} USDC</b>
 
     <div>Status: {item.status}</div>
 
