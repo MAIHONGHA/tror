@@ -49,7 +49,7 @@ const ARC_CHAIN_ID = Number(process.env.ARC_CHAIN_ID || 5042002);
 const ARC_CHAIN_ID_HEX = String(process.env.ARC_CHAIN_ID_HEX || "0x4cef52");
 const ARC_CHAIN_NAME = String(process.env.ARC_CHAIN_NAME || "Arc Testnet");
 const ARC_RPC_URL = String(
-  process.env.ARC_RPC_URL || "https://rpc.testnet.arc.network"
+  process.env.ARC_RPC_URL || "https://rpc.drpc.testnet.arc.io"
 );
 const provider = new ethers.JsonRpcProvider(ARC_RPC_URL);
 const PAYOUT_PRIVATE_KEY = process.env.PAYOUT_PRIVATE_KEY || "";
