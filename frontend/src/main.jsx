@@ -1342,7 +1342,22 @@ async function createInvoice() {
     // CASE 1: MetaMask create invoice
     // =========================
     if (metamaskWallet && window.ethereum) {
-      const provider = new ethers.BrowserProvider(window.ethereum);
+  setStatus("Checking Arc Testnet network...");
+
+  await switchArc();
+
+  const activeChainId = await window.ethereum.request({
+    method: "eth_chainId",
+  });
+
+  if (
+    String(activeChainId).toLowerCase() !==
+    String(ARC_CHAIN_HEX).toLowerCase()
+  ) {
+    throw new Error("Please switch your wallet to Arc Testnet.");
+  }
+
+  const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
 
       const contract = new ethers.Contract(
@@ -1793,37 +1808,66 @@ function disconnectMetaMask() {
   setStatus("MetaMask disconnected locally.", "success");
 }
 
-// Switch to Arc Testnet network
+// Switch to Arc Testnet or add it when missing
 async function switchArc() {
-  try {
-    if (!window.ethereum) {
-      setStatus("Install MetaMask first.", "error");
-      return;
-    }
-
-    try {
-      await window.ethereum.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: ARC_CHAIN_HEX }]
-      });
-    } catch {
-      // Network not added yet — add it
-      await window.ethereum.request({
-        method: "wallet_addEthereumChain",
-        params: [{
-          chainId: ARC_CHAIN_HEX,
-          chainName: ARC_CHAIN_NAME,
-          rpcUrls: [ARC_RPC],
-          nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
-          blockExplorerUrls: [ARC_EXPLORER]
-        }]
-      });
-    }
-
-    setStatus("Switched to Arc.", "success");
-  } catch (err) {
-    setStatus("Switch Arc failed: " + err.message, "error");
+  if (!window.ethereum) {
+    throw new Error("No Web3 wallet detected.");
   }
+
+  const currentChainId = await window.ethereum.request({
+    method: "eth_chainId",
+  });
+
+  // Already on Arc Testnet
+  if (
+    String(currentChainId).toLowerCase() ===
+    String(ARC_CHAIN_HEX).toLowerCase()
+  ) {
+    return true;
+  }
+
+  try {
+    await window.ethereum.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: ARC_CHAIN_HEX }],
+    });
+
+    return true;
+  } catch (switchError) {
+    const errorCode = Number(switchError?.code);
+
+    // 4902 = wallet does not have this network yet
+    if (errorCode !== 4902) {
+      throw switchError;
+    }
+  }
+
+  await window.ethereum.request({
+    method: "wallet_addEthereumChain",
+    params: [
+      {
+        chainId: ARC_CHAIN_HEX,
+        chainName: ARC_CHAIN_NAME,
+
+        nativeCurrency: {
+          name: "USDC",
+          symbol: "USDC",
+          decimals: 18,
+        },
+
+        rpcUrls: [ARC_RPC],
+        blockExplorerUrls: [ARC_EXPLORER],
+      },
+    ],
+  });
+
+  // Some wallets add the network but do not switch automatically
+  await window.ethereum.request({
+    method: "wallet_switchEthereumChain",
+    params: [{ chainId: ARC_CHAIN_HEX }],
+  });
+
+  return true;
 }
 
 async function payWithMetaMask() {
@@ -1930,6 +1974,21 @@ async function payWithArcMemoMetaMask() {
       setStatus("Open invoice first.", "error");
       return;
     }
+
+setStatus("Checking Arc Testnet network...");
+
+await switchArc();
+
+const activeChainId = await window.ethereum.request({
+  method: "eth_chainId",
+});
+
+if (
+  String(activeChainId).toLowerCase() !==
+  String(ARC_CHAIN_HEX).toLowerCase()
+) {
+  throw new Error("Please switch your wallet to Arc Testnet.");
+}
 
 const paymentMemo =
   document.getElementById("paymentMemoInput")?.value?.trim() || "";
