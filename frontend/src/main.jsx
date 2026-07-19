@@ -15,7 +15,12 @@ import {
   CLAIM_CONTRACT_ADDRESS,
   CLAIM_CONTRACT_ABI
 } from "./contract";
-import { openAppKitWallet, wagmiAdapter } from "./appkit.js";
+import {
+  openAppKitWallet,
+  wagmiAdapter,
+  appKit,
+  arcTestnet
+} from "./appkit.js";
 import { getAccount, readContract, writeContract, waitForTransactionReceipt } from "@wagmi/core";
 import { parseUnits } from "viem";
 window.openAppKitWallet = openAppKitWallet;
@@ -2082,6 +2087,20 @@ const paymentMemo =
       await openAppKitWallet();
       return;
     }
+
+setStatus("Switching wallet to Arc Testnet...");
+
+await appKit.switchNetwork(arcTestnet);
+
+const activeAccount = getAccount(wagmiAdapter.wagmiConfig);
+
+if (
+  Number(activeAccount?.chainId) !== ARC_CHAIN_ID
+) {
+  throw new Error(
+    "Please approve switching your wallet to Arc Testnet."
+  );
+}
 
     const recipient =
       selectedInvoice.recipientAddress ||
