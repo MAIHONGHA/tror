@@ -42,7 +42,7 @@ function updateTopbarTitle(tabId) {
     business:     "Business"
   };
   const el = document.querySelector(".topbar-title");
-  if (el) el.textContent = titles[tabId] || "ArcPay";
+  if (el) el.textContent = titles[tabId] || "TROR";
 }
 
 // Update wallet chip display state
@@ -162,7 +162,7 @@ globalThis.openCardPayment = window.openCardPayment = function () {
     modal.innerHTML = `
       <div style="width:340px;background:white;color:#111827;padding:24px;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.5);">
         <h2 style="margin-top:0;">💳 Pay with Visa / MasterCard</h2>
-        <p style="color:#6b7280;font-size:13px;">ArcPay Sandbox — No real money</p>
+        <p style="color:#6b7280;font-size:13px;">TROR Sandbox — No real money</p>
         <input id="cardRecipientEmail" placeholder="Recipient Gmail"
           style="width:100%;padding:12px;margin-top:12px;background:#f9fafb;color:#111;border:1px solid #e5e7eb;border-radius:10px;box-sizing:border-box;" />
         <input id="cardAmount" placeholder="Amount USD" type="number"
@@ -377,7 +377,7 @@ document.getElementById("toggleVcCvv").onclick = () => {
         body: JSON.stringify({
           recipientEmail: email,
           amount: amount,
-          message: "Payment created through ArcPay sandbox preview"
+          message: "Payment created through TROR sandbox preview"
         })
       });
 
@@ -2030,7 +2030,7 @@ const paymentMemo =
 
     const amountUnits = ethers.parseUnits(String(selectedInvoice.amount), 6);
 
-    setStatus("Approving USDC for ArcPay contract...");
+    setStatus("Approving USDC for TROR contract...");
 
     const approveTx = await token.approve(CONTRACT_ADDRESS, amountUnits);
     await approveTx.wait();
@@ -2044,7 +2044,7 @@ const paymentMemo =
     const memoText =
   paymentMemo !== ""
     ? paymentMemo
-    : `ArcPay invoice payment | invoiceId=${selectedInvoice.id} | onchainId=${selectedInvoice.onchainId} | amount=${selectedInvoice.amount} USDC`;
+    : `TROR invoice payment | invoiceId=${selectedInvoice.id} | onchainId=${selectedInvoice.onchainId} | amount=${selectedInvoice.amount} USDC`;
 
 const memoData = ethers.hexlify(
   ethers.toUtf8Bytes(memoText)
@@ -2142,7 +2142,7 @@ const memoId = ethers.id(`arcpay-invoice-${contractInvoiceId}`);
 const memoText =
   paymentMemo !== ""
     ? paymentMemo
-    : `ArcPay invoice payment | invoiceId=${selectedInvoice.id} | onchainId=${contractInvoiceId} | amount=${selectedInvoice.amount} USDC`;
+    : `TROR invoice payment | invoiceId=${selectedInvoice.id} | onchainId=${contractInvoiceId} | amount=${selectedInvoice.amount} USDC`;
 
 const memoData = ethers.hexlify(
   ethers.toUtf8Bytes(memoText)
@@ -2527,8 +2527,8 @@ const paymentMemo =
     const sdk = new W3SSdk({ appSettings: { appId } });
     sdk.setAuthentication({ userToken, encryptionKey });
 
-    // STEP 1: approve USDC for ArcPayInvoice contract
-    setStatus("Circle: approving USDC for ArcPay contract...");
+    // STEP 1: approve USDC for TROR invoice contract
+    setStatus("Circle: approving USDC for TROR contract...");
 
     const approveData = await api("/api/circle/contract-execution", {
       method: "POST",
@@ -2585,7 +2585,7 @@ const memoId = ethers.id(
 const memoText =
   paymentMemo !== ""
     ? paymentMemo
-    : `ArcPay invoice payment | invoiceId=${selectedInvoice.id} | onchainId=${selectedInvoice.onchainId} | amount=${selectedInvoice.amount} USDC`;
+    : `TROR invoice payment | invoiceId=${selectedInvoice.id} | onchainId=${selectedInvoice.onchainId} | amount=${selectedInvoice.amount} USDC`;
 
 const memoData = ethers.hexlify(
   ethers.toUtf8Bytes(memoText)
@@ -2921,7 +2921,7 @@ const formatStatusTime = (value) => {
   {
     status: "REVIEW",
     title: "Under Review",
-    description: "ArcPay is reviewing your withdrawal request.",
+    description: "TROR is reviewing your withdrawal request.",
     time: data.reviewed_at
   },
   {
@@ -3163,7 +3163,7 @@ async function loadClaimPage() {
 
         <p style="color:#cbd5e1;line-height:1.5;">
           Sign in with the Google account that received
-          this ArcPay claim.
+          this TROR claim.
         </p>
 
         <button
@@ -3246,7 +3246,7 @@ async function loadClaimPage() {
             <b>🏦 Withdraw to Bank</b><br>
 
             <span style="font-size:13px;opacity:.88;">
-              Use the existing ArcPay withdrawal flow
+              Use the existing TROR withdrawal flow
             </span>
           </button>
         </div>
@@ -4026,13 +4026,49 @@ btnVoiceInvoice?.addEventListener("click", () => {
 ========================= */
 
 function showTab(tabId) {
+  const dashboardTop = document.getElementById("dashboard-top");
+
+  // Show the large dashboard only on the Dashboard tab
+  if (dashboardTop) {
+    dashboardTop.classList.toggle(
+      "hidden-section",
+      tabId !== "dashboard"
+    );
+  }
+
+  // Display only the selected tab content
   document.querySelectorAll(".app-section").forEach((section) => {
-    section.classList.toggle("hidden-section", section.id !== tabId);
+    section.classList.toggle(
+      "hidden-section",
+      section.id !== tabId
+    );
   });
 
+  // Highlight the active navigation tab
   document.querySelectorAll("[data-tab]").forEach((link) => {
-    link.classList.toggle("active-tab", link.dataset.tab === tabId);
+    link.classList.toggle(
+      "active-tab",
+      link.dataset.tab === tabId
+    );
   });
+
+  // Scroll the active section into view
+  const activeSection =
+    tabId === "dashboard"
+      ? dashboardTop
+      : document.getElementById(tabId);
+
+  if (activeSection) {
+    window.scrollTo({
+      top: Math.max(
+        0,
+        activeSection.getBoundingClientRect().top +
+          window.scrollY -
+          105
+      ),
+      behavior: "smooth"
+    });
+  }
 }
 
 document.querySelectorAll("[data-tab]").forEach((link) => {
@@ -4379,7 +4415,7 @@ window.updateWithdrawalStatus = async function (id, status) {
 
 document.getElementById("btnLoadWithdrawals")?.addEventListener("click", loadWithdrawals);
 
-// Sync AppKit wallet address with ArcPay
+// Sync AppKit wallet address with TROR
 import { watchAccount } from "@wagmi/core";
 
 watchAccount(wagmiAdapter.wagmiConfig, {
