@@ -3374,3 +3374,85 @@ a {
     drop-shadow(0 0 8px rgba(215, 179, 90, 0.38))
     drop-shadow(0 0 14px rgba(200, 201, 204, 0.14)) !important;
 }
+
+/* TROR wallet modal logo */
+.wm-logo {
+  width: 42px !important;
+  height: 42px !important;
+  padding: 5px !important;
+  border-radius: 13px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(28, 28, 31, 0.98),
+      rgba(10, 10, 12, 0.99)
+    ) !important;
+
+  border: 1px solid rgba(215, 179, 90, 0.30) !important;
+}
+
+.wm-logo-img {
+  display: block !important;
+  width: 32px !important;
+  height: 32px !important;
+  object-fit: contain !important;
+}
+
+/* Card field wrapper */
+.card-field,
+.claim-card-field,
+.secure-field,
+.input-with-eye {
+  position: relative !important;
+  width: 100% !important;
+}
+
+/* Reserve space for eye button */
+.card-field input,
+.claim-card-field input,
+.secure-field input,
+.input-with-eye input {
+  width: 100% !important;
+  padding-right: 72px !important;
+}
+
+/* Eye button alignment */
+.card-field .eye-btn,
+.claim-card-field .eye-btn,
+.secure-field .eye-btn,
+.input-with-eye .eye-btn,
+.toggle-visibility,
+.password-toggle {
+  position: absolute !important;
+  top: 50% !important;
+  right: 12px !important;
+  transform: translateY(-50%) !important;
+
+  width: 54px !important;
+  height: 44px !important;
+  min-width: 54px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+
+  border-radius: 13px !important;
+  z-index: 3 !important;
+}
+
+/* Prevent hover from moving the eye */
+.card-field .eye-btn:hover,
+.claim-card-field .eye-btn:hover,
+.secure-field .eye-btn:hover,
+.input-with-eye .eye-btn:hover,
+.toggle-visibility:hover,
+.password-toggle:hover {
+  transform: translateY(-50%) !important;
+}
