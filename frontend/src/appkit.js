@@ -1,12 +1,8 @@
 import { createAppKit } from "@reown/appkit";
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
-import { defineChain, fallback, http } from "viem";
+import { defineChain, http } from "viem";
 
-const ARC_DRPC_URL =
-  import.meta.env.VITE_ARC_RPC_URL ||
-  "https://rpc.drpc.testnet.arc.io";
-
-const ARC_OFFICIAL_RPC =
+const ARC_RPC =
   "https://rpc.testnet.arc.network";
 
 export const arcTestnet = defineChain({
@@ -16,23 +12,17 @@ export const arcTestnet = defineChain({
   nativeCurrency: {
     name: "USDC",
     symbol: "USDC",
-    decimals: 18,
+    decimals: 6,
   },
 
   rpcUrls: {
-    default: {
-      http: [
-        ARC_DRPC_URL,
-        ARC_OFFICIAL_RPC,
-      ],
-    },
-    public: {
-      http: [
-        ARC_DRPC_URL,
-        ARC_OFFICIAL_RPC,
-      ],
-    },
+  default: {
+    http: [ARC_RPC],
   },
+  public: {
+    http: [ARC_RPC],
+  },
+},
 
   blockExplorers: {
     default: {
@@ -47,10 +37,10 @@ export const arcTestnet = defineChain({
 const projectId = "70b21c44685fc62f9b501eb07b04a67b";
 
 const metadata = {
-  name: "ArcPay",
-  description: "ArcPay USDC payments on Arc Network",
-  url: "https://arcpay.pro",
-  icons: ["https://arcpay.pro/favicon.ico"],
+  name: "TROR",
+  description: "TROR USDC payments on Arc Network",
+  url: "https://tror.app",
+  icons: ["https://tror.app/favicon.svg"],
 };
 
 /*
@@ -60,19 +50,11 @@ const metadata = {
 const customRpcUrls = {
   "eip155:5042002": [
     {
-      url: ARC_DRPC_URL,
+      url: ARC_RPC,
       config: {
         retryCount: 1,
         retryDelay: 500,
-        timeout: 15_000,
-      },
-    },
-    {
-      url: ARC_OFFICIAL_RPC,
-      config: {
-        retryCount: 1,
-        retryDelay: 500,
-        timeout: 15_000,
+        timeout: 15000,
       },
     },
   ],
@@ -84,18 +66,11 @@ const customRpcUrls = {
   try the official Arc RPC.
 */
 const transports = {
-  [arcTestnet.id]: fallback([
-    http(ARC_DRPC_URL, {
-      retryCount: 0,
-      timeout: 15_000,
-    }),
-
-    http(ARC_OFFICIAL_RPC, {
-      retryCount: 1,
-      retryDelay: 500,
-      timeout: 15_000,
-    }),
-  ]),
+  [arcTestnet.id]: http(ARC_RPC, {
+    retryCount: 1,
+    retryDelay: 500,
+    timeout: 15000,
+  }),
 };
 
 export const wagmiAdapter = new WagmiAdapter({

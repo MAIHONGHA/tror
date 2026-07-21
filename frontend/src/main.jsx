@@ -216,14 +216,16 @@ globalThis.openCardPayment = window.openCardPayment = function () {
     id="toggleVcNumber"
     type="button"
     style="
-      position:absolute;
-      right:10px;
-      top:8px;
-      background:transparent;
-      border:0;
-      cursor:pointer;
-      font-size:18px;
-    "
+  position:absolute;
+  right:10px;
+  top:50%;
+  transform:translateY(-50%);
+  background:transparent;
+  border:0;
+  cursor:pointer;
+  font-size:18px;
+  padding:0;
+"
   >
     👁️
   </button>
@@ -258,14 +260,16 @@ globalThis.openCardPayment = window.openCardPayment = function () {
         id="toggleVcExpiry"
         type="button"
         style="
-          position:absolute;
-          right:10px;
-          top:8px;
-          background:transparent;
-          border:0;
-          cursor:pointer;
-          font-size:18px;
-        "
+  position:absolute;
+  right:10px;
+  top:50%;
+  transform:translateY(-50%);
+  background:transparent;
+  border:0;
+  cursor:pointer;
+  font-size:18px;
+  padding:0;
+"
       >
         👁️
       </button>
@@ -299,14 +303,16 @@ globalThis.openCardPayment = window.openCardPayment = function () {
         id="toggleVcCvv"
         type="button"
         style="
-          position:absolute;
-          right:10px;
-          top:8px;
-          background:transparent;
-          border:0;
-          cursor:pointer;
-          font-size:18px;
-        "
+  position:absolute;
+  right:10px;
+  top:50%;
+  transform:translateY(-50%);
+  background:transparent;
+  border:0;
+  cursor:pointer;
+  font-size:18px;
+  padding:0;
+"
       >
         👁️
       </button>
@@ -429,7 +435,7 @@ const API_BASE =
 // Arc Network constants
 const ARC_CHAIN_ID = 5042002;
 const ARC_CHAIN_HEX = "0x4cef52";
-const ARC_RPC = "https://rpc.drpc.testnet.arc.io";
+const ARC_RPC = "https://rpc.testnet.arc.network";
 const ARC_EXPLORER = "https://testnet.arcscan.app";
 const ARC_CHAIN_NAME = "Arc Testnet";
 
@@ -1927,6 +1933,10 @@ async function payWithMetaMask() {
 );
 
 setStatus("Approving USDC...");
+
+console.log("Invoice amount:", selectedInvoice.amount);
+console.log("USDC decimals:", USDC_DECIMALS);
+console.log("amountUnits:", amountUnits);
 
 await token.methods
   .approve(CONTRACT_ADDRESS, amountUnits)

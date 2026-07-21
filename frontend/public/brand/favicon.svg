@@ -1,76 +1,46 @@
-<svg
-  xmlns="http://www.w3.org/2000/svg"
-  viewBox="0 0 64 64"
-  fill="none"
->
-  <defs>
-    <linearGradient id="gold" x1="18" y1="10" x2="46" y2="54" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FFF4B8"/>
-      <stop offset="28%" stop-color="#F4D56F"/>
-      <stop offset="62%" stop-color="#C9912D"/>
-      <stop offset="100%" stop-color="#F8DF89"/>
-    </linearGradient>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
 
-    <linearGradient id="silver" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FFFFFF"/>
-      <stop offset="36%" stop-color="#E8E9EB"/>
-      <stop offset="70%" stop-color="#9FA2A7"/>
-      <stop offset="100%" stop-color="#F7F7F8"/>
-    </linearGradient>
-  </defs>
+<defs>
 
-  <rect
-    x="3"
-    y="3"
-    width="58"
-    height="58"
-    rx="16"
-    fill="#080809"
-  />
+<linearGradient id="gold" x1="8" y1="6" x2="52" y2="58">
+<stop offset="0%" stop-color="#F4D77F"/>
+<stop offset="100%" stop-color="#B88A32"/>
+</linearGradient>
 
-  <path
-    d="M48 47
-       C43 52 38 55 32 55
-       C19 55 9 45 9 32
-       C9 19 19 9 32 9
-       C44 9 53 18 55 29"
-    stroke="url(#silver)"
-    stroke-width="3.2"
-    stroke-linecap="round"
-  />
+<linearGradient id="silver" x1="30" y1="8" x2="58" y2="60">
+<stop offset="0%" stop-color="#FFFFFF"/>
+<stop offset="100%" stop-color="#A9ADB5"/>
+</linearGradient>
 
-  <path
-    d="M55 35
-       C54 41 51 46 47 50"
-    stroke="url(#gold)"
-    stroke-width="3.4"
-    stroke-linecap="round"
-  />
+</defs>
 
-  <path
-    d="M18 21
-       H46
-       L42 26
-       H36
-       V46
-       L32 51
-       L28 46
-       V26
-       H22
-       Z"
-    fill="url(#gold)"
-  />
+<rect
+width="64"
+height="64"
+rx="14"
+fill="#0B0B0D"/>
 
-  <path
-    d="M32 10
-       L34 15
-       L39 17
-       L34 19
-       L32 24
-       L30 19
-       L25 17
-       L30 15
-       Z"
-    fill="url(#gold)"
-  />
+<path
+d="M32 7 53 19v13"
+fill="none"
+stroke="url(#gold)"
+stroke-width="4.5"
+stroke-linecap="round"/>
+
+<path
+d="M53 36v9L32 57 11 45V19L32 7"
+fill="none"
+stroke="url(#silver)"
+stroke-width="4.5"
+stroke-linecap="round"
+stroke-linejoin="round"/>
+
+<path
+d="M20 21h28l-4 7h-9v21l-6 4V28H16z"
+fill="url(#silver)"/>
+
+<path
+d="M20 21h28l-4 7H16z"
+fill="url(#gold)"/>
+
 </svg>

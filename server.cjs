@@ -49,7 +49,7 @@ const ARC_CHAIN_ID = Number(process.env.ARC_CHAIN_ID || 5042002);
 const ARC_CHAIN_ID_HEX = String(process.env.ARC_CHAIN_ID_HEX || "0x4cef52");
 const ARC_CHAIN_NAME = String(process.env.ARC_CHAIN_NAME || "Arc Testnet");
 const ARC_RPC_URL = String(
-  process.env.ARC_RPC_URL || "https://rpc.drpc.testnet.arc.io"
+  process.env.ARC_RPC_URL || "https://rpc.testnet.arc.network"
 );
 const provider = new ethers.JsonRpcProvider(ARC_RPC_URL);
 const PAYOUT_PRIVATE_KEY = process.env.PAYOUT_PRIVATE_KEY || "";
@@ -3459,32 +3459,32 @@ try {
 }
 }
 
-cron.schedule("*/1 * * * *", async () => {
-  checkInvoices();
-  console.log("AUTO PAYOUT CHECK...");
+// cron.schedule("*/1 * * * *", async () => {
+//   checkInvoices();
+//   console.log("AUTO PAYOUT CHECK...");
 
-  const payouts = db.prepare(`
-    SELECT * FROM payouts
-    WHERE status = 'PENDING'
-    ORDER BY created_at ASC
-    LIMIT 3
-  `).all();
+//   const payouts = db.prepare(`
+//     SELECT * FROM payouts
+//     WHERE status = 'PENDING'
+//     ORDER BY created_at ASC
+//     LIMIT 3
+//   `).all();
 
-  for (const p of payouts) {
-  try {
-    db.prepare(`
-      UPDATE payouts
-      SET status = 'REVIEW'
-      WHERE id = ?
-      AND status = 'PENDING'
-    `).run(p.id);
+//   for (const p of payouts) {
+//   try {
+//     db.prepare(`
+//       UPDATE payouts
+//       SET status = 'REVIEW'
+//       WHERE id = ?
+//       AND status = 'PENDING'
+//     `).run(p.id);
 
-    console.log("Payout needs confirmation:", p.id);
-  } catch (err) {
-    console.error("Auto review error:", err.message);
-  }
-}
-});
+//     console.log("Payout needs confirmation:", p.id);
+//   } catch (err) {
+//     console.error("Auto review error:", err.message);
+//   }
+// }
+// });
 
 app.post("/api/payouts/:id/confirm", async (req, res) => {
   try {
@@ -3537,35 +3537,35 @@ app.post("/api/payouts/:id/confirm", async (req, res) => {
 // =======================
 // AUTO PAYOUT CRON
 // =======================
-cron.schedule("* * * * *", () => {
-  console.log("⏰ Checking scheduled payrolls...");
+// cron.schedule("* * * * *", () => {
+//   console.log("⏰ Checking scheduled payrolls...");
 
-  const duePayrolls = db.prepare(`
-    SELECT *
-    FROM payroll_batches
-    WHERE status = 'APPROVED'
-      AND datetime(pay_date) <= datetime('now')
-  `).all();
+//   const duePayrolls = db.prepare(`
+//     SELECT *
+//     FROM payroll_batches
+//     WHERE status = 'APPROVED'
+//       AND datetime(pay_date) <= datetime('now')
+//   `).all();
 
-  for (const payroll of duePayrolls) {
+//   for (const payroll of duePayrolls) {
 
-    db.prepare(`
-      UPDATE payroll_batches
-      SET status = 'REVIEW'
-      WHERE id = ?
-    `).run(payroll.id);
+//     db.prepare(`
+//       UPDATE payroll_batches
+//       SET status = 'REVIEW'
+//       WHERE id = ?
+//     `).run(payroll.id);
 
-    db.prepare(`
-      UPDATE payroll_items
-      SET status = 'REVIEW'
-      WHERE batch_id = ?
-        AND status = 'APPROVED'
-    `).run(payroll.id);
+//     db.prepare(`
+//       UPDATE payroll_items
+//       SET status = 'REVIEW'
+//       WHERE batch_id = ?
+//         AND status = 'APPROVED'
+//     `).run(payroll.id);
 
-    console.log("Payroll needs final review:", payroll.id);
+//     console.log("Payroll needs final review:", payroll.id);
 
-  }
-});
+//   }
+// });
 
 app.get('/api/config', (req, res) => {
   res.json({

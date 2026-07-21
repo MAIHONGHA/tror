@@ -1,117 +1,79 @@
-<svg
-  xmlns="http://www.w3.org/2000/svg"
-  viewBox="0 0 980 260"
-  fill="none"
->
-  <defs>
-    <linearGradient id="gold" x1="80" y1="35" x2="430" y2="235" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FFF4B8"/>
-      <stop offset="24%" stop-color="#F4D56F"/>
-      <stop offset="60%" stop-color="#C9912D"/>
-      <stop offset="100%" stop-color="#F8DF89"/>
-    </linearGradient>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1320 360">
 
-    <linearGradient id="silver" x1="40" y1="30" x2="430" y2="240" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FFFFFF"/>
-      <stop offset="32%" stop-color="#E8E9EB"/>
-      <stop offset="68%" stop-color="#9FA2A7"/>
-      <stop offset="100%" stop-color="#F7F7F8"/>
-    </linearGradient>
+<defs>
 
-    <filter id="softGlow" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur stdDeviation="4" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-  </defs>
+<linearGradient id="gold" x1="50" y1="20" x2="360" y2="340">
+<stop offset="0%" stop-color="#FFF0A6"/>
+<stop offset="45%" stop-color="#F4D77F"/>
+<stop offset="100%" stop-color="#9C772C"/>
+</linearGradient>
 
-  <!-- Icon -->
-  <g transform="translate(18 8) scale(.46)">
-    <path
-      d="M389 377
-         C353 412 307 432 256 432
-         C159 432 80 353 80 256
-         C80 159 159 80 256 80
-         C344 80 417 145 430 230"
-      stroke="url(#silver)"
-      stroke-width="16"
-      stroke-linecap="round"
-    />
+<linearGradient id="silver" x1="210" y1="20" x2="430" y2="340">
+<stop offset="0%" stop-color="#FFFFFF"/>
+<stop offset="55%" stop-color="#F2F2F3"/>
+<stop offset="100%" stop-color="#A7ABB3"/>
+</linearGradient>
 
-    <path
-      d="M430 274
-         C422 321 400 359 366 389"
-      stroke="url(#gold)"
-      stroke-width="18"
-      stroke-linecap="round"
-      filter="url(#softGlow)"
-    />
+</defs>
 
-    <path
-      d="M150 166
-         H362
-         L329 204
-         H286
-         V363
-         L256 402
-         L226 363
-         V204
-         H183
-         Z"
-      fill="url(#gold)"
-    />
+<g transform="translate(20 5) scale(.66)">
 
-    <path
-      d="M256 84
-         L267 112
-         L296 123
-         L267 134
-         L256 162
-         L245 134
-         L216 123
-         L245 112
-         Z"
-      fill="url(#gold)"
-    />
-  </g>
+<path
+d="M256 44 419 137v111"
+fill="none"
+stroke="url(#gold)"
+stroke-width="26"
+stroke-linecap="round"/>
 
-  <!-- TROR wordmark -->
-  <text
-    x="270"
-    y="132"
-    fill="url(#gold)"
-    font-family="Arial, Helvetica, sans-serif"
-    font-size="112"
-    font-weight="900"
-    letter-spacing="16"
-  >
-    TROR
-  </text>
+<path
+d="M419 287v88L256 468 93 375V137L256 44"
+fill="none"
+stroke="url(#silver)"
+stroke-width="26"
+stroke-linecap="round"
+stroke-linejoin="round"/>
 
-  <!-- Tagline -->
-  <text
-    x="276"
-    y="190"
-    fill="url(#silver)"
-    font-family="Arial, Helvetica, sans-serif"
-    font-size="26"
-    font-weight="700"
-    letter-spacing="8"
-  >
-    STABLECOIN PAYMENTS
-  </text>
+<path
+d="M158 153h206l-28 46h-64v188l-35 24V199H130z"
+fill="url(#silver)"/>
 
-  <text
-    x="278"
-    y="229"
-    fill="#D7B35A"
-    font-family="Arial, Helvetica, sans-serif"
-    font-size="17"
-    font-weight="700"
-    letter-spacing="7"
-  >
-    BUILT ON ARC NETWORK
-  </text>
+<path
+d="M158 153h206l-28 46H130z"
+fill="url(#gold)"/>
+
+</g>
+
+<text
+x="390"
+y="180"
+font-family="Inter,Arial,sans-serif"
+font-size="132"
+font-weight="800"
+letter-spacing="18"
+fill="#F2F2F3">
+TROR
+</text>
+
+<text
+x="398"
+y="246"
+font-family="Inter,Arial,sans-serif"
+font-size="29"
+font-weight="700"
+letter-spacing="9"
+fill="#D7B35A">
+PAY • RECEIVE • GROW
+</text>
+
+<text
+x="399"
+y="302"
+font-family="Inter,Arial,sans-serif"
+font-size="24"
+font-weight="600"
+letter-spacing="5"
+fill="#C8C9CC">
+USDC PAYMENTS • BUILT ON ARC
+</text>
+
 </svg>
