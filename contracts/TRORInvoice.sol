@@ -9,7 +9,7 @@ interface IERC20 {
     ) external returns (bool);
 }
 
-contract ArcPayInvoice {
+contract TRORInvoice {
     IERC20 public usdc;
 
     struct Invoice {
@@ -90,7 +90,7 @@ contract ArcPayInvoice {
         invoice.paid = true;
 
         string memory memo = string(
-            abi.encodePacked("ArcPay invoice payment: ", invoice.note)
+            abi.encodePacked("TROR invoice payment: ", invoice.note)
         );
 
         emit InvoicePaid(

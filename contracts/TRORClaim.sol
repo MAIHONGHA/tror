@@ -6,7 +6,7 @@ interface IERC20Claim {
     function transfer(address to, uint256 amount) external returns (bool);
 }
 
-contract ArcPayClaim {
+contract TRORClaim {
     IERC20Claim public usdc;
     address public owner;
 

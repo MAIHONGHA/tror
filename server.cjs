@@ -131,18 +131,6 @@ db.prepare(`
   WHERE payroll_item_id IS NOT NULL
 `).run();
 
-app.get("/api/claims/:id", (req, res) => {
-  const { id } = req.params;
-
-  const claim = db.prepare("SELECT * FROM claims WHERE id = ?").get(id);
-
-  if (!claim) {
-    return res.status(404).json({ error: "Claim not found" });
-  }
-
-  res.json(claim);
-});
-
 db.prepare(`
   CREATE TABLE IF NOT EXISTS invoices (
     id TEXT PRIMARY KEY,
@@ -2855,7 +2843,7 @@ app.post("/api/transak/widget-url", async (req, res) => {
         body: JSON.stringify({
           widgetParams: {
             apiKey: process.env.TRANSAK_API_KEY,
-            referrerDomain: "https://arc-pay-production.up.railway.app",
+            referrerDomain: "https://tror.app",
             productsAvailed: "BUY",
             fiatAmount: Number(amount) || 10,
             fiatCurrency: "USD",
@@ -2863,7 +2851,7 @@ app.post("/api/transak/widget-url", async (req, res) => {
             network: "polygon",
           walletAddress: process.env.TROR_TREASURY_WALLET,
             paymentMethod: "credit_debit_card",
-            redirectURL: "https://arc-pay-production.up.railway.app/transak-return"
+            redirectURL: "https://tror.app/transak-return"
          }
        })
       }
@@ -3255,7 +3243,7 @@ app.get("/api/claims/:id", (req, res) => {
     return res.status(404).json({ error: "Claim not found" });
   }
 
-  res.json({ claim });
+  res.json(claim);
 });
 
 app.post("/api/claims/:id/claim", async (req, res) => {
@@ -3326,18 +3314,6 @@ console.log("CLAIM CREATED:", id);
     console.error("claim transfer error:", err);
     res.status(500).json({ error: err.message });
   }
-});
-
-app.get("/api/claims/:id", (req, res) => {
-  const { id } = req.params;
-
-  const claim = db.prepare("SELECT * FROM claims WHERE id = ?").get(id);
-
-  if (!claim) {
-    return res.status(404).json({ error: "Claim not found" });
-  }
-
-  res.json(claim);
 });
 
 app.get("/api/claim/:id", (req, res) => {
@@ -3597,7 +3573,7 @@ app.get("*", (req, res) => {
 
 app.listen(PORT, () => {
   console.log(
-   ` ARC Pay Mini API running at http://localhost:${PORT}`
+   `TROR API running at http://localhost:${PORT}`
   );
 
   console.log(

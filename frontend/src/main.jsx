@@ -650,7 +650,7 @@ function formatUsdc(value) {
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
-    .replace(/<>/g, "&lt;")
+    .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
@@ -2051,7 +2051,7 @@ const paymentMemo =
       BigInt(selectedInvoice.onchainId)
     ]);
 
-    const memoId = ethers.id(`arcpay-invoice-${selectedInvoice.onchainId}`);
+    const memoId = ethers.id(`tror-invoice-${selectedInvoice.onchainId}`);
 
     const memoText =
   paymentMemo !== ""
@@ -2149,7 +2149,7 @@ const payData = invoiceInterface.encodeFunctionData("payInvoice", [
   BigInt(contractInvoiceId),
 ]);
 
-const memoId = ethers.id(`arcpay-invoice-${contractInvoiceId}`);
+const memoId = ethers.id(`tror-invoice-${contractInvoiceId}`);
 
 const memoText =
   paymentMemo !== ""
@@ -2591,7 +2591,7 @@ const encodedPayData = invoiceInterface.encodeFunctionData("payInvoice", [
 ]);
 
 const memoId = ethers.id(
-  `arcpay-invoice-${selectedInvoice.onchainId}`
+  `tror-invoice-${selectedInvoice.onchainId}`
 );
 
 const memoText =
