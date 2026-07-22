@@ -3,7 +3,8 @@ import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import { defineChain, http } from "viem";
 
 const ARC_RPC =
-  "https://rpc.testnet.arc.network";
+  import.meta.env.VITE_ARC_RPC_URL ||
+  "https://rpc.drpc.testnet.arc.network";
 
 export const arcTestnet = defineChain({
   id: 5042002,

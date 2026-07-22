@@ -435,7 +435,9 @@ const API_BASE =
 // Arc Network constants
 const ARC_CHAIN_ID = 5042002;
 const ARC_CHAIN_HEX = "0x4cef52";
-const ARC_RPC = "https://rpc.testnet.arc.network";
+const ARC_RPC =
+  import.meta.env.VITE_ARC_RPC_URL ||
+  "https://rpc.drpc.testnet.arc.network";
 const ARC_EXPLORER = "https://testnet.arcscan.app";
 const ARC_CHAIN_NAME = "Arc Testnet";
 
