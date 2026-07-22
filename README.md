@@ -1,14 +1,14 @@
- ArcPay
+ TROR
 
  Decentralized USDC Payments on Arc Network.
 
-ArcPay is a decentralized payment platform built on the Arc ecosystem, enabling businesses and individuals to create invoices, receive USDC payments, manage payroll, send crypto claims through Gmail, and process payouts from a single unified dashboard.
+TROR is a decentralized payment platform built on the Arc ecosystem, enabling businesses and individuals to create invoices, receive USDC payments, manage payroll, send crypto claims through Gmail, and process payouts from a single unified dashboard.
 
 
 
  Overview
 
-ArcPay simplifies real-world stablecoin payments by combining invoicing, payroll, payouts, wallet onboarding, QR payments, and email-based crypto claims into one unified platform.
+TROR simplifies real-world stablecoin payments by combining invoicing, payroll, payouts, wallet onboarding, QR payments, and email-based crypto claims into one unified platform.
 
 The project focuses on practical USDC payment infrastructure rather than speculative cryptocurrency trading.
 
@@ -54,7 +54,7 @@ The project focuses on practical USDC payment infrastructure rather than specula
 
  Live Demo
 
-https://arcpay.pro/
+https://tror.app
 
 
 
