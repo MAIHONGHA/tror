@@ -571,21 +571,49 @@ document.getElementById("disconnectWalletChip")?.addEventListener("click", () =>
 });
 
 document.getElementById("copyWalletAddress")?.addEventListener("click", async () => {
-  if (!metamaskWallet) {
+  const circleAddress =
+    circleWalletEl?.textContent?.startsWith("0x")
+      ? circleWalletEl.textContent.trim()
+      : null;
+
+  const activeAddress =
+    activeWalletType === "circle"
+      ? circleAddress
+      : metamaskWallet || circleAddress;
+
+  if (!activeAddress) {
     setStatus("No wallet connected.", "error");
     return;
   }
-  await navigator.clipboard.writeText(metamaskWallet);
+
+  await navigator.clipboard.writeText(activeAddress);
   setStatus("Wallet address copied.", "success");
 });
 
 document.getElementById("viewWalletExplorer")?.addEventListener("click", () => {
-  if (!metamaskWallet) {
+  const circleAddress =
+    circleWalletEl?.textContent?.startsWith("0x")
+      ? circleWalletEl.textContent.trim()
+      : null;
+
+  const activeAddress =
+    activeWalletType === "circle"
+      ? circleAddress
+      : metamaskWallet || circleAddress;
+
+  if (!activeAddress) {
     setStatus("No wallet connected.", "error");
     return;
   }
-  window.open(`https://testnet.arcscan.app/address/${metamaskWallet}`, "_blank");
-  document.getElementById("walletMenu")?.classList.add("hidden");
+
+  window.open(
+    `${ARC_EXPLORER}/address/${activeAddress}`,
+    "_blank"
+  );
+
+  document
+    .getElementById("walletMenu")
+    ?.classList.add("hidden");
 });
 
 /* =========================
@@ -1097,9 +1125,13 @@ async function loadCircleWallet(userToken) {
   }
 
   circleWalletEl.textContent = address;
-  clearWeb3WalletLocal();
+
+clearWeb3WalletLocal();
+
 activeWalletType = "circle";
-  setStatus("Circle wallet loaded.", "success");
+updateWalletChip(address, null);
+
+setStatus("Circle wallet loaded.", "success");
   document.getElementById("btnSetupPin")?.classList.add("hidden");
 
   return { wallet, address };
@@ -1291,11 +1323,18 @@ async function setupCirclePin() {
         console.log("Wallet response:", walletData);
 
         const address = extractWalletAddress(walletData);
-        if (address) {
-          circleWalletEl.textContent = address;
-          setStatus("Circle wallet created.", "success");
-          return;
-        }
+
+if (address) {
+  circleWalletEl.textContent = address;
+
+  clearWeb3WalletLocal();
+
+  activeWalletType = "circle";
+  updateWalletChip(address, null);
+
+  setStatus("Circle wallet created.", "success");
+  return;
+}
 
         await loadCircleWallet(userToken);
       } catch (err) {

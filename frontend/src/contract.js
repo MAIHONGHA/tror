@@ -1,5 +1,5 @@
 export const CONTRACT_ADDRESS =
-  "0xBb9B26E639d2613132bd964AfE1be10931F123a0";
+  "0xbb9b26e639d2613132bd964afe1be10931f123a0";
 
 export const CONTRACT_ABI = [
   {
@@ -235,7 +235,8 @@ export const MEMO_ABI = [
 ];
 
 export const CLAIM_CONTRACT_ADDRESS =
-  "0xA99B752fFe5ECBbeDC37136444Ca3c190dcfce96";
+  "0xa99b752ffe5ecbbedc37136444ca3c190dcfce96";
+
 
 export const CLAIM_CONTRACT_ABI = [
   {
