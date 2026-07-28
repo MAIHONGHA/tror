@@ -4639,11 +4639,19 @@ async function loadClaimPage() {
     }
 
     try {
+
+const currentWorkspace = getCurrentWorkspace();
+
+if (!currentWorkspace?.id) {
+  throw new Error("Please select a workspace.");
+}
+
       const result = await api(
         "/api/withdrawals",
         {
           method: "POST",
           body: JSON.stringify({
+            workspaceId: currentWorkspace.id,
             email:
               claimData?.recipientEmail || "",
             amount:
