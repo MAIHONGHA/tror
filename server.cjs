@@ -3698,7 +3698,7 @@ if (existing) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
-    workspace_id,
+    workspaceId,
     email,
     amount,
     country,
