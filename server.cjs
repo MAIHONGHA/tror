@@ -4800,7 +4800,10 @@ app.post("/api/payouts/:id/confirm", async (req, res) => {
       });
     }
 
-    const result = await executePayoutById(id);
+    const result = await executePayoutById(
+  id,
+  workspaceId
+);
 
     return res.json({
       message: "Payout paid now",
