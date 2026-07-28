@@ -2461,14 +2461,17 @@ app.get("/test-payroll", (req, res) => {
   });
 });
 
-async function executePayoutById(id) {
+async function executePayoutById(id, workspaceId) {
   if (!payoutWallet) {
     throw new Error("Missing PAYOUT_PRIVATE_KEY");
   }
 
   const payout = db.prepare(`
-    SELECT * FROM payouts WHERE id = ?
-  `).get(id);
+  SELECT *
+  FROM payouts
+  WHERE id = ?
+    AND workspace_id = ?
+`).get(id, workspaceId);
 
   if (!payout) {
     throw new Error("Payout not found");
@@ -2544,7 +2547,14 @@ if (
 
 app.post("/api/payouts/:id/execute", async (req, res) => {
   try {
-    const result = await executePayoutById(req.params.id);
+    const workspaceId = String(
+  req.body.workspaceId || ""
+).trim();
+
+const result = await executePayoutById(
+  req.params.id,
+  workspaceId
+);
 
     res.json({
       message: result.alreadyPaid ? "Already paid" : "Payout sent",
