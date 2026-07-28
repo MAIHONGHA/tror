@@ -2629,6 +2629,44 @@ console.log("LOADING WORKSPACES FOR:", walletAddress);
   return workspaces;
 }
 
+async function createBusinessWorkspace() {
+  const wallet =
+    metamaskWallet ||
+    currentUser?.primary_wallet_address;
+
+  if (!wallet) {
+    alert("Connect wallet first.");
+    return;
+  }
+
+  const workspaceName = prompt(
+    "Business workspace name:"
+  );
+
+  if (!workspaceName) return;
+
+  try {
+    const data = await api("/api/workspaces", {
+      method: "POST",
+      body: JSON.stringify({
+        walletAddress: wallet,
+        workspaceName,
+      }),
+    });
+
+    localStorage.setItem(
+    "currentWorkspace",
+    JSON.stringify(data.workspace)
+);
+
+await loadUserWorkspaces(wallet);
+
+alert("Business workspace created.");
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
 function renderWorkspaceSwitcher(
   workspaces,
   currentWorkspace
@@ -2642,6 +2680,27 @@ console.log(
   let switcher = document.getElementById(
     "workspaceSwitcher"
   );
+
+let createBtn = document.getElementById("createBusinessWorkspaceBtn");
+
+if (!createBtn) {
+  createBtn = document.createElement("button");
+  createBtn.id = "createBusinessWorkspaceBtn";
+  createBtn.textContent = "+ Business";
+
+  createBtn.style.cssText = `
+    margin-left:8px;
+    padding:10px 14px;
+    border-radius:12px;
+    border:none;
+    cursor:pointer;
+    font-weight:700;
+    background:#facc15;
+    color:#111827;
+  `;
+
+  createBtn.onclick = createBusinessWorkspace;
+}
 
   if (!switcher) {
     switcher = document.createElement("select");
@@ -2677,6 +2736,12 @@ if (targetElement?.parentElement) {
     switcher,
     targetElement
   );
+
+targetElement.parentElement.insertBefore(
+    createBtn,
+    targetElement.nextSibling
+);
+
 } else {
   document.body.appendChild(switcher);
 
