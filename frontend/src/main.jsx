@@ -383,7 +383,8 @@ document.getElementById("toggleVcCvv").onclick = () => {
         body: JSON.stringify({
           recipientEmail: email,
           amount: amount,
-          message: "Payment created through TROR sandbox preview"
+          message: "Payment created through TROR sandbox preview",
+          workspaceId: getCurrentWorkspace()?.id
         })
       });
 
@@ -437,7 +438,7 @@ const ARC_CHAIN_ID = 5042002;
 const ARC_CHAIN_HEX = "0x4cef52";
 const ARC_RPC =
   import.meta.env.VITE_ARC_RPC_URL ||
-  "https://rpc.drpc.testnet.arc.network";
+  "https://rpc.testnet.arc.network"
 const ARC_EXPLORER = "https://testnet.arcscan.app";
 const ARC_CHAIN_NAME = "Arc Testnet";
 
@@ -643,6 +644,309 @@ function setStatus(message, type = "") {
   }
 }
 
+function openCreateProfileModal(walletAddress) {
+  let modal = document.getElementById("createProfileModal");
+
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "createProfileModal";
+
+    modal.style.cssText = `
+      position: fixed;
+      inset: 0;
+      z-index: 1000001;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(2, 6, 23, 0.84);
+      backdrop-filter: blur(10px);
+    `;
+
+    document.body.appendChild(modal);
+  }
+
+  const googleUser = getGoogleUser();
+
+  modal.innerHTML = `
+    <div style="
+      width:100%;
+      max-width:430px;
+      padding:28px;
+      border-radius:24px;
+      color:#f8fafc;
+      background:
+        linear-gradient(
+          145deg,
+          rgba(30,41,59,.98),
+          rgba(15,23,42,.98)
+        );
+      border:1px solid rgba(250,204,21,.34);
+      box-shadow:0 28px 80px rgba(0,0,0,.58);
+    ">
+      <div style="
+        font-size:12px;
+        font-weight:800;
+        letter-spacing:.16em;
+        color:#facc15;
+        margin-bottom:8px;
+      ">
+        TROR IDENTITY
+      </div>
+
+      <h2 style="margin:0 0 8px;font-size:26px;">
+        Create your profile
+      </h2>
+
+      <p style="
+        margin:0 0 22px;
+        color:#94a3b8;
+        line-height:1.55;
+        font-size:14px;
+      ">
+        Create your TROR identity and personal workspace.
+      </p>
+
+      <label style="
+        display:block;
+        margin-bottom:6px;
+        font-size:13px;
+        color:#cbd5e1;
+      ">
+        Full Name
+      </label>
+
+      <input
+        id="profileFullName"
+        type="text"
+        value="${escapeHtml(googleUser.name || "")}"
+        placeholder="Enter your full name"
+        style="
+          width:100%;
+          box-sizing:border-box;
+          padding:13px 14px;
+          margin-bottom:15px;
+          border-radius:12px;
+          border:1px solid rgba(148,163,184,.28);
+          background:rgba(15,23,42,.82);
+          color:#f8fafc;
+          outline:none;
+        "
+      />
+
+      <label style="
+        display:block;
+        margin-bottom:6px;
+        font-size:13px;
+        color:#cbd5e1;
+      ">
+        Email
+      </label>
+
+      <input
+        id="profileEmail"
+        type="email"
+        value="${escapeHtml(googleUser.email || "")}"
+        placeholder="name@example.com"
+        style="
+          width:100%;
+          box-sizing:border-box;
+          padding:13px 14px;
+          margin-bottom:15px;
+          border-radius:12px;
+          border:1px solid rgba(148,163,184,.28);
+          background:rgba(15,23,42,.82);
+          color:#f8fafc;
+          outline:none;
+        "
+      />
+
+      <label style="
+        display:block;
+        margin-bottom:6px;
+        font-size:13px;
+        color:#cbd5e1;
+      ">
+        Account Type
+      </label>
+
+      <select
+        id="profileAccountType"
+        style="
+          width:100%;
+          box-sizing:border-box;
+          padding:13px 14px;
+          margin-bottom:10px;
+          border-radius:12px;
+          border:1px solid rgba(148,163,184,.28);
+          background:#0f172a;
+          color:#f8fafc;
+          outline:none;
+        "
+      >
+        <option value="PERSONAL">Personal</option>
+        <option value="BUSINESS">Business</option>
+      </select>
+
+      <div style="
+        margin:14px 0 20px;
+        padding:12px;
+        border-radius:12px;
+        background:rgba(250,204,21,.08);
+        border:1px solid rgba(250,204,21,.2);
+        font-size:12px;
+        color:#fde68a;
+        word-break:break-all;
+      ">
+        Wallet: ${escapeHtml(walletAddress)}
+      </div>
+
+      <div
+        id="profileModalError"
+        style="
+          display:none;
+          margin-bottom:14px;
+          padding:10px 12px;
+          border-radius:10px;
+          color:#fecaca;
+          background:rgba(239,68,68,.12);
+          border:1px solid rgba(239,68,68,.24);
+          font-size:13px;
+        "
+      ></div>
+
+      <button
+        id="btnCreateProfile"
+        type="button"
+        style="
+          width:100%;
+          padding:14px;
+          border:0;
+          border-radius:12px;
+          cursor:pointer;
+          font-weight:800;
+          font-size:15px;
+          color:#111827;
+          background:
+            linear-gradient(135deg,#fde68a,#facc15,#d4a017);
+        "
+      >
+        Create Profile
+      </button>
+
+      <button
+        id="btnCancelProfile"
+        type="button"
+        style="
+          width:100%;
+          padding:12px;
+          margin-top:10px;
+          border-radius:12px;
+          cursor:pointer;
+          color:#cbd5e1;
+          background:transparent;
+          border:1px solid rgba(148,163,184,.2);
+        "
+      >
+        Disconnect
+      </button>
+    </div>
+  `;
+
+  modal.style.display = "flex";
+
+  document.getElementById("btnCancelProfile").onclick = () => {
+    modal.style.display = "none";
+
+    localStorage.removeItem("currentUser");
+    localStorage.removeItem("currentWorkspace");
+
+    appKit?.disconnect?.();
+  };
+
+  document.getElementById("btnCreateProfile").onclick =
+    async () => {
+      const button =
+        document.getElementById("btnCreateProfile");
+
+      const errorEl =
+        document.getElementById("profileModalError");
+
+      const fullName = String(
+        document.getElementById("profileFullName")?.value || ""
+      ).trim();
+
+      const email = String(
+        document.getElementById("profileEmail")?.value || ""
+      )
+        .trim()
+        .toLowerCase();
+
+      const accountType = String(
+        document.getElementById("profileAccountType")?.value ||
+          "PERSONAL"
+      )
+        .trim()
+        .toUpperCase();
+
+      errorEl.style.display = "none";
+      errorEl.textContent = "";
+
+      if (!fullName) {
+        errorEl.textContent = "Full name is required.";
+        errorEl.style.display = "block";
+        return;
+      }
+
+      try {
+        button.disabled = true;
+        button.textContent = "Creating Profile...";
+
+        const data = await api("/api/users", {
+          method: "POST",
+          body: JSON.stringify({
+            fullName,
+            email,
+            accountType,
+            walletAddress
+          })
+        });
+
+        localStorage.setItem(
+          "currentUser",
+          JSON.stringify(data.user)
+        );
+
+        localStorage.setItem(
+          "currentWorkspace",
+          JSON.stringify(data.workspace)
+        );
+
+        modal.style.display = "none";
+
+        setStatus(
+          "TROR profile created successfully.",
+          "success"
+        );
+
+        showTab("dashboard");
+        updateTopbarTitle("dashboard");
+
+        window.location.hash = "dashboard";
+      } catch (err) {
+        console.error("Create profile error:", err);
+
+        errorEl.textContent =
+          err.message || "Failed to create profile.";
+
+        errorEl.style.display = "block";
+      } finally {
+        button.disabled = false;
+        button.textContent = "Create Profile";
+      }
+    };
+}
+
 /* =========================
    API HELPER
 ========================= */
@@ -706,19 +1010,129 @@ function toTokenUnits(amount, decimals) {
    CUSTOMER
 ========================= */
 
+function getCurrentWorkspace() {
+  try {
+    return JSON.parse(
+      localStorage.getItem("currentWorkspace") || "null"
+    );
+  } catch {
+    return null;
+  }
+}
+
+function getCustomerStorageKey() {
+  const workspace = getCurrentWorkspace();
+
+  if (!workspace?.id) {
+    return null;
+  }
+
+  return `customers:${workspace.id}`;
+}
+
+function getWorkspaceCustomers() {
+  const storageKey = getCustomerStorageKey();
+
+  if (!storageKey) {
+    return [];
+  }
+
+  try {
+    return JSON.parse(
+      localStorage.getItem(storageKey) || "[]"
+    );
+  } catch {
+    return [];
+  }
+}
+
+function saveWorkspaceCustomers(customers) {
+  const storageKey = getCustomerStorageKey();
+
+  if (!storageKey) {
+    throw new Error("Please select a workspace first.");
+  }
+
+  localStorage.setItem(
+    storageKey,
+    JSON.stringify(customers)
+  );
+}
+
 function saveCustomer() {
-  const customer = {
-    name: custNameEl.value,
-    email: custEmailEl.value,
-    wallet: custWalletEl.value
-  };
+  try {
+    const currentWorkspace = getCurrentWorkspace();
 
-  const list = JSON.parse(localStorage.getItem("customers") || "[]");
-  list.push(customer);
-  localStorage.setItem("customers", JSON.stringify(list));
+    if (!currentWorkspace?.id) {
+      setStatus(
+        "Please select a workspace first.",
+        "error"
+      );
+      return;
+    }
 
-  renderCustomerDropdown();
-  setStatus("Customer saved.", "success");
+    const customer = {
+      id:
+        globalThis.crypto?.randomUUID?.() ||
+        `cust_${Date.now()}`,
+
+      name: String(custNameEl?.value || "").trim(),
+
+      email: String(custEmailEl?.value || "")
+        .trim()
+        .toLowerCase(),
+
+      wallet: String(custWalletEl?.value || "")
+        .trim(),
+
+      workspaceId: currentWorkspace.id,
+
+      createdAt: new Date().toISOString()
+    };
+
+    if (!customer.name) {
+      setStatus(
+        "Customer name is required.",
+        "error"
+      );
+      return;
+    }
+
+    if (
+      customer.wallet &&
+      !/^0x[a-fA-F0-9]{40}$/.test(customer.wallet)
+    ) {
+      setStatus(
+        "Customer wallet address is invalid.",
+        "error"
+      );
+      return;
+    }
+
+    const customers = getWorkspaceCustomers();
+
+    customers.push(customer);
+
+    saveWorkspaceCustomers(customers);
+
+    if (custNameEl) custNameEl.value = "";
+    if (custEmailEl) custEmailEl.value = "";
+    if (custWalletEl) custWalletEl.value = "";
+
+    renderCustomerDropdown();
+
+    setStatus(
+      `Customer saved to ${currentWorkspace.workspace_name}.`,
+      "success"
+    );
+  } catch (err) {
+    console.error("Save customer error:", err);
+
+    setStatus(
+      "Save customer failed: " + err.message,
+      "error"
+    );
+  }
 }
 
 /* =========================
@@ -727,6 +1141,16 @@ function saveCustomer() {
 
 async function sendClaimEmail() {
   try {
+    const currentWorkspace = getCurrentWorkspace();
+
+if (!currentWorkspace?.id) {
+  setStatus(
+    "Please select a workspace first.",
+    "error"
+  );
+  return;
+}
+
     const recipientEmail = claimEmailEl.value.trim().toLowerCase();
     const amount = claimAmountEl.value;
     const memo = claimMessageEl.value || "";
@@ -852,7 +1276,8 @@ const CREATE_CLAIM_ABI = [
           recipientEmail,
           amount,
           message: memo,
-          txHash: createHash
+          txHash: createHash,
+          workspaceId: currentWorkspace.id
         })
       }
     );
@@ -882,6 +1307,8 @@ const CREATE_CLAIM_ABI = [
         style="margin-top:12px;"
       ></div>
     `;
+
+await loadWorkspaceClaims();
 
     setInterval(async () => {
       try {
@@ -940,6 +1367,162 @@ const CREATE_CLAIM_ABI = [
       (err.message || String(err)),
       "error"
     );
+  }
+}
+
+function getClaimHistoryElement() {
+  let claimHistoryEl =
+    document.getElementById("claimHistory");
+
+  if (claimHistoryEl) {
+    return claimHistoryEl;
+  }
+
+  claimHistoryEl = document.createElement("div");
+  claimHistoryEl.id = "claimHistory";
+
+  claimHistoryEl.style.cssText = `
+    margin-top: 20px;
+    padding: 18px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 18px;
+    background: rgba(15, 23, 42, 0.36);
+  `;
+
+  claimHistoryEl.innerHTML = `
+    <h3 style="margin:0 0 14px;">
+      Claim History
+    </h3>
+
+    <div id="claimHistoryList">
+      No claims yet.
+    </div>
+  `;
+
+  if (claimResultEl?.parentElement) {
+    claimResultEl.parentElement.appendChild(
+      claimHistoryEl
+    );
+  }
+
+  return claimHistoryEl;
+}
+
+async function loadWorkspaceClaims() {
+  try {
+    const currentWorkspace =
+      getCurrentWorkspace();
+
+    const claimHistoryEl =
+      getClaimHistoryElement();
+
+    const claimHistoryList =
+      claimHistoryEl?.querySelector(
+        "#claimHistoryList"
+      );
+
+    if (!claimHistoryList) {
+      return [];
+    }
+
+    if (!currentWorkspace?.id) {
+      claimHistoryList.innerHTML =
+        `<div>Please select a workspace.</div>`;
+
+      return [];
+    }
+
+    claimHistoryList.innerHTML =
+      `<div>Loading claims...</div>`;
+
+    const data = await api(
+      "/api/claims?workspaceId=" +
+        encodeURIComponent(currentWorkspace.id)
+    );
+
+    const claims = data.claims || [];
+
+    if (!claims.length) {
+      claimHistoryList.innerHTML =
+        `<div>No claims yet.</div>`;
+
+      return [];
+    }
+
+    claimHistoryList.innerHTML = "";
+
+    claims.forEach((claim) => {
+      const card = document.createElement("div");
+
+      card.style.cssText = `
+        padding: 14px;
+        margin-bottom: 10px;
+        border: 1px solid rgba(148,163,184,.25);
+        border-radius: 14px;
+        background: rgba(2,6,23,.42);
+      `;
+
+      const createdAt = claim.createdAt
+        ? new Date(claim.createdAt)
+            .toLocaleString()
+        : "-";
+
+      card.innerHTML = `
+        <div>
+          <b>${escapeHtml(
+            claim.recipientEmail || ""
+          )}</b>
+        </div>
+
+        <div>
+          ${Number(claim.amount || 0)} USDC
+        </div>
+
+        <div>
+          Status:
+          <b>${escapeHtml(
+            claim.status || "PENDING"
+          )}</b>
+        </div>
+
+        <div>
+          Created: ${escapeHtml(createdAt)}
+        </div>
+
+        <div style="margin-top:8px;">
+          <a
+            href="/claim/${encodeURIComponent(
+              claim.id
+            )}"
+            target="_blank"
+            style="color:#67e8f9;"
+          >
+            Open Claim
+          </a>
+        </div>
+      `;
+
+      claimHistoryList.appendChild(card);
+    });
+
+    return claims;
+  } catch (err) {
+    console.error(
+      "Load workspace claims error:",
+      err
+    );
+
+    const claimHistoryList =
+      document.getElementById(
+        "claimHistoryList"
+      );
+
+    if (claimHistoryList) {
+      claimHistoryList.innerHTML =
+        `<div>Failed to load claims.</div>`;
+    }
+
+    return [];
   }
 }
 
@@ -1358,6 +1941,24 @@ if (address) {
 async function createInvoice() {
   console.log("CREATE INVOICE CLICKED");
 
+let currentWorkspace = null;
+
+try {
+  currentWorkspace = JSON.parse(
+    localStorage.getItem("currentWorkspace") || "null"
+  );
+} catch {
+  currentWorkspace = null;
+}
+
+if (!currentWorkspace?.id) {
+  setStatus(
+    "Please select a workspace first.",
+    "error"
+  );
+  return;
+}
+
   try {
     const appKitAccount = getAccount(wagmiAdapter.wagmiConfig);
     const appKitWallet = appKitAccount?.address || null;
@@ -1388,6 +1989,7 @@ async function createInvoice() {
       recipientAddress,
       targetChain: "Arc",
       note: noteEl.value,
+      workspaceId: currentWorkspace.id,
     };
 
     // =========================
@@ -1584,32 +2186,132 @@ else if (appKitWallet) {
 }
 
 async function saveBusinessProfile() {
-  const body = {
-    name: bizNameEl.value,
-    email: bizEmailEl.value,
-    wallet: bizWalletEl.value
-  };
-  localStorage.setItem("businessProfile", JSON.stringify(body));
-  setStatus("Business profile saved.", "success");
+  try {
+    const currentWorkspace = JSON.parse(
+      localStorage.getItem("currentWorkspace") || "null"
+    );
+
+    if (!currentWorkspace?.id) {
+      setStatus(
+        "Please select a workspace first.",
+        "error"
+      );
+      return;
+    }
+
+    const body = {
+      workspaceId: currentWorkspace.id,
+      name: String(bizNameEl.value || "").trim(),
+      email: String(bizEmailEl.value || "")
+        .trim()
+        .toLowerCase(),
+      wallet: String(bizWalletEl.value || "").trim()
+    };
+
+    const data = await api("/api/business-profile", {
+      method: "POST",
+      body: JSON.stringify(body)
+    });
+
+    setStatus(
+      data.message || "Business profile saved.",
+      "success"
+    );
+  } catch (err) {
+    console.error(
+      "Save business profile error:",
+      err
+    );
+
+    setStatus(
+      err.message || "Business profile save failed.",
+      "error"
+    );
+  }
+}
+
+async function loadBusinessProfile() {
+  try {
+    const currentWorkspace = JSON.parse(
+      localStorage.getItem("currentWorkspace") || "null"
+    );
+
+    if (!currentWorkspace?.id) {
+      bizNameEl.value = "";
+      bizEmailEl.value = "";
+      bizWalletEl.value = "";
+      return;
+    }
+
+    const data = await api(
+      `/api/business-profile?workspaceId=${encodeURIComponent(
+        currentWorkspace.id
+      )}`
+    );
+
+    const profile = data.profile || null;
+
+    bizNameEl.value = profile?.name || "";
+    bizEmailEl.value = profile?.email || "";
+    bizWalletEl.value = profile?.wallet || "";
+  } catch (err) {
+    console.error(
+      "Load business profile error:",
+      err
+    );
+
+    bizNameEl.value = "";
+    bizEmailEl.value = "";
+    bizWalletEl.value = "";
+  }
 }
 
 function renderCustomerDropdown() {
   if (!customerSelectEl) return;
 
-  const customers = JSON.parse(localStorage.getItem("customers") || "[]");
-  customerSelectEl.innerHTML = `<option value="">-- Choose customer --</option>`;
+  const customers = getWorkspaceCustomers();
 
-  customers.forEach((c, index) => {
+  customerSelectEl.innerHTML =
+    `<option value="">-- Choose customer --</option>`;
+
+  customers.forEach((customer) => {
     const option = document.createElement("option");
-    option.value = index;
-    option.textContent = `${c.name || "Customer"} (${c.wallet?.slice(0, 6) || "no wallet"}...)`;
+
+    option.value = customer.id;
+
+    const walletPreview = customer.wallet
+      ? `${customer.wallet.slice(0, 6)}...${customer.wallet.slice(-4)}`
+      : "no wallet";
+
+    option.textContent =
+      `${customer.name || "Customer"} (${walletPreview})`;
+
     customerSelectEl.appendChild(option);
   });
 }
 
 async function loadInvoices() {
   try {
-    const data = await api("/api/invoices");
+    let currentWorkspace = null;
+
+try {
+  currentWorkspace = JSON.parse(
+    localStorage.getItem("currentWorkspace") || "null"
+  );
+} catch {
+  currentWorkspace = null;
+}
+
+if (!currentWorkspace?.id) {
+  invoiceListEl.innerHTML =
+    `<div class="box">Select a workspace to view invoices.</div>`;
+  return;
+}
+
+const data = await api(
+  "/api/invoices?workspaceId=" +
+    encodeURIComponent(currentWorkspace.id)
+);
     const invoices = data.invoices || [];
 
     invoiceListEl.innerHTML = "";
@@ -1830,6 +2532,233 @@ ${selectedInvoice.paymentMemo ? `
    METAMASK PAYMENT
 ========================= */
 
+async function checkUserProfile(walletAddress) {
+
+console.log("CHECK PROFILE WALLET:", walletAddress);
+
+  try {
+    const response = await fetch(
+      `${API_BASE}/api/users/${encodeURIComponent(
+        walletAddress.toLowerCase()
+      )}`
+    );
+
+    const data = await response.json().catch(() => ({}));
+
+    console.log("PROFILE RESPONSE:", data);
+
+    if (response.status === 404 || data.exists === false) {
+      localStorage.removeItem("currentUser");
+      localStorage.removeItem("currentWorkspace");
+
+      openCreateProfileModal(walletAddress);
+
+return false;
+
+      return false;
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        data.error || "Failed to check user profile."
+      );
+    }
+
+    localStorage.setItem(
+  "currentUser",
+  JSON.stringify(data.user)
+);
+
+await loadUserWorkspaces(walletAddress);
+
+return true;
+
+  } catch (err) {
+    console.error("Check user profile error:", err);
+
+    setStatus(
+      "Profile check failed: " + err.message,
+      "error"
+    );
+
+    return false;
+  }
+}
+
+async function loadUserWorkspaces(walletAddress) {
+console.log("LOADING WORKSPACES FOR:", walletAddress);
+
+  const data = await api(
+    "/api/workspaces/" +
+      encodeURIComponent(walletAddress.toLowerCase())
+  );
+
+  const workspaces = data.workspaces || [];
+
+  localStorage.setItem(
+    "userWorkspaces",
+    JSON.stringify(workspaces)
+  );
+
+  let currentWorkspace = null;
+
+  try {
+    currentWorkspace = JSON.parse(
+      localStorage.getItem("currentWorkspace") || "null"
+    );
+  } catch {
+    currentWorkspace = null;
+  }
+
+  const stillExists = workspaces.find(
+    (workspace) =>
+      workspace.id === currentWorkspace?.id
+  );
+
+  if (!stillExists && workspaces.length > 0) {
+    currentWorkspace = workspaces[0];
+
+    localStorage.setItem(
+      "currentWorkspace",
+      JSON.stringify(currentWorkspace)
+    );
+  }
+
+  renderWorkspaceSwitcher(workspaces, currentWorkspace);
+
+  return workspaces;
+}
+
+function renderWorkspaceSwitcher(
+  workspaces,
+  currentWorkspace
+) {
+console.log(
+    "RENDER WORKSPACE SWITCHER:",
+    workspaces,
+    currentWorkspace
+  );
+
+  let switcher = document.getElementById(
+    "workspaceSwitcher"
+  );
+
+  if (!switcher) {
+    switcher = document.createElement("select");
+    switcher.id = "workspaceSwitcher";
+
+    switcher.style.cssText = `
+  width:210px;
+  max-width:210px;
+  padding:10px 12px;
+  margin-right:10px;
+  border-radius:12px;
+  border:1px solid rgba(250,204,21,.45);
+  color:#f8fafc;
+  background:#0f172a;
+  font-weight:700;
+  cursor:pointer;
+  position:relative;
+  z-index:10000;
+  flex-shrink:0;
+`;
+
+    const walletChip =
+  document.getElementById("walletChip");
+
+const connectButton =
+  document.getElementById("btnConnectWallet");
+
+const targetElement =
+  walletChip || connectButton;
+
+if (targetElement?.parentElement) {
+  targetElement.parentElement.insertBefore(
+    switcher,
+    targetElement
+  );
+} else {
+  document.body.appendChild(switcher);
+
+  switcher.style.position = "fixed";
+  switcher.style.top = "18px";
+  switcher.style.right = "220px";
+  switcher.style.zIndex = "999999";
+}
+  }
+
+  switcher.innerHTML = "";
+
+  workspaces.forEach((workspace) => {
+    const option = document.createElement("option");
+
+    option.value = workspace.id;
+    option.textContent =
+      workspace.workspace_type === "BUSINESS"
+        ? `🏢 ${workspace.workspace_name}`
+        : `👤 ${workspace.workspace_name}`;
+
+    if (workspace.id === currentWorkspace?.id) {
+      option.selected = true;
+    }
+
+    switcher.appendChild(option);
+  });
+
+  switcher.onchange = () => {
+    const selectedWorkspace = workspaces.find(
+      (workspace) =>
+        workspace.id === switcher.value
+    );
+
+    if (!selectedWorkspace) return;
+
+    localStorage.setItem(
+      "currentWorkspace",
+      JSON.stringify(selectedWorkspace)
+    );
+
+selectedInvoice = null;
+
+// Clear the selected invoice and previous QR code
+renderSelectedInvoice();
+
+// Close the invoice popup if it is open
+closeInvoiceSheet();
+
+renderCustomerDropdown();
+
+loadWorkspaceClaims().catch((err) => {
+  console.error(
+    "Reload workspace claims error:",
+    err
+  );
+});
+
+loadInvoices().catch((err) => {
+  console.error("Reload workspace invoices error:", err);
+});
+
+loadEmployees().catch((err) => {
+  console.error(
+    "Reload workspace employees error:",
+    err
+  );
+});
+
+    setStatus(
+      `Workspace switched to ${selectedWorkspace.workspace_name}.`,
+      "success"
+    );
+
+    window.dispatchEvent(
+      new CustomEvent("workspaceChanged", {
+        detail: selectedWorkspace
+      })
+    );
+  };
+}
+
 async function connectMetaMask() {
   try {
     if (!window.ethereum) {
@@ -1844,7 +2773,13 @@ async function connectMetaMask() {
     // Update topbar wallet chip
     updateWalletChip(metamaskWallet, null);
     clearCircleWalletLocal();
-activeWalletType = "web3";
+    activeWalletType = "web3";
+    const hasProfile =
+  await checkUserProfile(metamaskWallet);
+
+  if (!hasProfile) {
+    return;
+  }
     setStatus("Wallet connected.", "success");
   } catch (err) {
     setStatus("MetaMask connect failed: " + err.message, "error");
@@ -2476,7 +3411,8 @@ async function sendClaimWithCircleWallet() {
         recipientEmail,
         amount,
         message: memo,
-        txHash: createTxHash
+        txHash: createTxHash,
+        workspaceId: currentWorkspace.id
       })
     });
 
@@ -2818,7 +3754,19 @@ function shortTx(tx) {
 
 async function loadDashboard() {
   try {
-    const data = await api("/api/dashboard");
+    const currentWorkspace = JSON.parse(
+      localStorage.getItem("currentWorkspace") || "null"
+    );
+
+    if (!currentWorkspace?.id) {
+      return;
+    }
+
+    const data = await api(
+      `/api/dashboard?workspaceId=${encodeURIComponent(
+        currentWorkspace.id
+      )}`
+    );
 
     document.getElementById("dashTotal").innerText = Number(data.totalReceived || 0).toFixed(2) + " USDC";
     document.getElementById("dashPaid").innerText = data.paidCount || 0;
@@ -3916,9 +4864,29 @@ btnLogoutGoogle?.addEventListener("click", () => {
 });
 
 customerSelectEl?.addEventListener("change", () => {
-  const customers = JSON.parse(localStorage.getItem("customers") || "[]");
-  const selected = customers[customerSelectEl.value];
-  if (selected) recipientEl.value = selected.wallet || "";
+  const customers = getWorkspaceCustomers();
+
+  const selectedCustomer = customers.find(
+    (customer) =>
+      customer.id === customerSelectEl.value
+  );
+
+  if (!selectedCustomer) {
+    return;
+  }
+
+  if (recipientEl) {
+    recipientEl.value =
+      selectedCustomer.wallet || "";
+  }
+
+  const recipientEmailEl =
+    document.getElementById("recipientEmail");
+
+  if (recipientEmailEl) {
+    recipientEmailEl.value =
+      selectedCustomer.email || "";
+  }
 });
 
 // Listen for account changes from MetaMask
@@ -3951,7 +4919,18 @@ if (window.location.pathname.startsWith("/claim/") || initClaimId) {
   });
 
   renderCustomerDropdown();
+  loadWorkspaceClaims();
   loadDashboard();
+  loadBusinessProfile();
+  window.addEventListener(
+  "workspaceChanged",
+  loadDashboard
+);
+
+window.addEventListener(
+  "workspaceChanged",
+  loadBusinessProfile
+);
 
   // Poll for invoice and dashboard updates every 5 seconds
   setInterval(async () => {
@@ -4185,13 +5164,30 @@ async function loadEmployees(status = currentEmployeeStatus) {
   try {
     currentEmployeeStatus = status || "";
 
-    const query = currentEmployeeStatus
-      ? `?status=${encodeURIComponent(currentEmployeeStatus)}`
-      : "";
+    const currentWorkspace = getCurrentWorkspace();
 
-    const [rows, allEmployees] = await Promise.all([
+if (!currentWorkspace?.id) {
+  const list = document.getElementById("employeesList");
+
+  if (list) {
+    list.innerHTML = "Please select a workspace.";
+  }
+
+  return [];
+}
+
+const workspaceQuery =
+  `workspaceId=${encodeURIComponent(currentWorkspace.id)}`;
+
+const query = currentEmployeeStatus
+  ? `?${workspaceQuery}&status=${encodeURIComponent(
+      currentEmployeeStatus
+    )}`
+  : `?${workspaceQuery}`;
+
+const [rows, allEmployees] = await Promise.all([
   api(`/api/employees${query}`),
-  api("/api/employees")
+  api(`/api/employees?${workspaceQuery}`)
 ]);
 
 const totalEmployeesEl =
@@ -4368,6 +5364,17 @@ document
       return;
     }
 
+const currentWorkspace = getCurrentWorkspace();
+
+if (!currentWorkspace?.id) {
+  if (statusEl) {
+    statusEl.textContent =
+      "Please select a workspace first.";
+  }
+
+  return;
+}
+
     try {
       if (statusEl) {
         statusEl.textContent = "Saving employee...";
@@ -4380,7 +5387,8 @@ document
           employeeEmail: email,
           wallet,
           baseSalary: Number(salary),
-          startedAt
+          startedAt,
+          workspaceId: currentWorkspace.id
         })
       });
 
@@ -4426,7 +5434,25 @@ loadEmployees();
 
 async function loadWithdrawals() {
   try {
-    const rows = await api("/api/withdrawals");
+
+const currentWorkspace = JSON.parse(
+  localStorage.getItem("currentWorkspace") || "null"
+);
+
+if (!currentWorkspace?.id) {
+  const el = document.getElementById("withdrawalsList");
+
+  if (el) {
+    el.innerHTML = "Please select a workspace.";
+  }
+
+  return;
+}
+
+    const rows = await api(
+  "/api/withdrawals?workspaceId=" +
+    encodeURIComponent(currentWorkspace.id)
+);
 
     const el = document.getElementById("withdrawalsList");
     if (!el) return;
@@ -4457,33 +5483,86 @@ async function loadWithdrawals() {
 }
 
 window.updateWithdrawalStatus = async function (id, status) {
+  const currentWorkspace = JSON.parse(
+    localStorage.getItem("currentWorkspace") || "null"
+  );
+
+  if (!currentWorkspace?.id) {
+    alert("Please select a workspace.");
+    return;
+  }
+
   await api(`/api/withdrawals/${id}/status`, {
     method: "POST",
-    body: JSON.stringify({ status })
+    body: JSON.stringify({
+      status,
+      workspaceId: currentWorkspace.id
+    })
   });
+
   await loadWithdrawals();
 };
 
+window.addEventListener(
+  "workspaceChanged",
+  loadWithdrawals
+);
 document.getElementById("btnLoadWithdrawals")?.addEventListener("click", loadWithdrawals);
 
 // Sync AppKit wallet address with TROR
 import { watchAccount } from "@wagmi/core";
 
+let lastProfileCheckedWallet = null;
+
 watchAccount(wagmiAdapter.wagmiConfig, {
-  onChange(account) {
+  async onChange(account) {
     if (account.address) {
       metamaskWallet = account.address;
-      if (metamaskWalletEl) metamaskWalletEl.textContent = account.address;
+
+      if (metamaskWalletEl) {
+        metamaskWalletEl.textContent = account.address;
+      }
+
       updateWalletChip(account.address, null);
       clearCircleWalletLocal();
-activeWalletType = "web3";
-    } else {
-  metamaskWallet = null;
-  updateWalletChip(null, null);
+      activeWalletType = "web3";
 
-  if (activeWalletType === "web3") {
-    activeWalletType = null;
+      const normalizedWallet =
+        account.address.toLowerCase();
+
+      if (
+        lastProfileCheckedWallet !== normalizedWallet
+      ) {
+        lastProfileCheckedWallet = normalizedWallet;
+
+        const hasProfile =
+          await checkUserProfile(account.address);
+
+        if (!hasProfile) {
+          setStatus(
+            "Please create your TROR profile.",
+            "error"
+          );
+          return;
+        }
+
+        setStatus(
+          "Wallet and profile connected.",
+          "success"
+        );
+      }
+    } else {
+      metamaskWallet = null;
+      lastProfileCheckedWallet = null;
+
+      updateWalletChip(null, null);
+
+      localStorage.removeItem("currentUser");
+      localStorage.removeItem("currentWorkspace");
+
+      if (activeWalletType === "web3") {
+        activeWalletType = null;
+      }
+    }
   }
- }
-}
 });

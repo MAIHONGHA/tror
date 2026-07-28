@@ -4,7 +4,7 @@ import { defineChain, http } from "viem";
 
 const ARC_RPC =
   import.meta.env.VITE_ARC_RPC_URL ||
-  "https://rpc.drpc.testnet.arc.network";
+  "https://rpc.testnet.arc.network";
 
 export const arcTestnet = defineChain({
   id: 5042002,

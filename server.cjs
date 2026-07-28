@@ -90,6 +90,57 @@ const MERCHANT_ADDRESS = String(
 const db = new Database(path.join(__dirname, "data.db"));
 db.pragma("journal_mode = WAL");
 
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    full_name TEXT NOT NULL,
+    email TEXT,
+    account_type TEXT NOT NULL DEFAULT 'PERSONAL',
+    primary_wallet_address TEXT,
+    circle_user_id TEXT,
+    circle_wallet_id TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )
+`).run();
+
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS workspaces (
+    id TEXT PRIMARY KEY,
+    workspace_type TEXT NOT NULL,
+    workspace_name TEXT NOT NULL,
+    owner_user_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ACTIVE',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )
+`).run();
+
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS workspace_members (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'OWNER',
+    status TEXT NOT NULL DEFAULT 'ACTIVE',
+    invited_by_user_id TEXT,
+    joined_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(workspace_id, user_id)
+  )
+`).run();
+
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS business_profiles (
+    workspace_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL DEFAULT '',
+    email TEXT NOT NULL DEFAULT '',
+    wallet TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )
+`).run();
+
 // payouts table
 db.prepare(`
   CREATE TABLE IF NOT EXISTS payouts (
@@ -124,6 +175,22 @@ try {
     ADD COLUMN payroll_item_id TEXT
   `).run();
 } catch {}
+
+try {
+  db.prepare(`
+    ALTER TABLE payouts
+    ADD COLUMN workspace_id TEXT
+  `).run();
+
+  console.log("workspace_id added to payouts");
+} catch {
+  console.log("payouts workspace_id already exists");
+}
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_payouts_workspace_id
+  ON payouts(workspace_id)
+`).run();
 
 db.prepare(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_payouts_payroll_item
@@ -198,6 +265,22 @@ try {
   console.log("paymentMemo already exists");
 }
 
+try {
+  db.prepare(`
+    ALTER TABLE invoices
+    ADD COLUMN workspace_id TEXT
+  `).run();
+
+  console.log("workspace_id added to invoices");
+} catch {
+  console.log("invoice workspace_id already exists");
+}
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_invoices_workspace_id
+  ON invoices(workspace_id)
+`).run();
+
 db.prepare(`
   CREATE TABLE IF NOT EXISTS claims (
     id TEXT PRIMARY KEY,
@@ -211,18 +294,48 @@ db.prepare(`
   )
 `).run();
 
+try {
+  db.prepare(`
+    ALTER TABLE claims
+    ADD COLUMN workspace_id TEXT
+  `).run();
+
+  console.log("workspace_id added to claims");
+} catch {
+  console.log("claim workspace_id already exists");
+}
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_claims_workspace_id
+  ON claims(workspace_id)
+`).run();
+
 db.prepare(`
 CREATE TABLE IF NOT EXISTS withdrawals (
-  id TEXT PRIMARY KEY,
-  email TEXT,
-  amount REAL,
-  country TEXT,
-  bank_name TEXT,
-  account_holder TEXT,
-  account_number TEXT,
-  status TEXT,
-  created_at TEXT
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT,
+    email TEXT,
+    amount REAL,
+    country TEXT,
+    bank_name TEXT,
+    account_holder TEXT,
+    account_number TEXT,
+    claim_id TEXT,
+    status TEXT,
+    created_at TEXT
 )
+`).run();
+
+try {
+  db.prepare(`
+    ALTER TABLE withdrawals
+    ADD COLUMN workspace_id TEXT
+  `).run();
+} catch {}
+
+db.prepare(`
+CREATE INDEX IF NOT EXISTS idx_withdrawals_workspace_id
+ON withdrawals(workspace_id)
 `).run();
 
 // employees master table
@@ -239,6 +352,22 @@ db.prepare(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )
+`).run();
+
+try {
+  db.prepare(`
+    ALTER TABLE employees
+    ADD COLUMN workspace_id TEXT
+  `).run();
+
+  console.log("workspace_id added to employees");
+} catch {
+  console.log("employee workspace_id already exists");
+}
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_employees_workspace_id
+  ON employees(workspace_id)
 `).run();
 
 db.prepare(`
@@ -275,6 +404,49 @@ db.prepare(`
     status TEXT DEFAULT 'DRAFT',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )
+`).run();
+
+try {
+  db.prepare(`
+    ALTER TABLE payroll_batches
+    ADD COLUMN workspace_id TEXT
+  `).run();
+
+  console.log("workspace_id added to payroll_batches");
+} catch {
+  console.log("payroll_batches workspace_id already exists");
+}
+
+try {
+  db.prepare(`
+    ALTER TABLE payroll_items
+    ADD COLUMN workspace_id TEXT
+  `).run();
+
+  console.log("workspace_id added to payroll_items");
+} catch {
+  console.log("payroll_items workspace_id already exists");
+}
+
+try {
+  db.prepare(`
+    ALTER TABLE payroll_items
+    ADD COLUMN employee_id TEXT
+  `).run();
+
+  console.log("employee_id added to payroll_items");
+} catch {
+  console.log("payroll_items employee_id already exists");
+}
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_payroll_batches_workspace_id
+  ON payroll_batches(workspace_id)
+`).run();
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_payroll_items_workspace_id
+  ON payroll_items(workspace_id)
 `).run();
 
 try {
@@ -363,15 +535,606 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 /* =========================
+   USERS
+========================= */
+
+app.get("/api/users/:wallet", (req, res) => {
+  try {
+    const wallet = String(req.params.wallet || "")
+      .trim()
+      .toLowerCase();
+
+    const user = db.prepare(`
+      SELECT *
+      FROM users
+      WHERE lower(primary_wallet_address)=?
+    `).get(wallet);
+
+    if (!user) {
+      return res.status(404).json({
+        exists: false
+      });
+    }
+
+    res.json({
+      exists: true,
+      user
+    });
+
+  } catch (err) {
+    console.error(err);
+
+    res.status(500).json({
+      error: "Failed to load user"
+    });
+  }
+});
+
+app.post("/api/users", (req, res) => {
+  try {
+    const fullName = String(req.body.fullName || "").trim();
+    const email = String(req.body.email || "")
+      .trim()
+      .toLowerCase();
+
+    const accountType = String(
+      req.body.accountType || "PERSONAL"
+    )
+      .trim()
+      .toUpperCase();
+
+    const walletAddress = String(
+      req.body.walletAddress || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    const circleUserId = String(
+      req.body.circleUserId || ""
+    ).trim();
+
+    const circleWalletId = String(
+      req.body.circleWalletId || ""
+    ).trim();
+
+    if (!fullName) {
+      return res.status(400).json({
+        success: false,
+        error: "Full name is required"
+      });
+    }
+
+    if (!walletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: "Wallet address is required"
+      });
+    }
+
+    if (!ethers.isAddress(walletAddress)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid wallet address"
+      });
+    }
+
+    const allowedAccountTypes = [
+      "PERSONAL",
+      "BUSINESS"
+    ];
+
+    if (!allowedAccountTypes.includes(accountType)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid account type"
+      });
+    }
+
+    const existingUser = db.prepare(`
+      SELECT *
+      FROM users
+      WHERE lower(primary_wallet_address) = ?
+    `).get(walletAddress);
+
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        error: "User profile already exists",
+        user: existingUser
+      });
+    }
+
+    const userId = crypto.randomUUID();
+    const workspaceId = crypto.randomUUID();
+    const memberId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    const createProfile = db.transaction(() => {
+      db.prepare(`
+        INSERT INTO users (
+          id,
+          full_name,
+          email,
+          account_type,
+          primary_wallet_address,
+          circle_user_id,
+          circle_wallet_id,
+          created_at,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        userId,
+        fullName,
+        email || null,
+        accountType,
+        walletAddress,
+        circleUserId || null,
+        circleWalletId || null,
+        now,
+        now
+      );
+
+      db.prepare(`
+        INSERT INTO workspaces (
+          id,
+          workspace_type,
+          workspace_name,
+          owner_user_id,
+          status,
+          created_at,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        workspaceId,
+        accountType,
+        accountType === "BUSINESS"
+          ? `${fullName}'s Business`
+          : `${fullName}'s Workspace`,
+        userId,
+        "ACTIVE",
+        now,
+        now
+      );
+
+      db.prepare(`
+        INSERT INTO workspace_members (
+          id,
+          workspace_id,
+          user_id,
+          role,
+          status,
+          invited_by_user_id,
+          joined_at,
+          created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        memberId,
+        workspaceId,
+        userId,
+        "OWNER",
+        "ACTIVE",
+        null,
+        now,
+        now
+      );
+    });
+
+    createProfile();
+
+    const user = db.prepare(`
+      SELECT *
+      FROM users
+      WHERE id = ?
+    `).get(userId);
+
+    const workspace = db.prepare(`
+      SELECT *
+      FROM workspaces
+      WHERE id = ?
+    `).get(workspaceId);
+
+    return res.status(201).json({
+      success: true,
+      user,
+      workspace
+    });
+  } catch (err) {
+    console.error("Create user profile error:", err);
+
+    return res.status(500).json({
+      success: false,
+      error: "Failed to create user profile",
+      details: err.message
+    });
+  }
+});
+
+/* =========================
+   WORKSPACES
+========================= */
+
+// Get all workspaces belonging to a wallet
+app.get("/api/workspaces/:wallet", (req, res) => {
+  try {
+    const walletAddress = String(
+      req.params.wallet || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    if (!walletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: "Wallet address is required"
+      });
+    }
+
+    if (!ethers.isAddress(walletAddress)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid wallet address"
+      });
+    }
+
+    const user = db.prepare(`
+      SELECT *
+      FROM users
+      WHERE lower(primary_wallet_address) = ?
+    `).get(walletAddress);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User profile not found",
+        workspaces: []
+      });
+    }
+
+    const workspaces = db.prepare(`
+      SELECT
+        w.*,
+        wm.role,
+        wm.status AS member_status,
+        wm.joined_at
+      FROM workspaces w
+      INNER JOIN workspace_members wm
+        ON wm.workspace_id = w.id
+      WHERE wm.user_id = ?
+        AND wm.status = 'ACTIVE'
+        AND w.status = 'ACTIVE'
+      ORDER BY w.created_at ASC
+    `).all(user.id);
+
+    return res.json({
+      success: true,
+      userId: user.id,
+      workspaces
+    });
+  } catch (err) {
+    console.error("Load workspaces error:", err);
+
+    return res.status(500).json({
+      success: false,
+      error: "Failed to load workspaces",
+      details: err.message
+    });
+  }
+});
+
+app.post("/api/workspaces", (req, res) => {
+  try {
+    const walletAddress = String(
+      req.body.walletAddress || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    const workspaceName = String(
+      req.body.workspaceName || ""
+    ).trim();
+
+    if (!walletAddress) {
+      return res.status(400).json({
+        success: false,
+        error: "Wallet address is required"
+      });
+    }
+
+    if (!ethers.isAddress(walletAddress)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid wallet address"
+      });
+    }
+
+    if (!workspaceName) {
+      return res.status(400).json({
+        success: false,
+        error: "Workspace name is required"
+      });
+    }
+
+    const user = db.prepare(`
+      SELECT *
+      FROM users
+      WHERE lower(primary_wallet_address) = ?
+    `).get(walletAddress);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User profile not found"
+      });
+    }
+
+    const duplicate = db.prepare(`
+      SELECT *
+      FROM workspaces
+      WHERE owner_user_id = ?
+        AND lower(workspace_name) = lower(?)
+        AND status = 'ACTIVE'
+    `).get(user.id, workspaceName);
+
+    if (duplicate) {
+      return res.status(409).json({
+        success: false,
+        error: "Workspace name already exists"
+      });
+    }
+
+    const workspaceId = crypto.randomUUID();
+    const memberId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    const createWorkspace = db.transaction(() => {
+      db.prepare(`
+        INSERT INTO workspaces (
+          id,
+          workspace_type,
+          workspace_name,
+          owner_user_id,
+          status,
+          created_at,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        workspaceId,
+        "BUSINESS",
+        workspaceName,
+        user.id,
+        "ACTIVE",
+        now,
+        now
+      );
+
+      db.prepare(`
+        INSERT INTO workspace_members (
+          id,
+          workspace_id,
+          user_id,
+          role,
+          status,
+          invited_by_user_id,
+          joined_at,
+          created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        memberId,
+        workspaceId,
+        user.id,
+        "OWNER",
+        "ACTIVE",
+        null,
+        now,
+        now
+      );
+    });
+
+    createWorkspace();
+
+    const workspace = db.prepare(`
+      SELECT
+        w.*,
+        wm.role,
+        wm.status AS member_status,
+        wm.joined_at
+      FROM workspaces w
+      INNER JOIN workspace_members wm
+        ON wm.workspace_id = w.id
+      WHERE w.id = ?
+        AND wm.user_id = ?
+    `).get(workspaceId, user.id);
+
+    return res.status(201).json({
+      success: true,
+      workspace
+    });
+  } catch (err) {
+    console.error("Create workspace error:", err);
+
+    return res.status(500).json({
+      success: false,
+      error: "Failed to create workspace",
+      details: err.message
+    });
+  }
+});
+
+app.get("/api/business-profile", (req, res) => {
+  try {
+    const workspaceId = String(
+      req.query.workspaceId || ""
+    ).trim();
+
+    if (!workspaceId) {
+      return res.status(400).json({
+        error: "Workspace is required"
+      });
+    }
+
+    const workspace = db.prepare(`
+      SELECT id
+      FROM workspaces
+      WHERE id = ?
+        AND status = 'ACTIVE'
+    `).get(workspaceId);
+
+    if (!workspace) {
+      return res.status(404).json({
+        error: "Workspace not found"
+      });
+    }
+
+    const profile = db.prepare(`
+      SELECT
+        workspace_id AS workspaceId,
+        name,
+        email,
+        wallet,
+        created_at AS createdAt,
+        updated_at AS updatedAt
+      FROM business_profiles
+      WHERE workspace_id = ?
+    `).get(workspaceId);
+
+    return res.json({
+      profile: profile || null
+    });
+  } catch (err) {
+    console.error(
+      "Load business profile error:",
+      err
+    );
+
+    return res.status(500).json({
+      error: "Failed to load business profile"
+    });
+  }
+});
+
+app.post("/api/business-profile", (req, res) => {
+  try {
+    const workspaceId = String(
+      req.body.workspaceId || ""
+    ).trim();
+
+    const name = String(
+      req.body.name || ""
+    ).trim();
+
+    const email = String(
+      req.body.email || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    const wallet = String(
+      req.body.wallet || ""
+    ).trim();
+
+    if (!workspaceId) {
+      return res.status(400).json({
+        error: "Workspace is required"
+      });
+    }
+
+    if (!name) {
+      return res.status(400).json({
+        error: "Business name is required"
+      });
+    }
+
+    if (wallet && !ethers.isAddress(wallet)) {
+      return res.status(400).json({
+        error: "Invalid merchant wallet address"
+      });
+    }
+
+    const workspace = db.prepare(`
+      SELECT id
+      FROM workspaces
+      WHERE id = ?
+        AND status = 'ACTIVE'
+    `).get(workspaceId);
+
+    if (!workspace) {
+      return res.status(404).json({
+        error: "Workspace not found"
+      });
+    }
+
+    db.prepare(`
+      INSERT INTO business_profiles (
+        workspace_id,
+        name,
+        email,
+        wallet,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+
+      ON CONFLICT(workspace_id)
+      DO UPDATE SET
+        name = excluded.name,
+        email = excluded.email,
+        wallet = excluded.wallet,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(
+      workspaceId,
+      name,
+      email,
+      wallet
+    );
+
+    const profile = db.prepare(`
+      SELECT
+        workspace_id AS workspaceId,
+        name,
+        email,
+        wallet,
+        created_at AS createdAt,
+        updated_at AS updatedAt
+      FROM business_profiles
+      WHERE workspace_id = ?
+    `).get(workspaceId);
+
+    return res.json({
+      success: true,
+      message: "Business profile saved.",
+      profile
+    });
+  } catch (err) {
+    console.error(
+      "Save business profile error:",
+      err
+    );
+
+    return res.status(500).json({
+      error: "Failed to save business profile"
+    });
+  }
+});
+
+/* =========================
    EMPLOYEES
 ========================= */
 
-// Get employee list
+// Get employee list by workspace
 app.get("/api/employees", (req, res) => {
   try {
     const status = String(req.query.status || "")
       .trim()
       .toUpperCase();
+
+    const workspaceId = String(
+      req.query.workspaceId || ""
+    ).trim();
 
     const allowedStatuses = [
       "ACTIVE",
@@ -379,29 +1142,62 @@ app.get("/api/employees", (req, res) => {
       "TERMINATED"
     ];
 
+    if (!workspaceId) {
+      return res.status(400).json({
+        error: "Workspace is required",
+        employees: []
+      });
+    }
+
+    const workspace = db.prepare(`
+      SELECT id
+      FROM workspaces
+      WHERE id = ?
+        AND status = 'ACTIVE'
+    `).get(workspaceId);
+
+    if (!workspace) {
+      return res.status(404).json({
+        error: "Workspace not found",
+        employees: []
+      });
+    }
+
     let rows;
 
-    if (status && allowedStatuses.includes(status)) {
+    if (
+      status &&
+      allowedStatuses.includes(status)
+    ) {
       rows = db.prepare(`
         SELECT *
         FROM employees
-        WHERE employment_status = ?
+        WHERE workspace_id = ?
+          AND employment_status = ?
         ORDER BY created_at DESC
-      `).all(status);
+      `).all(
+        workspaceId,
+        status
+      );
     } else {
       rows = db.prepare(`
         SELECT *
         FROM employees
+        WHERE workspace_id = ?
         ORDER BY created_at DESC
-      `).all();
+      `).all(workspaceId);
     }
 
-    res.json(rows);
+    return res.json(rows);
   } catch (err) {
-    console.error("Load employees error:", err);
+    console.error(
+      "Load employees error:",
+      err
+    );
 
-    res.status(500).json({
-      error: "Failed to load employees"
+    return res.status(500).json({
+      error: "Failed to load employees",
+      employees: []
     });
   }
 });
@@ -414,7 +1210,8 @@ app.post("/api/employees", (req, res) => {
       employeeEmail,
       wallet,
       baseSalary,
-      startedAt
+      startedAt,
+      workspaceId
     } = req.body;
 
     const name = String(employeeName || "").trim();
@@ -439,6 +1236,25 @@ app.post("/api/employees", (req, res) => {
       });
     }
 
+if (!workspaceId) {
+  return res.status(400).json({
+    error: "Workspace is required"
+  });
+}
+
+const workspace = db.prepare(`
+  SELECT id
+  FROM workspaces
+  WHERE id = ?
+    AND status = 'ACTIVE'
+`).get(workspaceId);
+
+if (!workspace) {
+  return res.status(404).json({
+    error: "Workspace not found"
+  });
+}
+
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
 
@@ -453,9 +1269,10 @@ app.post("/api/employees", (req, res) => {
         started_at,
         ended_at,
         created_at,
-        updated_at
+        updated_at,
+        workspace_id
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       name,
@@ -466,7 +1283,8 @@ app.post("/api/employees", (req, res) => {
       startDate,
       null,
       now,
-      now
+      now,
+      workspaceId
     );
 
     const employee = db.prepare(`
@@ -561,66 +1379,132 @@ app.post("/api/employees/:id/status", (req, res) => {
 });
 
 app.get("/api/payroll-batches", (req, res) => {
-  const rows = db.prepare(`
-    SELECT
-      b.*,
-      COALESCE(SUM(i.final_amount), 0) AS total_amount,
-      COUNT(i.id) AS employee_count
-    FROM payroll_batches b
-    LEFT JOIN payroll_items i ON i.batch_id = b.id
-    GROUP BY b.id
-    ORDER BY b.created_at DESC
-  `).all();
+  try {
+    const workspaceId = String(
+      req.query.workspaceId || ""
+    ).trim();
 
-  res.json(rows);
+    if (!workspaceId) {
+      return res.status(400).json({
+        error: "Workspace is required"
+      });
+    }
+
+    const rows = db.prepare(`
+      SELECT
+        b.*,
+        COALESCE(SUM(i.final_amount), 0) AS total_amount,
+        COUNT(i.id) AS employee_count
+      FROM payroll_batches b
+      LEFT JOIN payroll_items i
+        ON i.batch_id = b.id
+        AND i.workspace_id = b.workspace_id
+      WHERE b.workspace_id = ?
+      GROUP BY b.id
+      ORDER BY b.created_at DESC
+    `).all(workspaceId);
+
+    return res.json(rows);
+  } catch (err) {
+    console.error("Load payroll batches error:", err);
+
+    return res.status(500).json({
+      error: "Failed to load payroll batches"
+    });
+  }
 });
 
 app.get("/api/payroll-items", (req, res) => {
-  const latestBatch = db.prepare(`
-  SELECT b.*
-  FROM payroll_batches b
-  WHERE EXISTS (
-    SELECT 1
-    FROM payroll_items i
-    WHERE i.batch_id = b.id
-  )
-  ORDER BY
-    CASE b.status
-      WHEN 'REVIEW' THEN 1
-      WHEN 'APPROVED' THEN 2
-      WHEN 'DRAFT' THEN 3
-      WHEN 'PAID' THEN 4
-      WHEN 'CANCELLED' THEN 5
-      ELSE 6
-    END,
-    b.created_at DESC
-  LIMIT 1
-`).get();
+  try {
+    const workspaceId = String(
+      req.query.workspaceId || ""
+    ).trim();
 
-  if (!latestBatch) {
-    return res.json([]);
+    if (!workspaceId) {
+      return res.status(400).json({
+        error: "Workspace is required"
+      });
+    }
+
+    const latestBatch = db.prepare(`
+      SELECT b.*
+      FROM payroll_batches b
+      WHERE b.workspace_id = ?
+        AND EXISTS (
+          SELECT 1
+          FROM payroll_items i
+          WHERE i.batch_id = b.id
+            AND i.workspace_id = ?
+        )
+      ORDER BY b.created_at DESC
+      LIMIT 1
+    `).get(workspaceId, workspaceId);
+
+    if (!latestBatch) {
+      return res.json([]);
+    }
+
+    const rows = db.prepare(`
+      SELECT *
+      FROM payroll_items
+      WHERE batch_id = ?
+        AND workspace_id = ?
+      ORDER BY created_at DESC
+    `).all(latestBatch.id, workspaceId);
+
+    return res.json(rows);
+  } catch (err) {
+    console.error("Load payroll items error:", err);
+
+    return res.status(500).json({
+      error: "Failed to load payroll items"
+    });
   }
-
-  const rows = db.prepare(`
-    SELECT * FROM payroll_items
-    WHERE batch_id = ?
-    ORDER BY created_at DESC
-  `).all(latestBatch.id);
-
-  res.json(rows);
 });
 
 app.get("/api/payroll-batches/:id/items", (req, res) => {
-  const { id } = req.params;
+  try {
+    const { id } = req.params;
 
-  const items = db.prepare(`
-    SELECT *
-    FROM payroll_items
-    WHERE batch_id = ?
-    ORDER BY created_at DESC
-  `).all(id);
+    const workspaceId = String(
+      req.query.workspaceId || ""
+    ).trim();
 
-  res.json(items);
+    if (!workspaceId) {
+      return res.status(400).json({
+        error: "Workspace is required"
+      });
+    }
+
+    const batch = db.prepare(`
+      SELECT id
+      FROM payroll_batches
+      WHERE id = ?
+        AND workspace_id = ?
+    `).get(id, workspaceId);
+
+    if (!batch) {
+      return res.status(404).json({
+        error: "Payroll batch not found"
+      });
+    }
+
+    const items = db.prepare(`
+      SELECT *
+      FROM payroll_items
+      WHERE batch_id = ?
+        AND workspace_id = ?
+      ORDER BY created_at DESC
+    `).all(id, workspaceId);
+
+    return res.json(items);
+  } catch (err) {
+    console.error("Load payroll batch items error:", err);
+
+    return res.status(500).json({
+      error: "Failed to load payroll batch items"
+    });
+  }
 });
 
 app.get("/api/payroll-items/:id/payslip.pdf", (req, res) => {
@@ -899,9 +1783,10 @@ app.post("/api/payroll-batches/:id/cancel", (req, res) => {
           status,
           mode,
           frequency,
-          payroll_item_id
+          payroll_item_id,
+          workspace_id
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         payoutId,
         item.wallet,
@@ -909,7 +1794,8 @@ app.post("/api/payroll-batches/:id/cancel", (req, res) => {
         "APPROVED",
         "payroll",
         "once",
-        item.id
+        item.id,
+        batch.workspace_id
       );
 
       payout = db.prepare(`
@@ -941,32 +1827,51 @@ app.post("/api/payroll-batches/:id/cancel", (req, res) => {
       txHash
     });
   } catch (itemErr) {
-    console.error(
-      "PAYROLL ITEM FAILED:",
-      item.employee_name,
-      itemErr
-    );
+  const errorMessage =
+    itemErr?.error?.message ||
+    itemErr?.shortMessage ||
+    itemErr?.message ||
+    "Unknown payroll item error";
 
-    db.prepare(`
-      UPDATE payroll_items
-      SET status = 'FAILED'
-      WHERE id = ?
-        AND status != 'PAID'
-    `).run(item.id);
+  const isRpcRateLimit =
+    String(errorMessage)
+      .toLowerCase()
+      .includes("request limit reached") ||
+    itemErr?.error?.code === -32011 ||
+    itemErr?.code === -32011;
 
-    results.push({
-      employee: item.employee_name,
-      amount: item.final_amount,
-      status: "FAILED",
-      error:
-        itemErr?.error?.message ||
-        itemErr?.shortMessage ||
-        itemErr?.message ||
-        "Unknown payroll item error"
-    });
+  console.error(
+    isRpcRateLimit
+      ? "PAYROLL RPC RATE LIMITED:"
+      : "PAYROLL ITEM FAILED:",
+    item.employee_name,
+    itemErr
+  );
 
-    continue;
-  }
+  const nextItemStatus = isRpcRateLimit
+    ? "REVIEW"
+    : "FAILED";
+
+  db.prepare(`
+    UPDATE payroll_items
+    SET status = ?
+    WHERE id = ?
+      AND status != 'PAID'
+  `).run(
+    nextItemStatus,
+    item.id
+  );
+
+  results.push({
+    employee: item.employee_name,
+    amount: item.final_amount,
+    status: nextItemStatus,
+    retryable: isRpcRateLimit,
+    error: errorMessage
+  });
+
+  continue;
+}
 }
 
     const summary = db.prepare(`
@@ -1198,119 +2103,281 @@ app.post("/api/payroll-items/:id/send-payslip", async (req, res) => {
 });
 
 app.post("/api/payroll-batches", (req, res) => {
-  const batchId = crypto.randomUUID();
+  try {
+    const batchId = crypto.randomUUID();
 
-  const {
-    title = "Payroll Batch",
-    pay_date,
-    frequency = "once",
-    employees = []
-  } = req.body;
-
-if (!Array.isArray(employees) || employees.length === 0) {
-  return res.status(400).json({
-    error: "Cannot create a payroll batch without employees"
-  });
-}
-
-  db.prepare(`
-    INSERT INTO payroll_batches (
-      id,
-      title,
+    const {
+      workspaceId,
+      title = "Payroll Batch",
       pay_date,
-      status,
-      frequency
-  )
-  VALUES (?, ?, ?, ?, ?)
-  `).run(
-  batchId,
-  title,
-  pay_date || new Date().toISOString(),
-  "DRAFT",
-  frequency
-);
+      frequency = "once",
+      employees = []
+    } = req.body;
 
-  for (const emp of employees) {
-    const base = Number(emp.base_salary || 0);
-    const overtimeHours = Number(emp.overtime_hours || 0);
-    const overtimeRate = Number(emp.overtime_rate || 0);
-    const allowance = Number(emp.allowance || 0);
-    const bonus = Number(emp.bonus || 0);
-    const deduction = Number(emp.deduction || 0);
+    const normalizedWorkspaceId = String(
+      workspaceId || ""
+    ).trim();
 
-    const finalAmount =
-      base + overtimeHours * overtimeRate + allowance + bonus - deduction;
+    if (!normalizedWorkspaceId) {
+      return res.status(400).json({
+        error: "Workspace is required"
+      });
+    }
 
-    db.prepare(`
-      INSERT INTO payroll_items (
-        id,
-        batch_id,
-        employee_name,
-        employee_email,
-        wallet,
-        base_salary,
-        overtime_hours,
-        overtime_rate,
-        allowance,
-        bonus,
-        deduction,
-        final_amount,
-        status
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      crypto.randomUUID(),
+    const workspace = db.prepare(`
+      SELECT id
+      FROM workspaces
+      WHERE id = ?
+        AND status = 'ACTIVE'
+    `).get(normalizedWorkspaceId);
+
+    if (!workspace) {
+      return res.status(404).json({
+        error: "Workspace not found"
+      });
+    }
+
+    if (
+      !Array.isArray(employees) ||
+      employees.length === 0
+    ) {
+      return res.status(400).json({
+        error:
+          "Cannot create a payroll batch without employees"
+      });
+    }
+
+    const createPayroll = db.transaction(() => {
+      db.prepare(`
+        INSERT INTO payroll_batches (
+          id,
+          title,
+          pay_date,
+          status,
+          frequency,
+          workspace_id
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        batchId,
+        title,
+        pay_date || new Date().toISOString(),
+        "DRAFT",
+        frequency,
+        normalizedWorkspaceId
+      );
+
+      for (const emp of employees) {
+        const base = Number(emp.base_salary || 0);
+        const overtimeHours =
+          Number(emp.overtime_hours || 0);
+        const overtimeRate =
+          Number(emp.overtime_rate || 0);
+        const allowance =
+          Number(emp.allowance || 0);
+        const bonus =
+          Number(emp.bonus || 0);
+        const deduction =
+          Number(emp.deduction || 0);
+
+        const finalAmount = Number(
+          (
+            base +
+            overtimeHours * overtimeRate +
+            allowance +
+            bonus -
+            deduction
+          ).toFixed(6)
+        );
+
+        db.prepare(`
+          INSERT INTO payroll_items (
+            id,
+            batch_id,
+            employee_id,
+            employee_name,
+            employee_email,
+            wallet,
+            base_salary,
+            overtime_hours,
+            overtime_rate,
+            allowance,
+            bonus,
+            deduction,
+            final_amount,
+            status,
+            workspace_id
+          )
+          VALUES (
+            ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?, ?,
+            ?, ?, ?
+          )
+        `).run(
+          crypto.randomUUID(),
+          batchId,
+          emp.employee_id || null,
+          emp.employee_name,
+          emp.employee_email || null,
+          emp.wallet,
+          base,
+          overtimeHours,
+          overtimeRate,
+          allowance,
+          bonus,
+          deduction,
+          finalAmount,
+          "DRAFT",
+          normalizedWorkspaceId
+        );
+      }
+    });
+
+    createPayroll();
+
+    return res.status(201).json({
+      success: true,
       batchId,
-      emp.employee_name,
-      emp.employee_email,
-      emp.wallet,
-      base,
-      overtimeHours,
-      overtimeRate,
-      allowance,
-      bonus,
-      deduction,
-      finalAmount,
-      "DRAFT"
-    );
-  }
+      workspaceId: normalizedWorkspaceId,
+      count: employees.length
+    });
+  } catch (err) {
+    console.error("Create payroll batch error:", err);
 
-  res.json({
-    success: true,
-    batchId,
-    count: employees.length
-  });
+    return res.status(500).json({
+      error: "Failed to create payroll batch",
+      details: err.message
+    });
+  }
 });
 
 app.post("/api/payouts", (req, res) => {
-  const { recipient, amount } = req.body;
+  try {
+    const {
+      recipient,
+      amount,
+      workspaceId,
+      mode = "now",
+      frequency = "once",
+      nextRunAt = null
+    } = req.body;
 
-  if (!recipient || !amount) {
-    return res.status(400).json({ error: "Missing recipient or amount" });
+    const normalizedWorkspaceId = String(
+      workspaceId || ""
+    ).trim();
+
+    if (!normalizedWorkspaceId) {
+      return res.status(400).json({
+        error: "Workspace is required"
+      });
+    }
+
+    const workspace = db.prepare(`
+      SELECT id
+      FROM workspaces
+      WHERE id = ?
+        AND status = 'ACTIVE'
+    `).get(normalizedWorkspaceId);
+
+    if (!workspace) {
+      return res.status(404).json({
+        error: "Workspace not found"
+      });
+    }
+
+    if (!recipient || !amount) {
+      return res.status(400).json({
+        error: "Missing recipient or amount"
+      });
+    }
+
+    if (!ethers.isAddress(recipient)) {
+      return res.status(400).json({
+        error: "Invalid recipient wallet"
+      });
+    }
+
+    const numericAmount = Number(amount);
+
+    if (
+      !Number.isFinite(numericAmount) ||
+      numericAmount <= 0
+    ) {
+      return res.status(400).json({
+        error: "Invalid payout amount"
+      });
+    }
+
+    const id = crypto.randomUUID();
+
+    db.prepare(`
+      INSERT INTO payouts (
+        id,
+        recipient,
+        amount,
+        status,
+        mode,
+        frequency,
+        next_run_at,
+        workspace_id
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      recipient,
+      numericAmount,
+      "PENDING",
+      mode,
+      frequency,
+      nextRunAt,
+      normalizedWorkspaceId
+    );
+
+    const payout = db.prepare(`
+      SELECT *
+      FROM payouts
+      WHERE id = ?
+        AND workspace_id = ?
+    `).get(id, normalizedWorkspaceId);
+
+    return res.status(201).json(payout);
+  } catch (err) {
+    console.error("Create payout error:", err);
+
+    return res.status(500).json({
+      error: "Failed to create payout",
+      details: err.message
+    });
   }
-
-  const id = crypto.randomUUID();
-
-  db.prepare(`
-    INSERT INTO payouts (id, recipient, amount, status)
-    VALUES (?, ?, ?, ?)
-  `).run(id, recipient, amount, "PENDING");
-
-  res.json({
-    id,
-    recipient,
-    amount,
-    status: "PENDING"
-  });
 });
 
 app.get("/api/payouts", (req, res) => {
-  const rows = db.prepare(`
-    SELECT * FROM payouts
-    ORDER BY created_at DESC`
-  ).all();
+  try {
+    const workspaceId = String(
+      req.query.workspaceId || ""
+    ).trim();
 
-  res.json(rows);
+    if (!workspaceId) {
+      return res.status(400).json({
+        error: "Workspace is required"
+      });
+    }
+
+    const rows = db.prepare(`
+      SELECT *
+      FROM payouts
+      WHERE workspace_id = ?
+      ORDER BY created_at DESC
+    `).all(workspaceId);
+
+    return res.json(rows);
+  } catch (err) {
+    console.error("Load payouts error:", err);
+
+    return res.status(500).json({
+      error: "Failed to load payouts"
+    });
+  }
 });
 
 app.get("/test-payout", (req, res) => {
@@ -1435,21 +2502,36 @@ const amountUnits = ethers.parseUnits(normalizedAmount, 6);
     WHERE id = ?
   `).run("PAID", tx.hash, id);
 
-if (payout.mode === "scheduled" && payout.frequency === "monthly") {
+if (
+  payout.mode === "scheduled" &&
+  payout.frequency === "monthly"
+) {
   const nextId = crypto.randomUUID();
 
   db.prepare(`
     INSERT INTO payouts (
-      id, recipient, amount, status, mode, frequency, next_run_at
+      id,
+      recipient,
+      amount,
+      status,
+      mode,
+      frequency,
+      next_run_at,
+      workspace_id
     )
-    VALUES (?, ?, ?, ?, ?, ?, datetime('now', '+1 month'))
+    VALUES (
+      ?, ?, ?, ?, ?, ?,
+      datetime('now', '+1 month'),
+      ?
+    )
   `).run(
     nextId,
     payout.recipient,
     payout.amount,
     "APPROVED",
     "scheduled",
-    "monthly"
+    "monthly",
+    payout.workspace_id
   );
 }
 
@@ -1478,65 +2560,63 @@ app.post("/api/payouts/:id/execute", async (req, res) => {
 });   
 
 app.post("/api/payouts/:id/approve", (req, res) => {
-  const { id } = req.params;
+  try {
+    const { id } = req.params;
 
-  const payout = db.prepare(`
-    SELECT * FROM payouts WHERE id = ?
-  `).get(id);
+    const workspaceId = String(
+      req.body.workspaceId || ""
+    ).trim();
 
-  if (!payout) {
-    return res.status(404).json({ error: "Payout not found" });
-  }
+    if (!workspaceId) {
+      return res.status(400).json({
+        error: "Workspace is required"
+      });
+    }
 
-  if (payout.status !== "PENDING" && payout.status !== "REVIEW") {
-    return res.status(400).json({
-      error: "Only PENDING or REVIEW payouts can be approved"
+    const payout = db.prepare(`
+      SELECT *
+      FROM payouts
+      WHERE id = ?
+        AND workspace_id = ?
+    `).get(id, workspaceId);
+
+    if (!payout) {
+      return res.status(404).json({
+        error: "Payout not found in this workspace"
+      });
+    }
+
+    if (
+      payout.status !== "PENDING" &&
+      payout.status !== "REVIEW"
+    ) {
+      return res.status(400).json({
+        error:
+          "Only PENDING or REVIEW payouts can be approved"
+      });
+    }
+
+    db.prepare(`
+      UPDATE payouts
+      SET status = 'APPROVED'
+      WHERE id = ?
+        AND workspace_id = ?
+    `).run(id, workspaceId);
+
+    return res.json({
+      message: "Payout approved",
+      id,
+      status: "APPROVED"
+    });
+  } catch (err) {
+    console.error("Approve payout error:", err);
+
+    return res.status(500).json({
+      error: "Approve payout failed",
+      details: err.message
     });
   }
-
-  db.prepare(`
-    UPDATE payouts
-    SET status = 'APPROVED'
-    WHERE id = ?
-  `).run(id);
-
-  res.json({
-    message: "Payout approved",
-    id,
-    status: "APPROVED"
-  });
 });
-
-// payroll batches
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS payroll_batches (
-    id TEXT PRIMARY KEY,
-    title TEXT,
-    pay_date DATETIME,
-    status TEXT DEFAULT 'DRAFT',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )
-`).run();
-
-// payroll items
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS payroll_items (
-    id TEXT PRIMARY KEY,
-    batch_id TEXT,
-    employee_name TEXT,
-    employee_email TEXT,
-    wallet TEXT,
-    base_salary REAL DEFAULT 0,
-    overtime_hours REAL DEFAULT 0,
-    overtime_rate REAL DEFAULT 0,
-    allowance REAL DEFAULT 0,
-    bonus REAL DEFAULT 0,
-    deduction REAL DEFAULT 0,
-    final_amount REAL DEFAULT 0,
-    status TEXT DEFAULT 'DRAFT',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )
-`).run();
 
 /* =========================
    HELPERS
@@ -1659,6 +2739,7 @@ function rowToInvoice(row) {
 
   return {
     id: row.id,
+    workspaceId: row.workspace_id || null,
     title: row.title,
     amount: row.amount,
     recipientAddress: row.recipientAddress,
@@ -1934,15 +3015,41 @@ Return ONLY JSON.`
 });
 
 app.get("/api/invoices", (req, res) => {
-  const rows = db
-    .prepare("SELECT * FROM invoices ORDER BY createdAt DESC")
-    .all()
-    .map(rowToInvoice);
+  try {
+    const workspaceId = String(
+      req.query.workspaceId || ""
+    ).trim();
 
-  res.json({
-    ok: true,
-    invoices: rows
-  });
+    let rows;
+
+    if (workspaceId) {
+      rows = db.prepare(`
+        SELECT *
+        FROM invoices
+        WHERE workspace_id = ?
+        ORDER BY createdAt DESC
+      `).all(workspaceId);
+    } else {
+      rows = db.prepare(`
+        SELECT *
+        FROM invoices
+        ORDER BY createdAt DESC
+      `).all();
+    }
+
+    return res.json({
+      ok: true,
+      invoices: rows.map(rowToInvoice)
+    });
+  } catch (err) {
+    console.error("Load invoices error:", err);
+
+    return res.status(500).json({
+      ok: false,
+      error: "Failed to load invoices",
+      details: err.message
+    });
+  }
 });
 
 app.get("/api/invoices/:id", (req, res) => {
@@ -1973,6 +3080,9 @@ app.post("/api/invoices", (req, res) => {
 
     const targetChain = String(req.body.targetChain || "Arc").trim() || "Arc";
     const note = String(req.body.note || "").trim();
+    const workspaceId = String(
+  req.body.workspaceId || ""
+).trim();
     const dueDate =
       String(req.body.dueDate || "").trim();
     const createdAt = new Date().toISOString();
@@ -2003,6 +3113,27 @@ app.post("/api/invoices", (req, res) => {
       });
     }
 
+if (!workspaceId) {
+  return res.status(400).json({
+    ok: false,
+    error: "Workspace is required"
+  });
+}
+
+const workspace = db.prepare(`
+  SELECT *
+  FROM workspaces
+  WHERE id = ?
+    AND status = 'ACTIVE'
+`).get(workspaceId);
+
+if (!workspace) {
+  return res.status(404).json({
+    ok: false,
+    error: "Workspace not found"
+  });
+}
+
     const recipientEmail = req.body.recipientEmail || null;
 
     const id = makeInvoiceId();
@@ -2020,7 +3151,8 @@ app.post("/api/invoices", (req, res) => {
          createdAt,
          dueDate,
          txHash,
-         onchainId
+         onchainId,
+         workspace_id
       ) VALUES (
         @id,
         @title,
@@ -2033,7 +3165,8 @@ app.post("/api/invoices", (req, res) => {
         @createdAt,
         @dueDate,
         @txHash,
-        @onchainId
+        @onchainId,
+        @workspaceId
       )
     `).run({
       id,
@@ -2046,7 +3179,8 @@ app.post("/api/invoices", (req, res) => {
       createdAt,
       dueDate,
       txHash,
-      onchainId
+      onchainId,
+      workspaceId
     });
 
     const row = db.prepare("SELECT * FROM invoices WHERE id = ?").get(id);
@@ -2510,6 +3644,7 @@ app.post("/api/circle/transactions", async (req, res) => {
 
 app.post("/api/withdrawals", (req, res) => {
   const {
+    workspaceId,
     email,
     amount,
     country,
@@ -2521,6 +3656,12 @@ app.post("/api/withdrawals", (req, res) => {
 
   const id = crypto.randomUUID();
 
+if (!workspaceId) {
+  return res.status(400).json({
+    error: "Workspace is required"
+  });
+}
+
 if (!claimId) {
   return res.status(409).json({
     error: "Missing claimId"
@@ -2531,7 +3672,8 @@ const existing = db.prepare(`
   SELECT id
   FROM withdrawals
   WHERE claim_id = ?
-`).get(claimId);
+    AND workspace_id = ?
+`).get(claimId, workspaceId);
 
 if (existing) {
   return res.status(400).json({
@@ -2542,6 +3684,7 @@ if (existing) {
   db.prepare(`
     INSERT INTO withdrawals (
       id,
+      workspace_id,
       email,
       amount,
       country,
@@ -2555,6 +3698,7 @@ if (existing) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
+    workspace_id,
     email,
     amount,
     country,
@@ -2606,19 +3750,52 @@ app.get("/api/withdrawals/claim/:claimId", (req, res) => {
 });
 
 app.get("/api/withdrawals", (req, res) => {
-  const rows = db.prepare(`
-    SELECT *
-    FROM withdrawals
-    ORDER BY created_at DESC
-  `).all();
+  try {
+    const workspaceId = String(
+      req.query.workspaceId || ""
+    ).trim();
 
-  res.json(rows);
+    if (!workspaceId) {
+      return res.status(400).json({
+        error: "Workspace is required"
+      });
+    }
+
+    const rows = db.prepare(`
+      SELECT *
+      FROM withdrawals
+      WHERE workspace_id = ?
+      ORDER BY created_at DESC
+    `).all(workspaceId);
+
+    return res.json(rows);
+  } catch (err) {
+    console.error(
+      "Load withdrawals error:",
+      err
+    );
+
+    return res.status(500).json({
+      error: "Failed to load withdrawals"
+    });
+  }
 });
 
 app.post("/api/withdrawals/:id/status", async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+
+const workspaceId = String(
+  req.body.workspaceId || ""
+).trim();
+
+const { status } = req.body;
+
+if (!workspaceId) {
+  return res.status(400).json({
+    error: "Workspace is required"
+  });
+}
 
     const allowed = ["PENDING", "REVIEW", "APPROVED", "COMPLETED", "REJECTED"];
 
@@ -2634,25 +3811,49 @@ app.post("/api/withdrawals/:id/status", async (req, res) => {
 }[status];
 
 if (timestampColumn) {
-  db.prepare(`
-    UPDATE withdrawals
-    SET status = ?,
-        ${timestampColumn} = ?
-    WHERE id = ?
-  `).run(
-    status,
-    new Date().toISOString(),
-    id
-  );
+  const result = db.prepare(`
+  UPDATE withdrawals
+  SET status = ?,
+      ${timestampColumn} = ?
+  WHERE id = ?
+    AND workspace_id = ?
+`).run(
+  status,
+  new Date().toISOString(),
+  id,
+  workspaceId
+);
+
+if (result.changes === 0) {
+  return res.status(404).json({
+    error: "Withdrawal not found in this workspace"
+  });
+}
 } else {
-  db.prepare(`
-    UPDATE withdrawals
-    SET status = ?
-    WHERE id = ?
-  `).run(status, id);
+  const result = db.prepare(`
+  UPDATE withdrawals
+  SET status = ?
+  WHERE id = ?
+    AND workspace_id = ?
+`).run(
+  status,
+  id,
+  workspaceId
+);
+
+if (result.changes === 0) {
+  return res.status(404).json({
+    error: "Withdrawal not found in this workspace"
+  });
+}
 }
 
-const row = db.prepare("SELECT * FROM withdrawals WHERE id = ?").get(id);
+const row = db.prepare(`
+  SELECT *
+  FROM withdrawals
+  WHERE id = ?
+    AND workspace_id = ?
+`).get(id, workspaceId);
 
 await resend.emails.send({
   from: "TROR <no-reply@mail.tror.app>",
@@ -2688,52 +3889,71 @@ const distPath = path.join(__dirname, "frontend", "dist");
 
 app.get("/api/dashboard", (req, res) => {
   try {
+
+const workspaceId = String(
+  req.query.workspaceId || ""
+).trim();
+
+if (!workspaceId) {
+  return res.status(400).json({
+    error: "Workspace is required"
+  });
+}
+
     const totalReceivedRow = db.prepare(`
       SELECT COALESCE(SUM(amount), 0) as total
       FROM invoices
       WHERE status = 'PAID'
-    `).get();
+      AND workspace_id = ?
+    `).get(workspaceId);
 
     const paidCountRow = db.prepare(`
       SELECT COUNT(*) as count
       FROM invoices
       WHERE status = 'PAID'
-    `).get();
+      AND workspace_id = ?
+    `).get(workspaceId);
 
     const pendingCountRow = db.prepare(`
       SELECT COUNT(*) as count
       FROM invoices
       WHERE status != 'PAID'
-    `).get();
+      AND workspace_id = ?
+    `).get(workspaceId);
 
     const latestPayment = db.prepare(`
       SELECT id, title, amount, txHash, paidAt
       FROM invoices
       WHERE status = 'PAID'
+      AND workspace_id = ?
       ORDER BY paidAt DESC
       LIMIT 1
-    `).get();
+    `).get(workspaceId);
 
     const totalInvoicesRow = db.prepare(`
-      SELECT COUNT(*) as count
-      FROM invoices
-    `).get();
+  SELECT COUNT(*) AS count
+  FROM invoices
+  WHERE workspace_id = ?
+`).get(workspaceId);
 
-    const totalPayrollsRow = db.prepare(`
-      SELECT COUNT(*) as count
-      FROM payroll_batches
-    `).get();
+const totalPayrollsRow = db.prepare(`
+  SELECT COUNT(*) AS count
+  FROM payroll_batches
+  WHERE workspace_id = ?
+`).get(workspaceId);
 
     const totalClaimsRow = db.prepare(`
-      SELECT COUNT(*) as count
-      FROM claims
-    `).get();
+  SELECT COUNT(*) AS count
+  FROM claims
+  WHERE workspace_id = ?
+`).get(workspaceId);
 
     const totalVolumeRow = db.prepare(`
       SELECT COALESCE(SUM(amount),0) as total
       FROM invoices
-      WHERE status='PAID'
-    `).get();
+      WHERE status = 'PAID'
+      AND workspace_id = ?
+    `).get(workspaceId);
 
 const recentActivity = [];
 
@@ -2745,15 +3965,18 @@ if (latestPayment) {
 }
 
 const latestPayroll = db.prepare(`
-  SELECT 
+  SELECT
     b.title,
     COALESCE(SUM(i.final_amount), 0) AS total_amount
   FROM payroll_batches b
-  LEFT JOIN payroll_items i ON i.batch_id = b.id
+  LEFT JOIN payroll_items i
+    ON i.batch_id = b.id
+    AND i.workspace_id = b.workspace_id
+  WHERE b.workspace_id = ?
   GROUP BY b.id
   ORDER BY b.created_at DESC
   LIMIT 1
-`).get();
+`).get(workspaceId);
 
 if (latestPayroll) {
   recentActivity.push({
@@ -2765,9 +3988,10 @@ if (latestPayroll) {
 const latestClaim = db.prepare(`
   SELECT recipientEmail, amount
   FROM claims
-  ORDER BY id DESC
+  WHERE workspace_id = ?
+  ORDER BY createdAt DESC
   LIMIT 1
-`).get();
+`).get(workspaceId);
 
 if (latestClaim) {
   recentActivity.push({
@@ -3110,69 +4334,68 @@ app.get("/api/invoices/:id/check-payment", async (req, res) => {
   }
 });
 
-app.get("/api/dashboard", (req, res) => {
-  try {
-    const totalReceivedRow = db.prepare(`
-      SELECT COALESCE(SUM(amount), 0) as total
-      FROM invoices
-      WHERE status = 'PAID'
-    `).get();
-
-    const paidCountRow = db.prepare(`
-      SELECT COUNT(*) as count
-      FROM invoices
-      WHERE status = 'PAID'
-    `).get();
-
-    const pendingCountRow = db.prepare(`
-      SELECT COUNT(*) as count
-      FROM invoices
-      WHERE status != 'PAID'
-    `).get();
-
-    const latestPayment = db.prepare(`
-      SELECT id, title, amount, txHash, paidAt
-      FROM invoices
-      WHERE status = 'PAID'
-      ORDER BY paidAt DESC
-      LIMIT 1
-    `).get();
-
-    res.json({
-      totalReceived: totalReceivedRow.total,
-      paidCount: paidCountRow.count,
-      pendingCount: pendingCountRow.count,
-      latestPayment: latestPayment || null
-    });
-  } catch (err) {
-    console.error("dashboard error:", err);
-    res.status(500).json({ error: "Dashboard failed" });
-  }
-});
-
 app.post("/api/claims/send-email", async (req, res) => {
   try {
-    const { recipientEmail, amount, message, claimId, txHash } = req.body;
+    const {
+  recipientEmail,
+  amount,
+  message,
+  claimId,
+  txHash,
+  workspaceId
+} = req.body;
+
+console.log("CLAIM REQUEST BODY:", req.body);
+console.log("CLAIM WORKSPACE ID:", workspaceId);
 
     if (!recipientEmail || !amount) {
       return res.status(400).json({ error: "recipientEmail and amount are required" });
     }
+
+if (!workspaceId) {
+  return res.status(400).json({
+    error: "Workspace is required"
+  });
+}
+
+const workspace = db.prepare(`
+  SELECT *
+  FROM workspaces
+  WHERE id = ?
+    AND status = 'ACTIVE'
+`).get(workspaceId);
+
+if (!workspace) {
+  return res.status(404).json({
+    error: "Workspace not found"
+  });
+}
 
     const id = claimId ? String(claimId) : crypto.randomUUID();
     const appUrl = String(process.env.APP_URL || "http://localhost:5173").replace(/\/+$/, "");
     const claimLink = `${appUrl}/claim/${id}`;
 
     db.prepare(`
-      INSERT INTO claims (id, recipientEmail, amount, message, status, createdAt, txHash)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
+  INSERT INTO claims (
+    id,
+    recipientEmail,
+    amount,
+    message,
+    status,
+    createdAt,
+    txHash,
+    workspace_id
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`).run(
   id,
   recipientEmail,
   Number(amount),
   message || "",
   "FUNDED",
   new Date().toISOString(),
-  txHash || null
+  txHash || null,
+  workspaceId
 );
 
     const { data, error } = await resend.emails.send({
@@ -3219,6 +4442,58 @@ if (error) {
   } catch (err) {
     console.error("send claim email error:", err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/claims", (req, res) => {
+  try {
+    const workspaceId = String(
+      req.query.workspaceId || ""
+    ).trim();
+
+    if (!workspaceId) {
+      return res.status(400).json({
+        success: false,
+        error: "Workspace is required",
+        claims: []
+      });
+    }
+
+    const workspace = db.prepare(`
+      SELECT id
+      FROM workspaces
+      WHERE id = ?
+        AND status = 'ACTIVE'
+    `).get(workspaceId);
+
+    if (!workspace) {
+      return res.status(404).json({
+        success: false,
+        error: "Workspace not found",
+        claims: []
+      });
+    }
+
+    const claims = db.prepare(`
+      SELECT *
+      FROM claims
+      WHERE workspace_id = ?
+      ORDER BY createdAt DESC
+    `).all(workspaceId);
+
+    return res.json({
+      success: true,
+      claims
+    });
+  } catch (err) {
+    console.error("Load claims error:", err);
+
+    return res.status(500).json({
+      success: false,
+      error: "Failed to load claims",
+      details: err.message,
+      claims: []
+    });
   }
 });
 
@@ -3466,17 +4741,36 @@ app.post("/api/payouts/:id/confirm", async (req, res) => {
   try {
     const { id } = req.params;
 
-    const payout = db.prepare(`
-      SELECT * FROM payouts WHERE id = ?
-    `).get(id);
+    const workspaceId = String(
+      req.body.workspaceId || ""
+    ).trim();
 
-    if (!payout) {
-      return res.status(404).json({ error: "Payout not found" });
+    if (!workspaceId) {
+      return res.status(400).json({
+        error: "Workspace is required"
+      });
     }
 
-    if (payout.status !== "PENDING" && payout.status !== "REVIEW") {
+    const payout = db.prepare(`
+      SELECT *
+      FROM payouts
+      WHERE id = ?
+        AND workspace_id = ?
+    `).get(id, workspaceId);
+
+    if (!payout) {
+      return res.status(404).json({
+        error: "Payout not found in this workspace"
+      });
+    }
+
+    if (
+      payout.status !== "PENDING" &&
+      payout.status !== "REVIEW"
+    ) {
       return res.status(400).json({
-        error: "Only PENDING or REVIEW payouts can be confirmed"
+        error:
+          "Only PENDING or REVIEW payouts can be confirmed"
       });
     }
 
@@ -3486,7 +4780,8 @@ app.post("/api/payouts/:id/confirm", async (req, res) => {
         SET status = 'APPROVED',
             next_run_at = datetime('now', '+1 minute')
         WHERE id = ?
-      `).run(id);
+          AND workspace_id = ?
+      `).run(id, workspaceId);
 
       return res.json({
         message: "Scheduled payout approved",
@@ -3497,13 +4792,14 @@ app.post("/api/payouts/:id/confirm", async (req, res) => {
 
     const result = await executePayoutById(id);
 
-    res.json({
+    return res.json({
       message: "Payout paid now",
       ...result
     });
   } catch (err) {
     console.error("CONFIRM PAYOUT ERROR:", err);
-    res.status(500).json({
+
+    return res.status(500).json({
       error: "Confirm payout failed",
       details: err.message
     });

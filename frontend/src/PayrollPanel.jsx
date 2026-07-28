@@ -2,6 +2,16 @@ import { useEffect, useState } from "react";
 
 const API_BASE = window.location.origin;
 
+function getCurrentWorkspace() {
+  try {
+    return JSON.parse(
+      localStorage.getItem("currentWorkspace") || "null"
+    );
+  } catch {
+    return null;
+  }
+}
+
 export default function PayrollPanel() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -21,7 +31,18 @@ export default function PayrollPanel() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${API_BASE}/api/payroll-items`);
+      const currentWorkspace = getCurrentWorkspace();
+
+if (!currentWorkspace?.id) {
+  setItems([]);
+  return;
+}
+
+const res = await fetch(
+  `${API_BASE}/api/payroll-items?workspaceId=${encodeURIComponent(
+    currentWorkspace.id
+  )}`
+);
       const data = await res.json();
       setItems(data);
     } catch (err) {
@@ -33,18 +54,55 @@ export default function PayrollPanel() {
   }
 
   async function loadPayrollBatches() {
-    const res = await fetch(`${API_BASE}/api/payroll-batches`);
+  try {
+    const currentWorkspace = getCurrentWorkspace();
+
+    if (!currentWorkspace?.id) {
+      setBatches([]);
+      return;
+    }
+
+    const res = await fetch(
+      `${API_BASE}/api/payroll-batches?workspaceId=${encodeURIComponent(
+        currentWorkspace.id
+      )}`
+    );
+
     const data = await res.json();
-    setBatches(data);
+
+    if (!res.ok) {
+      throw new Error(
+        data.error || "Failed to load payroll history"
+      );
+    }
+
+    setBatches(Array.isArray(data) ? data : []);
+  } catch (err) {
+    console.error("Load payroll batches error:", err);
+    alert(err.message);
   }
+}
 
 async function loadActiveEmployees() {
   setEmployeesLoading(true);
 
   try {
-    const res = await fetch(
-      `${API_BASE}/api/employees?status=ACTIVE`
-    );
+    const currentWorkspace = getCurrentWorkspace();
+
+if (!currentWorkspace?.id) {
+  setNewPayroll((current) => ({
+    ...current,
+    employees: [],
+  }));
+
+  return;
+}
+
+const res = await fetch(
+  `${API_BASE}/api/employees?workspaceId=${encodeURIComponent(
+    currentWorkspace.id
+  )}&status=ACTIVE`
+);
 
     const data = await res.json();
 
@@ -110,34 +168,51 @@ function importEmployeesFromCsv() {
 }
 
 async function createPayrollBatch() {
+
+const currentWorkspace = getCurrentWorkspace();
+
+if (!currentWorkspace?.id) {
+  alert("Please select a workspace first.");
+  return;
+}
+
     if (newPayroll.employees.length === 0) {
     alert("No active employees available.");
     return;
   }
 
-  const invalidEmployee = newPayroll.employees.find(
-    (employee) =>
-      !employee.employee_name ||
-      !employee.wallet ||
-      Number(employee.base_salary || 0) <= 0
-  );
+  const validEmployees = newPayroll.employees.filter(
+  (employee) =>
+    String(employee.employee_name || "").trim() &&
+    String(employee.wallet || "").trim() &&
+    Number(employee.base_salary || 0) > 0
+);
 
-  if (invalidEmployee) {
-    alert(
-      "Each employee must have a name, wallet and base salary greater than 0."
-    );
-    return;
-  }
+const skippedEmployees = newPayroll.employees.filter(
+  (employee) =>
+    !String(employee.employee_name || "").trim() ||
+    !String(employee.wallet || "").trim() ||
+    Number(employee.base_salary || 0) <= 0
+);
+
+if (validEmployees.length === 0) {
+  alert(
+    "No eligible employees found. Each employee needs a name, wallet and base salary greater than 0."
+  );
+  return;
+}
+
   const res = await fetch(`${API_BASE}/api/payroll-batches`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
+      workspaceId: currentWorkspace.id,
       title: newPayroll.title,
       frequency: newPayroll.frequency,
       pay_date: newPayroll.pay_date,
-      employees: newPayroll.employees.map((emp) => ({
+      employees: validEmployees.map((emp) => ({
   employee_name: emp.employee_name,
   employee_email: emp.employee_email,
   wallet: emp.wallet,
@@ -158,14 +233,42 @@ async function createPayrollBatch() {
     return;
   }
 
-  alert("Payroll created ✅");
+  if (skippedEmployees.length > 0) {
+  const skippedNames = skippedEmployees
+    .map(
+      (employee) =>
+        employee.employee_name || "Unnamed employee"
+    )
+    .join(", ");
+
+  alert(
+    `Payroll created for ${validEmployees.length} employee(s) ✅\n\n` +
+    `${skippedEmployees.length} employee(s) skipped:\n${skippedNames}\n\n` +
+    `Reason: missing name, wallet or valid base salary.`
+  );
+} else {
+  alert(
+    `Payroll created for ${validEmployees.length} employee(s) ✅`
+  );
+}
 
   loadPayroll();
   loadPayrollBatches();
 }
 
 async function viewBatchItems(batchId) {
-  const res = await fetch(`${API_BASE}/api/payroll-batches/${batchId}/items`);
+  const currentWorkspace = getCurrentWorkspace();
+
+  if (!currentWorkspace?.id) {
+    alert("Please select a workspace first.");
+    return;
+  }
+
+  const res = await fetch(
+    `${API_BASE}/api/payroll-batches/${batchId}/items?workspaceId=${encodeURIComponent(
+      currentWorkspace.id
+    )}`
+  );
   const data = await res.json();
   setSelectedBatchItems(data);
 }
@@ -339,9 +442,34 @@ async function viewBatchItems(batchId) {
   }
 
   useEffect(() => {
-  loadPayroll();
-  loadPayrollBatches();
-  loadActiveEmployees();
+  const reloadWorkspacePayroll = () => {
+    setItems([]);
+    setBatches([]);
+    setSelectedBatchItems([]);
+
+    setNewPayroll((current) => ({
+      ...current,
+      employees: [],
+    }));
+
+    loadPayroll();
+    loadPayrollBatches();
+    loadActiveEmployees();
+  };
+
+  reloadWorkspacePayroll();
+
+  window.addEventListener(
+    "workspaceChanged",
+    reloadWorkspacePayroll
+  );
+
+  return () => {
+    window.removeEventListener(
+      "workspaceChanged",
+      reloadWorkspacePayroll
+    );
+  };
 }, []);
 
   const total = items.reduce(
