@@ -37,14 +37,17 @@
           <a href="#business" data-tab="business">Business</a>
         </div>
         <div class="topbar-right">
-            <!-- Wallet status chip -->
-            <div class="wallet-chip" id="walletChip">
-              <div class="wc-dot" id="wcDot"></div>
-              <span class="wc-addr" id="walletChipAddress">Disconnected ▾</span>
-            </div>
-            <!-- Primary connect button -->
-            <button class="btn-connect" id="btnConnectWallet">Connect ▾</button>
-            </div>
+  <button
+    class="btn-connect wallet-chip"
+    id="btnConnectWallet"
+    type="button"
+  >
+    <span class="wc-dot" id="wcDot"></span>
+    <span class="wc-addr" id="walletChipAddress">
+      Connect ▾
+    </span>
+  </button>
+</div>
             </aside>
 
       <main class="main-shell">
@@ -527,8 +530,10 @@
 <!-- Google + Circle wallet option -->
 <button id="btnChooseCircle" class="wm-option">
   <span class="wm-option-icon">G</span>
-  <span class="wm-option-name">Google + Circle</span>
-  <span class="wm-option-sub">Create wallet automatically with PIN</span>
+  <span class="wm-option-name">Continue with Google</span>
+<span class="wm-option-sub">
+  Circle Wallet will be created automatically
+</span>
   <span class="wm-option-arrow">→</span>
 </button>
 

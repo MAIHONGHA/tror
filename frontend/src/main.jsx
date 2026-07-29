@@ -47,42 +47,72 @@ function updateTopbarTitle(tabId) {
 
 // Update wallet chip display state
 function updateWalletChip(address, balance) {
-  const dot  = document.getElementById("wcDot");
-  const bal  = document.getElementById("walletChipBalance");
-  const addr = document.getElementById("walletChipAddress");
-  const btn  = document.getElementById("btnConnectWallet");
+  const dot =
+    document.getElementById("wcDot");
 
-  if (address && address !== "Disconnected") {
-    if (dot)  dot.classList.add("connected");
-    if (bal)  bal.textContent = (balance || "0.00") + " USDC";
-    if (addr) addr.textContent = address.slice(0,6) + "..." + address.slice(-4) + " ▾";
-    if (btn)  {
-      btn.textContent = "Connected ▾";
-      btn.style.background = "rgba(0,232,135,0.15)";
-      btn.style.borderColor = "rgba(0,232,135,0.3)";
+  const addr =
+    document.getElementById("walletChipAddress");
+
+  const btn =
+    document.getElementById("btnConnectWallet");
+
+  const payBtn =
+    document.getElementById("btnPay");
+
+  const scanBtn =
+    document.getElementById("btnScanQR");
+
+  const isConnected =
+    Boolean(address) &&
+    address !== "Disconnected";
+
+  if (isConnected) {
+    dot?.classList.add("connected");
+
+    if (addr) {
+      addr.textContent =
+        address.slice(0, 6) +
+        "..." +
+        address.slice(-4) +
+        " ▾";
     }
 
-// Show/hide action buttons based on connection
-const payBtn = document.getElementById("btnPay");
-const scanBtn = document.getElementById("btnScanQR");
+    if (btn) {
+      btn.style.background =
+        "rgba(0,232,135,0.15)";
 
-if (address && address !== "Disconnected") {
-  if (payBtn) payBtn.style.display = "block";
-  if (scanBtn) scanBtn.style.display = "block";
-} else {
-  if (payBtn) payBtn.style.display = "none";
-  if (scanBtn) scanBtn.style.display = "none";
-}
-
-  } else {
-    if (dot)  dot.classList.remove("connected");
-    if (bal)  bal.textContent = "0.00 USDC";
-    if (addr) addr.textContent = "Disconnected ▾";
-    if (btn)  {
-      btn.textContent = "Connect ▾";
-      btn.style.background = "";
-      btn.style.borderColor = "";
+      btn.style.borderColor =
+        "rgba(0,232,135,0.3)";
     }
+
+    if (payBtn) {
+      payBtn.style.display = "block";
+    }
+
+    if (scanBtn) {
+      scanBtn.style.display = "block";
+    }
+
+    return;
+  }
+
+  dot?.classList.remove("connected");
+
+  if (addr) {
+    addr.textContent = "Connect ▾";
+  }
+
+  if (btn) {
+    btn.style.background = "";
+    btn.style.borderColor = "";
+  }
+
+  if (payBtn) {
+    payBtn.style.display = "none";
+  }
+
+  if (scanBtn) {
+    scanBtn.style.display = "none";
   }
 }
 
@@ -100,18 +130,40 @@ function positionWalletMenu(chip) {
   menu.style.zIndex = "1000000";
 }
 
-document.querySelectorAll("#walletChip").forEach((chip) => {
-  chip.addEventListener("click", () => {
-    const menu = document.getElementById("walletMenu");
-    if (!menu) return;
+document
+  .querySelectorAll("#btnConnectWallet")
+  .forEach((button) => {
+    button.addEventListener("click", () => {
+      const menu =
+        document.getElementById("walletMenu");
 
-    menu.classList.toggle("hidden");
+      if (!menu) return;
 
-    if (!menu.classList.contains("hidden")) {
-      positionWalletMenu(chip);
-    }
+      const circleAddress =
+        circleWalletEl?.textContent?.startsWith("0x")
+          ? circleWalletEl.textContent.trim()
+          : null;
+
+      const activeAddress =
+        activeWalletType === "circle"
+          ? circleAddress
+          : metamaskWallet || circleAddress;
+
+      if (!activeAddress) {
+        document
+          .getElementById("walletModal")
+          ?.classList.remove("hidden");
+
+        return;
+      }
+
+      menu.classList.toggle("hidden");
+
+      if (!menu.classList.contains("hidden")) {
+        positionWalletMenu(button);
+      }
+    });
   });
-});
 
 // Auto close dropdown on scroll (mobile fix)
 window.addEventListener("scroll", () => {
