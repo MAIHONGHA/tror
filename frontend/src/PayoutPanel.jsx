@@ -20,6 +20,7 @@ export default function PayoutPanel() {
   const [amount, setAmount] = useState("");
   const [mode, setMode] = useState("now");
   const [frequency, setFrequency] = useState("once");
+  const [scheduledAt, setScheduledAt] = useState("");
 
   async function loadPayouts() {
     setLoading(true);
@@ -84,6 +85,27 @@ export default function PayoutPanel() {
       return;
     }
 
+let nextRunAt = null;
+
+if (mode === "scheduled") {
+  if (!scheduledAt) {
+    alert("Please select a payout date and time.");
+    return;
+  }
+
+  const scheduledDate = new Date(scheduledAt);
+
+  if (
+    Number.isNaN(scheduledDate.getTime()) ||
+    scheduledDate.getTime() <= Date.now()
+  ) {
+    alert("Scheduled time must be in the future.");
+    return;
+  }
+
+  nextRunAt = scheduledDate.toISOString();
+}
+
     try {
       const res = await fetch(
         `${API_BASE}/api/payouts`,
@@ -97,11 +119,8 @@ export default function PayoutPanel() {
             amount: numericAmount,
             workspaceId: currentWorkspace.id,
             mode,
-            frequency:
-              mode === "now"
-                ? "once"
-                : frequency,
-            nextRunAt: null,
+            frequency: "once",
+            nextRunAt,
           }),
         }
       );
@@ -118,6 +137,7 @@ export default function PayoutPanel() {
       setAmount("");
       setMode("now");
       setFrequency("once");
+      setScheduledAt("");
 
       await loadPayouts();
 
@@ -288,17 +308,18 @@ export default function PayoutPanel() {
         <br />
 
         <select
-          value={mode}
-          onChange={(event) => {
-            const nextMode = event.target.value;
+  value={mode}
+  onChange={(event) => {
+    const nextMode = event.target.value;
 
-            setMode(nextMode);
+    setMode(nextMode);
+    setFrequency("once");
 
-            if (nextMode === "now") {
-              setFrequency("once");
-            }
-          }}
-        >
+    if (nextMode === "now") {
+      setScheduledAt("");
+    }
+  }}
+>
           <option value="now">
             Pay Now
           </option>
@@ -312,24 +333,39 @@ export default function PayoutPanel() {
         <br />
 
         <select
-          value={frequency}
-          onChange={(event) =>
-            setFrequency(event.target.value)
-          }
-          disabled={mode === "now"}
-        >
-          <option value="once">
-            Once
-          </option>
+  value="once"
+  disabled
+>
+  <option value="once">
+    Once
+  </option>
+</select>
 
-          <option value="weekly">
-            Weekly
-          </option>
+{mode === "scheduled" && (
+  <>
+    <br />
+    <br />
 
-          <option value="monthly">
-            Monthly
-          </option>
-        </select>
+    <label>
+      Scheduled date and time
+    </label>
+
+    <br />
+
+    <input
+      type="datetime-local"
+      value={scheduledAt}
+      min={new Date(
+        Date.now() - new Date().getTimezoneOffset() * 60000
+      )
+        .toISOString()
+        .slice(0, 16)}
+      onChange={(event) =>
+        setScheduledAt(event.target.value)
+      }
+    />
+  </>
+)}
 
         <br />
         <br />
@@ -374,6 +410,15 @@ export default function PayoutPanel() {
               Frequency:{" "}
               {payout.frequency || "once"}
             </div>
+
+{payout.next_run_at && (
+  <div>
+    Scheduled for:{" "}
+    {new Date(
+      payout.next_run_at
+    ).toLocaleString()}
+  </div>
+)}
 
             {payout.tx_hash && (
               <div>

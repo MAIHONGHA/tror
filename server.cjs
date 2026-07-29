@@ -2481,6 +2481,19 @@ async function executePayoutById(id, workspaceId) {
     return { alreadyPaid: true, payout };
   }
 
+  const allowedStatuses = [
+  "PENDING",
+  "REVIEW",
+  "APPROVED",
+  "PROCESSING"
+];
+
+if (!allowedStatuses.includes(payout.status)) {
+  throw new Error(
+    `Payout cannot be executed from status ${payout.status}`
+  );
+}
+
   const usdc = new ethers.Contract(
     USDC_ADDRESS,
     ERC20_ABI,
@@ -2500,15 +2513,18 @@ const amountUnits = ethers.parseUnits(normalizedAmount, 6);
   await tx.wait();
 
   db.prepare(`
-    UPDATE payouts
-    SET status = ?, tx_hash = ?
-    WHERE id = ?
-  `).run("PAID", tx.hash, id);
+  UPDATE payouts
+  SET status = 'PAID',
+      tx_hash = ?
+  WHERE id = ?
+    AND workspace_id = ?
+`).run(
+  tx.hash,
+  id,
+  workspaceId
+);
 
-if (
-  payout.mode === "scheduled" &&
-  payout.frequency === "monthly"
-) {
+
   const nextId = crypto.randomUUID();
 
   db.prepare(`
@@ -2543,7 +2559,7 @@ if (
     txHash: tx.hash,
     status: "PAID"
   };
-}
+
 
 app.post("/api/payouts/:id/execute", async (req, res) => {
   try {
@@ -2596,27 +2612,66 @@ app.post("/api/payouts/:id/approve", (req, res) => {
       });
     }
 
-    if (
-      payout.status !== "PENDING" &&
-      payout.status !== "REVIEW"
-    ) {
+    if (payout.mode !== "scheduled") {
       return res.status(400).json({
-        error:
-          "Only PENDING or REVIEW payouts can be approved"
+        error: "Only scheduled payouts can be approved here"
       });
     }
 
-    db.prepare(`
+    if (
+      payout.status !== "PENDING" &&
+      payout.status !== "REVIEW" &&
+      payout.status !== "FAILED"
+    ) {
+      return res.status(400).json({
+        error:
+          "Only PENDING, REVIEW or FAILED scheduled payouts can be approved"
+      });
+    }
+
+    if (!payout.next_run_at) {
+      return res.status(400).json({
+        error: "Scheduled payout is missing next_run_at"
+      });
+    }
+
+    const scheduledTime = new Date(
+      payout.next_run_at
+    ).getTime();
+
+    if (Number.isNaN(scheduledTime)) {
+      return res.status(400).json({
+        error: "Invalid scheduled payout time"
+      });
+    }
+
+    if (scheduledTime <= Date.now()) {
+      return res.status(400).json({
+        error:
+          "Scheduled payout time has already passed. Please create a new schedule."
+      });
+    }
+
+    const result = db.prepare(`
       UPDATE payouts
       SET status = 'APPROVED'
       WHERE id = ?
         AND workspace_id = ?
+        AND status IN ('PENDING', 'REVIEW', 'FAILED')
     `).run(id, workspaceId);
 
+    if (result.changes !== 1) {
+      return res.status(409).json({
+        error: "Payout status changed. Please refresh and try again."
+      });
+    }
+
     return res.json({
-      message: "Payout approved",
+      success: true,
+      message: "Scheduled payout approved",
       id,
-      status: "APPROVED"
+      status: "APPROVED",
+      nextRunAt: payout.next_run_at
     });
   } catch (err) {
     console.error("Approve payout error:", err);
@@ -4785,20 +4840,41 @@ app.post("/api/payouts/:id/confirm", async (req, res) => {
     }
 
     if (payout.mode === "scheduled") {
-      db.prepare(`
-        UPDATE payouts
-        SET status = 'APPROVED',
-            next_run_at = datetime('now', '+1 minute')
-        WHERE id = ?
-          AND workspace_id = ?
-      `).run(id, workspaceId);
+  if (!payout.next_run_at) {
+    return res.status(400).json({
+      error: "Scheduled payout is missing next_run_at"
+    });
+  }
 
-      return res.json({
-        message: "Scheduled payout approved",
-        id,
-        status: "APPROVED"
-      });
-    }
+  const scheduledTime = new Date(
+    payout.next_run_at
+  ).getTime();
+
+  if (
+    Number.isNaN(scheduledTime) ||
+    scheduledTime <= Date.now()
+  ) {
+    return res.status(400).json({
+      error: "Scheduled payout time must be in the future"
+    });
+  }
+
+  db.prepare(`
+    UPDATE payouts
+    SET status = 'APPROVED'
+    WHERE id = ?
+      AND workspace_id = ?
+      AND status IN ('PENDING', 'REVIEW')
+  `).run(id, workspaceId);
+
+  return res.json({
+    message: "Scheduled payout approved",
+    id,
+    status: "APPROVED",
+    nextRunAt: payout.next_run_at
+  });
+}
+
 
     const result = await executePayoutById(
   id,
@@ -4820,37 +4896,138 @@ app.post("/api/payouts/:id/confirm", async (req, res) => {
 });
 
 // =======================
-// AUTO PAYOUT CRON
+// SCHEDULED PAYOUT CRON
 // =======================
-// cron.schedule("* * * * *", () => {
-//   console.log("⏰ Checking scheduled payrolls...");
 
-//   const duePayrolls = db.prepare(`
-//     SELECT *
-//     FROM payroll_batches
-//     WHERE status = 'APPROVED'
-//       AND datetime(pay_date) <= datetime('now')
-//   `).all();
+let payoutSchedulerRunning = false;
 
-//   for (const payroll of duePayrolls) {
+cron.schedule("* * * * *", async () => {
+  if (payoutSchedulerRunning) {
+    console.log(
+      "Scheduled payout check skipped: previous run still active"
+    );
+    return;
+  }
 
-//     db.prepare(`
-//       UPDATE payroll_batches
-//       SET status = 'REVIEW'
-//       WHERE id = ?
-//     `).run(payroll.id);
+  payoutSchedulerRunning = true;
 
-//     db.prepare(`
-//       UPDATE payroll_items
-//       SET status = 'REVIEW'
-//       WHERE batch_id = ?
-//         AND status = 'APPROVED'
-//     `).run(payroll.id);
+  try {
+    const duePayouts = db.prepare(`
+      SELECT *
+      FROM payouts
+      WHERE mode = 'scheduled'
+        AND frequency = 'once'
+        AND status = 'APPROVED'
+        AND next_run_at IS NOT NULL
+        AND datetime(next_run_at) <= datetime('now')
+      ORDER BY datetime(next_run_at) ASC
+      LIMIT 5
+    `).all();
 
-//     console.log("Payroll needs final review:", payroll.id);
+    if (duePayouts.length === 0) {
+      return;
+    }
 
-//   }
-// });
+    console.log(
+      `Found ${duePayouts.length} scheduled payout(s) due`
+    );
+
+    for (const payout of duePayouts) {
+      try {
+        /*
+         * Atomically claim the payout.
+         * Only one scheduler run can change APPROVED → PROCESSING.
+         */
+        const claimResult = db.prepare(`
+          UPDATE payouts
+          SET status = 'PROCESSING'
+          WHERE id = ?
+            AND workspace_id = ?
+            AND status = 'APPROVED'
+        `).run(
+          payout.id,
+          payout.workspace_id
+        );
+
+        if (claimResult.changes !== 1) {
+          console.log(
+            "Scheduled payout already claimed:",
+            payout.id
+          );
+
+          continue;
+        }
+
+        console.log(
+          "Executing scheduled payout:",
+          payout.id
+        );
+
+        const result = await executePayoutById(
+          payout.id,
+          payout.workspace_id
+        );
+
+        console.log(
+          "Scheduled payout paid:",
+          payout.id,
+          result.txHash
+        );
+      } catch (err) {
+        const errorMessage =
+          err?.error?.message ||
+          err?.shortMessage ||
+          err?.message ||
+          "Unknown scheduled payout error";
+
+        const normalizedError =
+          String(errorMessage).toLowerCase();
+
+        const isRpcRateLimit =
+          normalizedError.includes(
+            "request limit reached"
+          ) ||
+          normalizedError.includes(
+            "too many requests"
+          ) ||
+          normalizedError.includes("rate limit") ||
+          err?.error?.code === -32011 ||
+          err?.code === -32011;
+
+        const nextStatus = isRpcRateLimit
+          ? "APPROVED"
+          : "FAILED";
+
+        db.prepare(`
+          UPDATE payouts
+          SET status = ?
+          WHERE id = ?
+            AND workspace_id = ?
+            AND status = 'PROCESSING'
+        `).run(
+          nextStatus,
+          payout.id,
+          payout.workspace_id
+        );
+
+        console.error(
+          isRpcRateLimit
+            ? "Scheduled payout RPC rate limited:"
+            : "Scheduled payout failed:",
+          payout.id,
+          errorMessage
+        );
+      }
+    }
+  } catch (err) {
+    console.error(
+      "Scheduled payout cron error:",
+      err
+    );
+  } finally {
+    payoutSchedulerRunning = false;
+  }
+});
 
 app.get('/api/config', (req, res) => {
   res.json({
