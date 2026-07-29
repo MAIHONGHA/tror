@@ -2524,42 +2524,12 @@ const amountUnits = ethers.parseUnits(normalizedAmount, 6);
   workspaceId
 );
 
-
-  const nextId = crypto.randomUUID();
-
-  db.prepare(`
-    INSERT INTO payouts (
-      id,
-      recipient,
-      amount,
-      status,
-      mode,
-      frequency,
-      next_run_at,
-      workspace_id
-    )
-    VALUES (
-      ?, ?, ?, ?, ?, ?,
-      datetime('now', '+1 month'),
-      ?
-    )
-  `).run(
-    nextId,
-    payout.recipient,
-    payout.amount,
-    "APPROVED",
-    "scheduled",
-    "monthly",
-    payout.workspace_id
-  );
-}
-
   return {
     id,
     txHash: tx.hash,
     status: "PAID"
   };
-
+}
 
 app.post("/api/payouts/:id/execute", async (req, res) => {
   try {
