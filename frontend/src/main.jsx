@@ -3432,8 +3432,9 @@ async function sendClaimWithCircleWallet() {
     setStatus("Reading Circle Claim on-chain...");
 
     const rpcProvider = new ethers.JsonRpcProvider(
-      "https://rpc.testnet.arc.network"
-    );
+  import.meta.env.VITE_ARC_RPC_URL ||
+    "https://rpc.testnet.arc.network"
+);
 
     const receipt =
       await rpcProvider.waitForTransaction(createTxHash);
