@@ -922,6 +922,8 @@ function openCreateProfileModal(walletAddress) {
           JSON.stringify(data.workspace)
         );
 
+await loadUserWorkspaces(walletAddress);
+
         modal.style.display = "none";
 
         setStatus(
@@ -1714,10 +1716,19 @@ clearWeb3WalletLocal();
 activeWalletType = "circle";
 updateWalletChip(address, null);
 
-setStatus("Circle wallet loaded.", "success");
-  document.getElementById("btnSetupPin")?.classList.add("hidden");
+const hasProfile = await checkUserProfile(address);
 
-  return { wallet, address };
+if (!hasProfile) {
+  return null;
+}
+
+setStatus("Circle wallet and workspace loaded.", "success");
+
+document
+  .getElementById("btnSetupPin")
+  ?.classList.add("hidden");
+
+return { wallet, address };
 }
 
 // Find USDC token in Circle wallet balances
@@ -1915,7 +1926,17 @@ if (address) {
   activeWalletType = "circle";
   updateWalletChip(address, null);
 
-  setStatus("Circle wallet created.", "success");
+  const hasProfile = await checkUserProfile(address);
+
+  if (!hasProfile) {
+    return;
+  }
+
+  setStatus(
+    "Circle wallet and workspace created.",
+    "success"
+  );
+
   return;
 }
 
