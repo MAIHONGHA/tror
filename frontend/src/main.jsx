@@ -974,19 +974,30 @@ function openCreateProfileModal(walletAddress) {
           JSON.stringify(data.workspace)
         );
 
+const shouldReturnToInvoice =
+  Boolean(
+    localStorage.getItem("invoiceReturnPath")
+  );
+
 await loadUserWorkspaces(walletAddress);
 
-        modal.style.display = "none";
+if (shouldReturnToInvoice) {
+  await restoreInvoiceAfterConnect();
+}
 
-        setStatus(
-          "TROR profile created successfully.",
-          "success"
-        );
+modal.style.display = "none";
 
-        showTab("dashboard");
-        updateTopbarTitle("dashboard");
+setStatus(
+  "TROR profile created successfully.",
+  "success"
+);
 
-        window.location.hash = "dashboard";
+if (!shouldReturnToInvoice) {
+  showTab("dashboard");
+  updateTopbarTitle("dashboard");
+  window.location.hash = "dashboard";
+}
+
       } catch (err) {
         console.error("Create profile error:", err);
 
@@ -1829,6 +1840,58 @@ async function findUsdcToken(userToken, walletId) {
    GOOGLE + CIRCLE LOGIN
 ========================= */
 
+function saveInvoiceReturnPath() {
+  const invoiceId =
+    new URLSearchParams(
+      window.location.search
+    ).get("invoice");
+
+  if (!invoiceId) return;
+
+  localStorage.setItem(
+    "invoiceReturnPath",
+    `/app.html?invoice=${encodeURIComponent(
+      invoiceId
+    )}`
+  );
+}
+
+async function restoreInvoiceAfterConnect() {
+  const savedPath =
+    localStorage.getItem("invoiceReturnPath");
+
+  const savedUrl = savedPath
+    ? new URL(savedPath, window.location.origin)
+    : null;
+
+  const invoiceId =
+    new URLSearchParams(
+      window.location.search
+    ).get("invoice") ||
+    savedUrl?.searchParams.get("invoice");
+
+  if (!invoiceId) return;
+
+  window.history.replaceState(
+    null,
+    "",
+    `/app.html?invoice=${encodeURIComponent(
+      invoiceId
+    )}`
+  );
+
+  await openInvoice(invoiceId);
+
+  showTab("invoices");
+  updateTopbarTitle("invoices");
+
+  window.location.hash = "invoices";
+
+  localStorage.removeItem(
+    "invoiceReturnPath"
+  );
+}
+
 async function connectGoogleCircle() {
   const cfg = await api("/api/circle/config");
   const googleClientId = cfg?.config?.googleClientId;
@@ -1907,10 +1970,16 @@ window.history.replaceState(null, "", "/app.html");
   setStatus("Circle user ready. Click Setup Circle PIN.", "success");
 
   try {
-    await loadCircleWallet(userToken);
-  } catch {}
-}
+  await loadCircleWallet(userToken);
 
+  await restoreInvoiceAfterConnect();
+} catch (err) {
+  console.warn(
+    "Load Circle wallet warning:",
+    err
+  );
+}
+}
 // Setup Circle PIN and create wallet
 async function setupCirclePin() {
   try {
@@ -2643,6 +2712,8 @@ return false;
 );
 
 await loadUserWorkspaces(walletAddress);
+
+await restoreInvoiceAfterConnect();
 
 return true;
 
@@ -4947,12 +5018,14 @@ activeWalletType = "web3";
 }
 
 document.getElementById("btnChooseWeb3")?.addEventListener("click", async () => {
+  saveInvoiceReturnPath();
   document.getElementById("walletModal")?.classList.add("hidden");
   await openAppKitWallet();
 });
 
 // Google / Circle option in modal
 document.getElementById("btnChooseCircle")?.addEventListener("click", async () => {
+  saveInvoiceReturnPath();
   document.getElementById("walletModal")?.classList.add("hidden");
   if (walletModalMode === "pay") {
     await payWithCircleWallet();
