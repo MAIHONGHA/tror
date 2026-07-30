@@ -2674,7 +2674,32 @@ ${selectedInvoice.paymentMemo ? `
    METAMASK PAYMENT
 ========================= */
 
+function isInvoicePaymentMode() {
+  const invoiceId =
+    new URLSearchParams(
+      window.location.search
+    ).get("invoice");
+
+  const savedReturnPath =
+    localStorage.getItem("invoiceReturnPath");
+
+  return Boolean(
+    invoiceId || savedReturnPath
+  );
+}
+
 async function checkUserProfile(walletAddress) {
+
+  if (isInvoicePaymentMode()) {
+    await restoreInvoiceAfterConnect();
+
+    setStatus(
+      "Wallet connected. Ready to pay invoice.",
+      "success"
+    );
+
+    return true;
+  }
 
 console.log("CHECK PROFILE WALLET:", walletAddress);
 
