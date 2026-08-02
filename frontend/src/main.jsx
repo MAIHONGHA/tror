@@ -2341,22 +2341,67 @@ async function saveBusinessProfile() {
       return;
     }
 
+    // Web3/AppKit wallet
+    const appKitAccount = getAccount(
+      wagmiAdapter.wagmiConfig
+    );
+
+    const appKitWallet =
+      appKitAccount?.address || null;
+
+    // Circle Wallet
+    const circleWallet =
+      circleWalletEl?.textContent &&
+      circleWalletEl.textContent.trim().startsWith("0x")
+        ? circleWalletEl.textContent.trim()
+        : null;
+
+    // Wallet entered manually in Business form
+    const businessWallet =
+      String(bizWalletEl.value || "").trim();
+
+    // Prefer manual value, then Web3, then Circle
+    const resolvedWallet =
+      businessWallet ||
+      metamaskWallet ||
+      appKitWallet ||
+      circleWallet;
+
+    if (!resolvedWallet) {
+      setStatus(
+        "Please connect a Web3 wallet or Circle Wallet first.",
+        "error"
+      );
+      return;
+    }
+
     const body = {
       workspaceId: currentWorkspace.id,
-      name: String(bizNameEl.value || "").trim(),
-      email: String(bizEmailEl.value || "")
+      name: String(
+        bizNameEl.value || ""
+      ).trim(),
+      email: String(
+        bizEmailEl.value || ""
+      )
         .trim()
         .toLowerCase(),
-      wallet: String(bizWalletEl.value || "").trim()
+      wallet: resolvedWallet
     };
 
-    const data = await api("/api/business-profile", {
-      method: "POST",
-      body: JSON.stringify(body)
-    });
+    const data = await api(
+      "/api/business-profile",
+      {
+        method: "POST",
+        body: JSON.stringify(body)
+      }
+    );
+
+    // Keep the Business wallet field synchronized
+    bizWalletEl.value = resolvedWallet;
 
     setStatus(
-      data.message || "Business profile saved.",
+      data.message ||
+        "Business profile saved.",
       "success"
     );
   } catch (err) {
@@ -2366,7 +2411,8 @@ async function saveBusinessProfile() {
     );
 
     setStatus(
-      err.message || "Business profile save failed.",
+      err.message ||
+        "Business profile save failed.",
       "error"
     );
   }
