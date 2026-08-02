@@ -2845,12 +2845,28 @@ console.log("LOADING WORKSPACES FOR:", walletAddress);
 }
 
 async function createBusinessWorkspace() {
+  const appKitAccount = getAccount(
+    wagmiAdapter.wagmiConfig
+  );
+
+  const appKitWallet =
+    appKitAccount?.address || null;
+
+  const circleWallet =
+    circleWalletEl?.textContent &&
+    circleWalletEl.textContent.trim().startsWith("0x")
+      ? circleWalletEl.textContent.trim()
+      : null;
+
   const wallet =
     metamaskWallet ||
-    currentUser?.primary_wallet_address;
+    appKitWallet ||
+    circleWallet;
 
   if (!wallet) {
-    alert("Connect wallet first.");
+    alert(
+      "Please connect a Web3 wallet or Circle Wallet first."
+    );
     return;
   }
 
@@ -2858,27 +2874,61 @@ async function createBusinessWorkspace() {
     "Business workspace name:"
   );
 
-  if (!workspaceName) return;
+  if (!workspaceName?.trim()) {
+    return;
+  }
 
   try {
-    const data = await api("/api/workspaces", {
-      method: "POST",
-      body: JSON.stringify({
-        walletAddress: wallet,
-        workspaceName,
-      }),
-    });
+    const data = await api(
+      "/api/workspaces",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          walletAddress: wallet,
+          workspaceName:
+            workspaceName.trim()
+        })
+      }
+    );
+
+    if (!data?.workspace) {
+      throw new Error(
+        "Workspace was not returned."
+      );
+    }
 
     localStorage.setItem(
-    "currentWorkspace",
-    JSON.stringify(data.workspace)
-);
+      "currentWorkspace",
+      JSON.stringify(data.workspace)
+    );
 
-await loadUserWorkspaces(wallet);
+    await loadUserWorkspaces(wallet);
 
-alert("Business workspace created.");
+    window.dispatchEvent(
+      new CustomEvent(
+        "workspaceChanged",
+        {
+          detail: {
+            workspace:
+              data.workspace
+          }
+        }
+      )
+    );
+
+    alert(
+      "Business workspace created."
+    );
   } catch (err) {
-    alert(err.message);
+    console.error(
+      "Create business workspace error:",
+      err
+    );
+
+    alert(
+      err?.message ||
+        "Business workspace creation failed."
+    );
   }
 }
 
