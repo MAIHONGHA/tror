@@ -7,8 +7,20 @@ import Web3 from "web3";
 import PayrollPanel from "./PayrollPanel.jsx";
 import { Html5Qrcode } from "html5-qrcode";
 import { ethers } from "ethers";
-import { CONTRACT_ADDRESS, CONTRACT_ABI, MEMO_ADDRESS, MEMO_ABI } from "./contract";
-import { openAppKitWallet, wagmiAdapter } from "./appkit.js";
+import {
+  CONTRACT_ADDRESS,
+  CONTRACT_ABI,
+  MEMO_ADDRESS,
+  MEMO_ABI,
+  CLAIM_CONTRACT_ADDRESS,
+  CLAIM_CONTRACT_ABI
+} from "./contract";
+import {
+  openAppKitWallet,
+  wagmiAdapter,
+  appKit,
+  arcTestnet
+} from "./appkit.js";
 import { getAccount, readContract, writeContract, waitForTransactionReceipt } from "@wagmi/core";
 import { parseUnits } from "viem";
 window.openAppKitWallet = openAppKitWallet;
@@ -30,47 +42,77 @@ function updateTopbarTitle(tabId) {
     business:     "Business"
   };
   const el = document.querySelector(".topbar-title");
-  if (el) el.textContent = titles[tabId] || "ArcPay";
+  if (el) el.textContent = titles[tabId] || "TROR";
 }
 
 // Update wallet chip display state
 function updateWalletChip(address, balance) {
-  const dot  = document.getElementById("wcDot");
-  const bal  = document.getElementById("walletChipBalance");
-  const addr = document.getElementById("walletChipAddress");
-  const btn  = document.getElementById("btnConnectWallet");
+  const dot =
+    document.getElementById("wcDot");
 
-  if (address && address !== "Disconnected") {
-    if (dot)  dot.classList.add("connected");
-    if (bal)  bal.textContent = (balance || "0.00") + " USDC";
-    if (addr) addr.textContent = address.slice(0,6) + "..." + address.slice(-4) + " ▾";
-    if (btn)  {
-      btn.textContent = "Connected ▾";
-      btn.style.background = "rgba(0,232,135,0.15)";
-      btn.style.borderColor = "rgba(0,232,135,0.3)";
+  const addr =
+    document.getElementById("walletChipAddress");
+
+  const btn =
+    document.getElementById("btnConnectWallet");
+
+  const payBtn =
+    document.getElementById("btnPay");
+
+  const scanBtn =
+    document.getElementById("btnScanQR");
+
+  const isConnected =
+    Boolean(address) &&
+    address !== "Disconnected";
+
+  if (isConnected) {
+    dot?.classList.add("connected");
+
+    if (addr) {
+      addr.textContent =
+        address.slice(0, 6) +
+        "..." +
+        address.slice(-4) +
+        " ▾";
     }
 
-// Show/hide action buttons based on connection
-const payBtn = document.getElementById("btnPay");
-const scanBtn = document.getElementById("btnScanQR");
+    if (btn) {
+      btn.style.background =
+        "rgba(0,232,135,0.15)";
 
-if (address && address !== "Disconnected") {
-  if (payBtn) payBtn.style.display = "block";
-  if (scanBtn) scanBtn.style.display = "block";
-} else {
-  if (payBtn) payBtn.style.display = "none";
-  if (scanBtn) scanBtn.style.display = "none";
-}
-
-  } else {
-    if (dot)  dot.classList.remove("connected");
-    if (bal)  bal.textContent = "0.00 USDC";
-    if (addr) addr.textContent = "Disconnected ▾";
-    if (btn)  {
-      btn.textContent = "Connect ▾";
-      btn.style.background = "";
-      btn.style.borderColor = "";
+      btn.style.borderColor =
+        "rgba(0,232,135,0.3)";
     }
+
+    if (payBtn) {
+      payBtn.style.display = "block";
+    }
+
+    if (scanBtn) {
+      scanBtn.style.display = "block";
+    }
+
+    return;
+  }
+
+  dot?.classList.remove("connected");
+
+  if (addr) {
+    addr.textContent = "Connect ▾";
+  }
+
+  if (btn) {
+    btn.style.background = "";
+    btn.style.borderColor = "";
+  }
+
+  if (payBtn) {
+    payBtn.style.display = "none";
+  }
+
+  if (scanBtn) {
+    scanBtn.style.display = "none";
   }
 }
 
@@ -88,18 +130,40 @@ function positionWalletMenu(chip) {
   menu.style.zIndex = "1000000";
 }
 
-document.querySelectorAll("#walletChip").forEach((chip) => {
-  chip.addEventListener("click", () => {
-    const menu = document.getElementById("walletMenu");
-    if (!menu) return;
+document
+  .querySelectorAll("#btnConnectWallet")
+  .forEach((button) => {
+    button.addEventListener("click", () => {
+      const menu =
+        document.getElementById("walletMenu");
 
-    menu.classList.toggle("hidden");
+      if (!menu) return;
 
-    if (!menu.classList.contains("hidden")) {
-      positionWalletMenu(chip);
-    }
+      const circleAddress =
+        circleWalletEl?.textContent?.startsWith("0x")
+          ? circleWalletEl.textContent.trim()
+          : null;
+
+      const activeAddress =
+        activeWalletType === "circle"
+          ? circleAddress
+          : metamaskWallet || circleAddress;
+
+      if (!activeAddress) {
+        document
+          .getElementById("walletModal")
+          ?.classList.remove("hidden");
+
+        return;
+      }
+
+      menu.classList.toggle("hidden");
+
+      if (!menu.classList.contains("hidden")) {
+        positionWalletMenu(button);
+      }
+    });
   });
-});
 
 // Auto close dropdown on scroll (mobile fix)
 window.addEventListener("scroll", () => {
@@ -150,7 +214,7 @@ globalThis.openCardPayment = window.openCardPayment = function () {
     modal.innerHTML = `
       <div style="width:340px;background:white;color:#111827;padding:24px;border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.5);">
         <h2 style="margin-top:0;">💳 Pay with Visa / MasterCard</h2>
-        <p style="color:#6b7280;font-size:13px;">ArcPay Sandbox — No real money</p>
+        <p style="color:#6b7280;font-size:13px;">TROR Sandbox — No real money</p>
         <input id="cardRecipientEmail" placeholder="Recipient Gmail"
           style="width:100%;padding:12px;margin-top:12px;background:#f9fafb;color:#111;border:1px solid #e5e7eb;border-radius:10px;box-sizing:border-box;" />
         <input id="cardAmount" placeholder="Amount USD" type="number"
@@ -204,14 +268,16 @@ globalThis.openCardPayment = window.openCardPayment = function () {
     id="toggleVcNumber"
     type="button"
     style="
-      position:absolute;
-      right:10px;
-      top:8px;
-      background:transparent;
-      border:0;
-      cursor:pointer;
-      font-size:18px;
-    "
+  position:absolute;
+  right:10px;
+  top:50%;
+  transform:translateY(-50%);
+  background:transparent;
+  border:0;
+  cursor:pointer;
+  font-size:18px;
+  padding:0;
+"
   >
     👁️
   </button>
@@ -246,14 +312,16 @@ globalThis.openCardPayment = window.openCardPayment = function () {
         id="toggleVcExpiry"
         type="button"
         style="
-          position:absolute;
-          right:10px;
-          top:8px;
-          background:transparent;
-          border:0;
-          cursor:pointer;
-          font-size:18px;
-        "
+  position:absolute;
+  right:10px;
+  top:50%;
+  transform:translateY(-50%);
+  background:transparent;
+  border:0;
+  cursor:pointer;
+  font-size:18px;
+  padding:0;
+"
       >
         👁️
       </button>
@@ -287,14 +355,16 @@ globalThis.openCardPayment = window.openCardPayment = function () {
         id="toggleVcCvv"
         type="button"
         style="
-          position:absolute;
-          right:10px;
-          top:8px;
-          background:transparent;
-          border:0;
-          cursor:pointer;
-          font-size:18px;
-        "
+  position:absolute;
+  right:10px;
+  top:50%;
+  transform:translateY(-50%);
+  background:transparent;
+  border:0;
+  cursor:pointer;
+  font-size:18px;
+  padding:0;
+"
       >
         👁️
       </button>
@@ -365,7 +435,8 @@ document.getElementById("toggleVcCvv").onclick = () => {
         body: JSON.stringify({
           recipientEmail: email,
           amount: amount,
-          message: "Payment created through ArcPay sandbox preview"
+          message: "Payment created through TROR sandbox preview",
+          workspaceId: getCurrentWorkspace()?.id
         })
       });
 
@@ -417,7 +488,9 @@ const API_BASE =
 // Arc Network constants
 const ARC_CHAIN_ID = 5042002;
 const ARC_CHAIN_HEX = "0x4cef52";
-const ARC_RPC = "https://rpc.testnet.arc.network";
+const ARC_RPC =
+  import.meta.env.VITE_ARC_RPC_URL ||
+  "https://rpc.testnet.arc.network"
 const ARC_EXPLORER = "https://testnet.arcscan.app";
 const ARC_CHAIN_NAME = "Arc Testnet";
 
@@ -551,21 +624,49 @@ document.getElementById("disconnectWalletChip")?.addEventListener("click", () =>
 });
 
 document.getElementById("copyWalletAddress")?.addEventListener("click", async () => {
-  if (!metamaskWallet) {
+  const circleAddress =
+    circleWalletEl?.textContent?.startsWith("0x")
+      ? circleWalletEl.textContent.trim()
+      : null;
+
+  const activeAddress =
+    activeWalletType === "circle"
+      ? circleAddress
+      : metamaskWallet || circleAddress;
+
+  if (!activeAddress) {
     setStatus("No wallet connected.", "error");
     return;
   }
-  await navigator.clipboard.writeText(metamaskWallet);
+
+  await navigator.clipboard.writeText(activeAddress);
   setStatus("Wallet address copied.", "success");
 });
 
 document.getElementById("viewWalletExplorer")?.addEventListener("click", () => {
-  if (!metamaskWallet) {
+  const circleAddress =
+    circleWalletEl?.textContent?.startsWith("0x")
+      ? circleWalletEl.textContent.trim()
+      : null;
+
+  const activeAddress =
+    activeWalletType === "circle"
+      ? circleAddress
+      : metamaskWallet || circleAddress;
+
+  if (!activeAddress) {
     setStatus("No wallet connected.", "error");
     return;
   }
-  window.open(`https://testnet.arcscan.app/address/${metamaskWallet}`, "_blank");
-  document.getElementById("walletMenu")?.classList.add("hidden");
+
+  window.open(
+    `${ARC_EXPLORER}/address/${activeAddress}`,
+    "_blank"
+  );
+
+  document
+    .getElementById("walletMenu")
+    ?.classList.add("hidden");
 });
 
 /* =========================
@@ -593,6 +694,322 @@ function setStatus(message, type = "") {
   if (message) {
     showToast(message, type || "success");
   }
+}
+
+function openCreateProfileModal(walletAddress) {
+  let modal = document.getElementById("createProfileModal");
+
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "createProfileModal";
+
+    modal.style.cssText = `
+      position: fixed;
+      inset: 0;
+      z-index: 1000001;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(2, 6, 23, 0.84);
+      backdrop-filter: blur(10px);
+    `;
+
+    document.body.appendChild(modal);
+  }
+
+  const googleUser = getGoogleUser();
+
+  modal.innerHTML = `
+    <div style="
+      width:100%;
+      max-width:430px;
+      padding:28px;
+      border-radius:24px;
+      color:#f8fafc;
+      background:
+        linear-gradient(
+          145deg,
+          rgba(30,41,59,.98),
+          rgba(15,23,42,.98)
+        );
+      border:1px solid rgba(250,204,21,.34);
+      box-shadow:0 28px 80px rgba(0,0,0,.58);
+    ">
+      <div style="
+        font-size:12px;
+        font-weight:800;
+        letter-spacing:.16em;
+        color:#facc15;
+        margin-bottom:8px;
+      ">
+        TROR IDENTITY
+      </div>
+
+      <h2 style="margin:0 0 8px;font-size:26px;">
+        Create your profile
+      </h2>
+
+      <p style="
+        margin:0 0 22px;
+        color:#94a3b8;
+        line-height:1.55;
+        font-size:14px;
+      ">
+        Create your TROR identity and personal workspace.
+      </p>
+
+      <label style="
+        display:block;
+        margin-bottom:6px;
+        font-size:13px;
+        color:#cbd5e1;
+      ">
+        Full Name
+      </label>
+
+      <input
+        id="profileFullName"
+        type="text"
+        value="${escapeHtml(googleUser.name || "")}"
+        placeholder="Enter your full name"
+        style="
+          width:100%;
+          box-sizing:border-box;
+          padding:13px 14px;
+          margin-bottom:15px;
+          border-radius:12px;
+          border:1px solid rgba(148,163,184,.28);
+          background:rgba(15,23,42,.82);
+          color:#f8fafc;
+          outline:none;
+        "
+      />
+
+      <label style="
+        display:block;
+        margin-bottom:6px;
+        font-size:13px;
+        color:#cbd5e1;
+      ">
+        Email
+      </label>
+
+      <input
+        id="profileEmail"
+        type="email"
+        value="${escapeHtml(googleUser.email || "")}"
+        placeholder="name@example.com"
+        style="
+          width:100%;
+          box-sizing:border-box;
+          padding:13px 14px;
+          margin-bottom:15px;
+          border-radius:12px;
+          border:1px solid rgba(148,163,184,.28);
+          background:rgba(15,23,42,.82);
+          color:#f8fafc;
+          outline:none;
+        "
+      />
+
+      <label style="
+        display:block;
+        margin-bottom:6px;
+        font-size:13px;
+        color:#cbd5e1;
+      ">
+        Account Type
+      </label>
+
+      <select
+        id="profileAccountType"
+        style="
+          width:100%;
+          box-sizing:border-box;
+          padding:13px 14px;
+          margin-bottom:10px;
+          border-radius:12px;
+          border:1px solid rgba(148,163,184,.28);
+          background:#0f172a;
+          color:#f8fafc;
+          outline:none;
+        "
+      >
+        <option value="PERSONAL">Personal</option>
+        <option value="BUSINESS">Business</option>
+      </select>
+
+      <div style="
+        margin:14px 0 20px;
+        padding:12px;
+        border-radius:12px;
+        background:rgba(250,204,21,.08);
+        border:1px solid rgba(250,204,21,.2);
+        font-size:12px;
+        color:#fde68a;
+        word-break:break-all;
+      ">
+        Wallet: ${escapeHtml(walletAddress)}
+      </div>
+
+      <div
+        id="profileModalError"
+        style="
+          display:none;
+          margin-bottom:14px;
+          padding:10px 12px;
+          border-radius:10px;
+          color:#fecaca;
+          background:rgba(239,68,68,.12);
+          border:1px solid rgba(239,68,68,.24);
+          font-size:13px;
+        "
+      ></div>
+
+      <button
+        id="btnCreateProfile"
+        type="button"
+        style="
+          width:100%;
+          padding:14px;
+          border:0;
+          border-radius:12px;
+          cursor:pointer;
+          font-weight:800;
+          font-size:15px;
+          color:#111827;
+          background:
+            linear-gradient(135deg,#fde68a,#facc15,#d4a017);
+        "
+      >
+        Create Profile
+      </button>
+
+      <button
+        id="btnCancelProfile"
+        type="button"
+        style="
+          width:100%;
+          padding:12px;
+          margin-top:10px;
+          border-radius:12px;
+          cursor:pointer;
+          color:#cbd5e1;
+          background:transparent;
+          border:1px solid rgba(148,163,184,.2);
+        "
+      >
+        Disconnect
+      </button>
+    </div>
+  `;
+
+  modal.style.display = "flex";
+
+  document.getElementById("btnCancelProfile").onclick = () => {
+    modal.style.display = "none";
+
+    localStorage.removeItem("currentUser");
+    localStorage.removeItem("currentWorkspace");
+
+    appKit?.disconnect?.();
+  };
+
+  document.getElementById("btnCreateProfile").onclick =
+    async () => {
+      const button =
+        document.getElementById("btnCreateProfile");
+
+      const errorEl =
+        document.getElementById("profileModalError");
+
+      const fullName = String(
+        document.getElementById("profileFullName")?.value || ""
+      ).trim();
+
+      const email = String(
+        document.getElementById("profileEmail")?.value || ""
+      )
+        .trim()
+        .toLowerCase();
+
+      const accountType = String(
+        document.getElementById("profileAccountType")?.value ||
+          "PERSONAL"
+      )
+        .trim()
+        .toUpperCase();
+
+      errorEl.style.display = "none";
+      errorEl.textContent = "";
+
+      if (!fullName) {
+        errorEl.textContent = "Full name is required.";
+        errorEl.style.display = "block";
+        return;
+      }
+
+      try {
+        button.disabled = true;
+        button.textContent = "Creating Profile...";
+
+        const data = await api("/api/users", {
+          method: "POST",
+          body: JSON.stringify({
+            fullName,
+            email,
+            accountType,
+            walletAddress
+          })
+        });
+
+        localStorage.setItem(
+          "currentUser",
+          JSON.stringify(data.user)
+        );
+
+        localStorage.setItem(
+          "currentWorkspace",
+          JSON.stringify(data.workspace)
+        );
+
+const shouldReturnToInvoice =
+  Boolean(
+    localStorage.getItem("invoiceReturnPath")
+  );
+
+await loadUserWorkspaces(walletAddress);
+
+if (shouldReturnToInvoice) {
+  await restoreInvoiceAfterConnect();
+}
+
+modal.style.display = "none";
+
+setStatus(
+  "TROR profile created successfully.",
+  "success"
+);
+
+if (!shouldReturnToInvoice) {
+  showTab("dashboard");
+  updateTopbarTitle("dashboard");
+  window.location.hash = "dashboard";
+}
+
+      } catch (err) {
+        console.error("Create profile error:", err);
+
+        errorEl.textContent =
+          err.message || "Failed to create profile.";
+
+        errorEl.style.display = "block";
+      } finally {
+        button.disabled = false;
+        button.textContent = "Create Profile";
+      }
+    };
 }
 
 /* =========================
@@ -630,7 +1047,7 @@ function formatUsdc(value) {
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
-    .replace(/<>/g, "&lt;")
+    .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
@@ -658,19 +1075,129 @@ function toTokenUnits(amount, decimals) {
    CUSTOMER
 ========================= */
 
+function getCurrentWorkspace() {
+  try {
+    return JSON.parse(
+      localStorage.getItem("currentWorkspace") || "null"
+    );
+  } catch {
+    return null;
+  }
+}
+
+function getCustomerStorageKey() {
+  const workspace = getCurrentWorkspace();
+
+  if (!workspace?.id) {
+    return null;
+  }
+
+  return `customers:${workspace.id}`;
+}
+
+function getWorkspaceCustomers() {
+  const storageKey = getCustomerStorageKey();
+
+  if (!storageKey) {
+    return [];
+  }
+
+  try {
+    return JSON.parse(
+      localStorage.getItem(storageKey) || "[]"
+    );
+  } catch {
+    return [];
+  }
+}
+
+function saveWorkspaceCustomers(customers) {
+  const storageKey = getCustomerStorageKey();
+
+  if (!storageKey) {
+    throw new Error("Please select a workspace first.");
+  }
+
+  localStorage.setItem(
+    storageKey,
+    JSON.stringify(customers)
+  );
+}
+
 function saveCustomer() {
-  const customer = {
-    name: custNameEl.value,
-    email: custEmailEl.value,
-    wallet: custWalletEl.value
-  };
+  try {
+    const currentWorkspace = getCurrentWorkspace();
 
-  const list = JSON.parse(localStorage.getItem("customers") || "[]");
-  list.push(customer);
-  localStorage.setItem("customers", JSON.stringify(list));
+    if (!currentWorkspace?.id) {
+      setStatus(
+        "Please select a workspace first.",
+        "error"
+      );
+      return;
+    }
 
-  renderCustomerDropdown();
-  setStatus("Customer saved.", "success");
+    const customer = {
+      id:
+        globalThis.crypto?.randomUUID?.() ||
+        `cust_${Date.now()}`,
+
+      name: String(custNameEl?.value || "").trim(),
+
+      email: String(custEmailEl?.value || "")
+        .trim()
+        .toLowerCase(),
+
+      wallet: String(custWalletEl?.value || "")
+        .trim(),
+
+      workspaceId: currentWorkspace.id,
+
+      createdAt: new Date().toISOString()
+    };
+
+    if (!customer.name) {
+      setStatus(
+        "Customer name is required.",
+        "error"
+      );
+      return;
+    }
+
+    if (
+      customer.wallet &&
+      !/^0x[a-fA-F0-9]{40}$/.test(customer.wallet)
+    ) {
+      setStatus(
+        "Customer wallet address is invalid.",
+        "error"
+      );
+      return;
+    }
+
+    const customers = getWorkspaceCustomers();
+
+    customers.push(customer);
+
+    saveWorkspaceCustomers(customers);
+
+    if (custNameEl) custNameEl.value = "";
+    if (custEmailEl) custEmailEl.value = "";
+    if (custWalletEl) custWalletEl.value = "";
+
+    renderCustomerDropdown();
+
+    setStatus(
+      `Customer saved to ${currentWorkspace.workspace_name}.`,
+      "success"
+    );
+  } catch (err) {
+    console.error("Save customer error:", err);
+
+    setStatus(
+      "Save customer failed: " + err.message,
+      "error"
+    );
+  }
 }
 
 /* =========================
@@ -679,42 +1206,205 @@ function saveCustomer() {
 
 async function sendClaimEmail() {
   try {
-    const data = await api("/api/claims/send-email", {
-      method: "POST",
-      body: JSON.stringify({
-        recipientEmail: claimEmailEl.value,
-        amount: claimAmountEl.value,
-        message: claimMessageEl.value
-      })
+    const currentWorkspace = getCurrentWorkspace();
+
+if (!currentWorkspace?.id) {
+  setStatus(
+    "Please select a workspace first.",
+    "error"
+  );
+  return;
+}
+
+    const recipientEmail = claimEmailEl.value.trim().toLowerCase();
+    const amount = claimAmountEl.value;
+    const memo = claimMessageEl.value || "";
+
+    if (!recipientEmail || !amount) {
+      setStatus("Please enter recipient email and amount.", "error");
+      return;
+    }
+
+    const config = wagmiAdapter.wagmiConfig;
+    const account = getAccount(config);
+
+    if (!account.isConnected || !account.address) {
+      setStatus("Please connect a Web3 wallet first.", "error");
+      await openAppKitWallet();
+      return;
+    }
+
+    setStatus("Preparing Gmail Claim on-chain...");
+
+    const amountUnits = ethers.parseUnits(String(amount), 6);
+
+    const emailHash = ethers.keccak256(
+      ethers.toUtf8Bytes(recipientEmail)
+    );
+
+    const expiresAt =
+      Math.floor(Date.now() / 1000) +
+      30 * 24 * 60 * 60;
+
+    setStatus("Approving USDC for Claim contract...");
+
+    const approveHash = await writeContract(config, {
+      address: USDC_TOKEN,
+      abi: ERC20_ABI,
+      functionName: "approve",
+      args: [
+        CLAIM_CONTRACT_ADDRESS,
+        amountUnits
+      ],
+      account: account.address,
+      chainId: 5042002
     });
+
+    await waitForTransactionReceipt(config, {
+      hash: approveHash
+    });
+
+    setStatus("Creating Gmail Claim on-chain...");
+
+const CREATE_CLAIM_ABI = [
+  {
+    type: "function",
+    name: "createClaim",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "emailHash", type: "bytes32" },
+      { name: "amount", type: "uint256" },
+      { name: "memo", type: "string" },
+      { name: "expiresAt", type: "uint256" }
+    ],
+    outputs: [
+      { name: "", type: "uint256" }
+    ]
+  }
+];
+
+    const createHash = await writeContract(config, {
+      address: CLAIM_CONTRACT_ADDRESS,
+      abi: CREATE_CLAIM_ABI,
+      functionName: "createClaim",
+      args: [
+        emailHash,
+        amountUnits,
+        memo,
+        BigInt(expiresAt)
+      ],
+      account: account.address,
+      chainId: 5042002
+    });
+
+    const receipt = await waitForTransactionReceipt(config, {
+      hash: createHash
+    });
+
+    let onchainClaimId = null;
+
+    const claimInterface = new ethers.Interface([
+  "event ClaimCreated(uint256 indexed claimId, address indexed sender, bytes32 indexed emailHash, uint256 amount, string memo, uint256 expiresAt)"
+]);
+
+    for (const log of receipt.logs || []) {
+      try {
+        const parsed = claimInterface.parseLog({
+          topics: log.topics,
+          data: log.data
+        });
+
+        if (
+          parsed &&
+          parsed.name === "ClaimCreated"
+        ) {
+          onchainClaimId =
+            parsed.args.claimId.toString();
+
+          break;
+        }
+      } catch {}
+    }
+
+    if (!onchainClaimId) {
+      throw new Error(
+        "Could not read on-chain claimId."
+      );
+    }
+
+    const data = await api(
+      "/api/claims/send-email",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          claimId: onchainClaimId,
+          recipientEmail,
+          amount,
+          message: memo,
+          txHash: createHash,
+          workspaceId: currentWorkspace.id
+        })
+      }
+    );
 
     claimResultEl.innerHTML = `
       <div style="margin-bottom:12px;">
-        Status: <span id="claimStatus">PENDING</span>
+        Status:
+        <span id="claimStatus">PENDING</span>
       </div>
+
       <div style="margin-bottom:12px;">
-        <a href="${data.claimLink}" target="_blank" style="color:#67e8f9;font-weight:bold;">
+        <a
+          href="${data.claimLink}"
+          target="_blank"
+          style="color:#67e8f9;font-weight:bold;"
+        >
           Open Claim Page
         </a>
       </div>
-      <div style="word-break:break-all;">${data.claimLink}</div>
-      <div id="claimInfo" style="margin-top:12px;"></div>
+
+      <div style="word-break:break-all;">
+        ${data.claimLink}
+      </div>
+
+      <div
+        id="claimInfo"
+        style="margin-top:12px;"
+      ></div>
     `;
 
-    const claimId = data.claimId;
+await loadWorkspaceClaims();
 
-    // Poll claim status every 5 seconds
     setInterval(async () => {
       try {
-        const res = await fetch(`/api/claims/${claimId}`);
+        const res = await fetch(
+          `/api/claims/${onchainClaimId}`
+        );
+
         const claim = await res.json();
 
         if (claim.status === "CLAIMED") {
-          document.getElementById("claimStatus").innerHTML = "CLAIMED ✅";
-          document.getElementById("claimInfo").innerHTML = `
-            <div>Wallet: ${claim.walletAddress || "-"}</div>
-            <div>Tx: ${claim.txHash || "-"}</div>
-            <div>Claimed At: ${claim.claimedAt || "-"}</div>
+          document.getElementById(
+            "claimStatus"
+          ).innerHTML = "CLAIMED ✅";
+
+          document.getElementById(
+            "claimInfo"
+          ).innerHTML = `
+            <div>
+              Wallet:
+              ${claim.walletAddress || "-"}
+            </div>
+
+            <div>
+              Tx:
+              ${claim.txHash || "-"}
+            </div>
+
+            <div>
+              Claimed At:
+              ${claim.claimedAt || "-"}
+            </div>
           `;
         }
       } catch (err) {
@@ -722,13 +1412,182 @@ async function sendClaimEmail() {
       }
     }, 5000);
 
-    document.getElementById("btnCardPayment")?.addEventListener("click", () => {
-      alert("Visa/Mastercard flow coming soon");
+    document.getElementById(
+      "btnCardPayment"
+    )?.addEventListener("click", () => {
+      alert(
+        "Visa/Mastercard flow coming soon"
+      );
     });
 
-    setStatus("Claim email sent.", "success");
+    setStatus(
+      "Claim email sent.",
+      "success"
+    );
   } catch (err) {
-    setStatus("Send claim email failed: " + err.message, "error");
+    console.error("Send claim error:", err);
+
+    setStatus(
+      "Send claim email failed: " +
+      (err.message || String(err)),
+      "error"
+    );
+  }
+}
+
+function getClaimHistoryElement() {
+  let claimHistoryEl =
+    document.getElementById("claimHistory");
+
+  if (claimHistoryEl) {
+    return claimHistoryEl;
+  }
+
+  claimHistoryEl = document.createElement("div");
+  claimHistoryEl.id = "claimHistory";
+
+  claimHistoryEl.style.cssText = `
+    margin-top: 20px;
+    padding: 18px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 18px;
+    background: rgba(15, 23, 42, 0.36);
+  `;
+
+  claimHistoryEl.innerHTML = `
+    <h3 style="margin:0 0 14px;">
+      Claim History
+    </h3>
+
+    <div id="claimHistoryList">
+      No claims yet.
+    </div>
+  `;
+
+  if (claimResultEl?.parentElement) {
+    claimResultEl.parentElement.appendChild(
+      claimHistoryEl
+    );
+  }
+
+  return claimHistoryEl;
+}
+
+async function loadWorkspaceClaims() {
+  try {
+    const currentWorkspace =
+      getCurrentWorkspace();
+
+    const claimHistoryEl =
+      getClaimHistoryElement();
+
+    const claimHistoryList =
+      claimHistoryEl?.querySelector(
+        "#claimHistoryList"
+      );
+
+    if (!claimHistoryList) {
+      return [];
+    }
+
+    if (!currentWorkspace?.id) {
+      claimHistoryList.innerHTML =
+        `<div>Please select a workspace.</div>`;
+
+      return [];
+    }
+
+    claimHistoryList.innerHTML =
+      `<div>Loading claims...</div>`;
+
+    const data = await api(
+      "/api/claims?workspaceId=" +
+        encodeURIComponent(currentWorkspace.id)
+    );
+
+    const claims = data.claims || [];
+
+    if (!claims.length) {
+      claimHistoryList.innerHTML =
+        `<div>No claims yet.</div>`;
+
+      return [];
+    }
+
+    claimHistoryList.innerHTML = "";
+
+    claims.forEach((claim) => {
+      const card = document.createElement("div");
+
+      card.style.cssText = `
+        padding: 14px;
+        margin-bottom: 10px;
+        border: 1px solid rgba(148,163,184,.25);
+        border-radius: 14px;
+        background: rgba(2,6,23,.42);
+      `;
+
+      const createdAt = claim.createdAt
+        ? new Date(claim.createdAt)
+            .toLocaleString()
+        : "-";
+
+      card.innerHTML = `
+        <div>
+          <b>${escapeHtml(
+            claim.recipientEmail || ""
+          )}</b>
+        </div>
+
+        <div>
+          ${Number(claim.amount || 0)} USDC
+        </div>
+
+        <div>
+          Status:
+          <b>${escapeHtml(
+            claim.status || "PENDING"
+          )}</b>
+        </div>
+
+        <div>
+          Created: ${escapeHtml(createdAt)}
+        </div>
+
+        <div style="margin-top:8px;">
+          <a
+            href="/claim/${encodeURIComponent(
+              claim.id
+            )}"
+            target="_blank"
+            style="color:#67e8f9;"
+          >
+            Open Claim
+          </a>
+        </div>
+      `;
+
+      claimHistoryList.appendChild(card);
+    });
+
+    return claims;
+  } catch (err) {
+    console.error(
+      "Load workspace claims error:",
+      err
+    );
+
+    const claimHistoryList =
+      document.getElementById(
+        "claimHistoryList"
+      );
+
+    if (claimHistoryList) {
+      claimHistoryList.innerHTML =
+        `<div>Failed to load claims.</div>`;
+    }
+
+    return [];
   }
 }
 
@@ -914,12 +1773,25 @@ async function loadCircleWallet(userToken) {
   }
 
   circleWalletEl.textContent = address;
-  clearWeb3WalletLocal();
-activeWalletType = "circle";
-  setStatus("Circle wallet loaded.", "success");
-  document.getElementById("btnSetupPin")?.classList.add("hidden");
 
-  return { wallet, address };
+clearWeb3WalletLocal();
+
+activeWalletType = "circle";
+updateWalletChip(address, null);
+
+const hasProfile = await checkUserProfile(address);
+
+if (!hasProfile) {
+  return null;
+}
+
+setStatus("Circle wallet and workspace loaded.", "success");
+
+document
+  .getElementById("btnSetupPin")
+  ?.classList.add("hidden");
+
+return { wallet, address };
 }
 
 // Find USDC token in Circle wallet balances
@@ -967,6 +1839,58 @@ async function findUsdcToken(userToken, walletId) {
 /* =========================
    GOOGLE + CIRCLE LOGIN
 ========================= */
+
+function saveInvoiceReturnPath() {
+  const invoiceId =
+    new URLSearchParams(
+      window.location.search
+    ).get("invoice");
+
+  if (!invoiceId) return;
+
+  localStorage.setItem(
+    "invoiceReturnPath",
+    `/app.html?invoice=${encodeURIComponent(
+      invoiceId
+    )}`
+  );
+}
+
+async function restoreInvoiceAfterConnect() {
+  const savedPath =
+    localStorage.getItem("invoiceReturnPath");
+
+  const savedUrl = savedPath
+    ? new URL(savedPath, window.location.origin)
+    : null;
+
+  const invoiceId =
+    new URLSearchParams(
+      window.location.search
+    ).get("invoice") ||
+    savedUrl?.searchParams.get("invoice");
+
+  if (!invoiceId) return;
+
+  window.history.replaceState(
+    null,
+    "",
+    `/app.html?invoice=${encodeURIComponent(
+      invoiceId
+    )}`
+  );
+
+  await openInvoice(invoiceId);
+
+  showTab("invoices");
+  updateTopbarTitle("invoices");
+
+  window.location.hash = "invoices";
+
+  localStorage.removeItem(
+    "invoiceReturnPath"
+  );
+}
 
 async function connectGoogleCircle() {
   const cfg = await api("/api/circle/config");
@@ -1017,9 +1941,20 @@ async function handleGoogleRedirect() {
   }
 
   localStorage.setItem("googleUser", JSON.stringify(user));
-  emailEl.textContent = user.email;
 
-  window.history.replaceState(null, "", "/app.html");
+if (emailEl) {
+  emailEl.textContent = user.email;
+}
+
+const claimReturnPath = localStorage.getItem("claimReturnPath");
+
+if (claimReturnPath) {
+  localStorage.removeItem("claimReturnPath");
+  window.location.href = claimReturnPath;
+  return;
+}
+
+window.history.replaceState(null, "", "/app.html");
   setStatus("Google login success. Preparing Circle user...");
 
   try {
@@ -1035,10 +1970,16 @@ async function handleGoogleRedirect() {
   setStatus("Circle user ready. Click Setup Circle PIN.", "success");
 
   try {
-    await loadCircleWallet(userToken);
-  } catch {}
-}
+  await loadCircleWallet(userToken);
 
+  await restoreInvoiceAfterConnect();
+} catch (err) {
+  console.warn(
+    "Load Circle wallet warning:",
+    err
+  );
+}
+}
 // Setup Circle PIN and create wallet
 async function setupCirclePin() {
   try {
@@ -1097,11 +2038,28 @@ async function setupCirclePin() {
         console.log("Wallet response:", walletData);
 
         const address = extractWalletAddress(walletData);
-        if (address) {
-          circleWalletEl.textContent = address;
-          setStatus("Circle wallet created.", "success");
-          return;
-        }
+
+if (address) {
+  circleWalletEl.textContent = address;
+
+  clearWeb3WalletLocal();
+
+  activeWalletType = "circle";
+  updateWalletChip(address, null);
+
+  const hasProfile = await checkUserProfile(address);
+
+  if (!hasProfile) {
+    return;
+  }
+
+  setStatus(
+    "Circle wallet and workspace created.",
+    "success"
+  );
+
+  return;
+}
 
         await loadCircleWallet(userToken);
       } catch (err) {
@@ -1124,6 +2082,24 @@ async function setupCirclePin() {
 
 async function createInvoice() {
   console.log("CREATE INVOICE CLICKED");
+
+let currentWorkspace = null;
+
+try {
+  currentWorkspace = JSON.parse(
+    localStorage.getItem("currentWorkspace") || "null"
+  );
+} catch {
+  currentWorkspace = null;
+}
+
+if (!currentWorkspace?.id) {
+  setStatus(
+    "Please select a workspace first.",
+    "error"
+  );
+  return;
+}
 
   try {
     const appKitAccount = getAccount(wagmiAdapter.wagmiConfig);
@@ -1155,13 +2131,29 @@ async function createInvoice() {
       recipientAddress,
       targetChain: "Arc",
       note: noteEl.value,
+      workspaceId: currentWorkspace.id,
     };
 
     // =========================
     // CASE 1: MetaMask create invoice
     // =========================
     if (metamaskWallet && window.ethereum) {
-      const provider = new ethers.BrowserProvider(window.ethereum);
+  setStatus("Checking Arc Testnet network...");
+
+  await switchArc();
+
+  const activeChainId = await window.ethereum.request({
+    method: "eth_chainId",
+  });
+
+  if (
+    String(activeChainId).toLowerCase() !==
+    String(ARC_CHAIN_HEX).toLowerCase()
+  ) {
+    throw new Error("Please switch your wallet to Arc Testnet.");
+  }
+
+  const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
 
       const contract = new ethers.Contract(
@@ -1336,32 +2328,132 @@ else if (appKitWallet) {
 }
 
 async function saveBusinessProfile() {
-  const body = {
-    name: bizNameEl.value,
-    email: bizEmailEl.value,
-    wallet: bizWalletEl.value
-  };
-  localStorage.setItem("businessProfile", JSON.stringify(body));
-  setStatus("Business profile saved.", "success");
+  try {
+    const currentWorkspace = JSON.parse(
+      localStorage.getItem("currentWorkspace") || "null"
+    );
+
+    if (!currentWorkspace?.id) {
+      setStatus(
+        "Please select a workspace first.",
+        "error"
+      );
+      return;
+    }
+
+    const body = {
+      workspaceId: currentWorkspace.id,
+      name: String(bizNameEl.value || "").trim(),
+      email: String(bizEmailEl.value || "")
+        .trim()
+        .toLowerCase(),
+      wallet: String(bizWalletEl.value || "").trim()
+    };
+
+    const data = await api("/api/business-profile", {
+      method: "POST",
+      body: JSON.stringify(body)
+    });
+
+    setStatus(
+      data.message || "Business profile saved.",
+      "success"
+    );
+  } catch (err) {
+    console.error(
+      "Save business profile error:",
+      err
+    );
+
+    setStatus(
+      err.message || "Business profile save failed.",
+      "error"
+    );
+  }
+}
+
+async function loadBusinessProfile() {
+  try {
+    const currentWorkspace = JSON.parse(
+      localStorage.getItem("currentWorkspace") || "null"
+    );
+
+    if (!currentWorkspace?.id) {
+      bizNameEl.value = "";
+      bizEmailEl.value = "";
+      bizWalletEl.value = "";
+      return;
+    }
+
+    const data = await api(
+      `/api/business-profile?workspaceId=${encodeURIComponent(
+        currentWorkspace.id
+      )}`
+    );
+
+    const profile = data.profile || null;
+
+    bizNameEl.value = profile?.name || "";
+    bizEmailEl.value = profile?.email || "";
+    bizWalletEl.value = profile?.wallet || "";
+  } catch (err) {
+    console.error(
+      "Load business profile error:",
+      err
+    );
+
+    bizNameEl.value = "";
+    bizEmailEl.value = "";
+    bizWalletEl.value = "";
+  }
 }
 
 function renderCustomerDropdown() {
   if (!customerSelectEl) return;
 
-  const customers = JSON.parse(localStorage.getItem("customers") || "[]");
-  customerSelectEl.innerHTML = `<option value="">-- Choose customer --</option>`;
+  const customers = getWorkspaceCustomers();
 
-  customers.forEach((c, index) => {
+  customerSelectEl.innerHTML =
+    `<option value="">-- Choose customer --</option>`;
+
+  customers.forEach((customer) => {
     const option = document.createElement("option");
-    option.value = index;
-    option.textContent = `${c.name || "Customer"} (${c.wallet?.slice(0, 6) || "no wallet"}...)`;
+
+    option.value = customer.id;
+
+    const walletPreview = customer.wallet
+      ? `${customer.wallet.slice(0, 6)}...${customer.wallet.slice(-4)}`
+      : "no wallet";
+
+    option.textContent =
+      `${customer.name || "Customer"} (${walletPreview})`;
+
     customerSelectEl.appendChild(option);
   });
 }
 
 async function loadInvoices() {
   try {
-    const data = await api("/api/invoices");
+    let currentWorkspace = null;
+
+try {
+  currentWorkspace = JSON.parse(
+    localStorage.getItem("currentWorkspace") || "null"
+  );
+} catch {
+  currentWorkspace = null;
+}
+
+if (!currentWorkspace?.id) {
+  invoiceListEl.innerHTML =
+    `<div class="box">Select a workspace to view invoices.</div>`;
+  return;
+}
+
+const data = await api(
+  "/api/invoices?workspaceId=" +
+    encodeURIComponent(currentWorkspace.id)
+);
     const invoices = data.invoices || [];
 
     invoiceListEl.innerHTML = "";
@@ -1582,6 +2674,325 @@ ${selectedInvoice.paymentMemo ? `
    METAMASK PAYMENT
 ========================= */
 
+function isInvoicePaymentMode() {
+  const invoiceId =
+    new URLSearchParams(
+      window.location.search
+    ).get("invoice");
+
+  const savedReturnPath =
+    localStorage.getItem("invoiceReturnPath");
+
+  return Boolean(
+    invoiceId || savedReturnPath
+  );
+}
+
+async function checkUserProfile(walletAddress) {
+
+  if (isInvoicePaymentMode()) {
+    await restoreInvoiceAfterConnect();
+
+    setStatus(
+      "Wallet connected. Ready to pay invoice.",
+      "success"
+    );
+
+    return true;
+  }
+
+console.log("CHECK PROFILE WALLET:", walletAddress);
+
+  try {
+    const response = await fetch(
+      `${API_BASE}/api/users/${encodeURIComponent(
+        walletAddress.toLowerCase()
+      )}`
+    );
+
+    const data = await response.json().catch(() => ({}));
+
+    console.log("PROFILE RESPONSE:", data);
+
+    if (response.status === 404 || data.exists === false) {
+      localStorage.removeItem("currentUser");
+      localStorage.removeItem("currentWorkspace");
+
+      openCreateProfileModal(walletAddress);
+
+return false;
+
+      return false;
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        data.error || "Failed to check user profile."
+      );
+    }
+
+    localStorage.setItem(
+  "currentUser",
+  JSON.stringify(data.user)
+);
+
+await loadUserWorkspaces(walletAddress);
+
+await restoreInvoiceAfterConnect();
+
+return true;
+
+  } catch (err) {
+    console.error("Check user profile error:", err);
+
+    setStatus(
+      "Profile check failed: " + err.message,
+      "error"
+    );
+
+    return false;
+  }
+}
+
+async function loadUserWorkspaces(walletAddress) {
+console.log("LOADING WORKSPACES FOR:", walletAddress);
+
+  const data = await api(
+    "/api/workspaces/" +
+      encodeURIComponent(walletAddress.toLowerCase())
+  );
+
+  const workspaces = data.workspaces || [];
+
+  localStorage.setItem(
+    "userWorkspaces",
+    JSON.stringify(workspaces)
+  );
+
+  let currentWorkspace = null;
+
+  try {
+    currentWorkspace = JSON.parse(
+      localStorage.getItem("currentWorkspace") || "null"
+    );
+  } catch {
+    currentWorkspace = null;
+  }
+
+  const stillExists = workspaces.find(
+    (workspace) =>
+      workspace.id === currentWorkspace?.id
+  );
+
+  if (!stillExists && workspaces.length > 0) {
+    currentWorkspace = workspaces[0];
+
+    localStorage.setItem(
+      "currentWorkspace",
+      JSON.stringify(currentWorkspace)
+    );
+  }
+
+  renderWorkspaceSwitcher(workspaces, currentWorkspace);
+
+  return workspaces;
+}
+
+async function createBusinessWorkspace() {
+  const wallet =
+    metamaskWallet ||
+    currentUser?.primary_wallet_address;
+
+  if (!wallet) {
+    alert("Connect wallet first.");
+    return;
+  }
+
+  const workspaceName = prompt(
+    "Business workspace name:"
+  );
+
+  if (!workspaceName) return;
+
+  try {
+    const data = await api("/api/workspaces", {
+      method: "POST",
+      body: JSON.stringify({
+        walletAddress: wallet,
+        workspaceName,
+      }),
+    });
+
+    localStorage.setItem(
+    "currentWorkspace",
+    JSON.stringify(data.workspace)
+);
+
+await loadUserWorkspaces(wallet);
+
+alert("Business workspace created.");
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+function renderWorkspaceSwitcher(
+  workspaces,
+  currentWorkspace
+) {
+console.log(
+    "RENDER WORKSPACE SWITCHER:",
+    workspaces,
+    currentWorkspace
+  );
+
+  let switcher = document.getElementById(
+    "workspaceSwitcher"
+  );
+
+let createBtn = document.getElementById("createBusinessWorkspaceBtn");
+
+if (!createBtn) {
+  createBtn = document.createElement("button");
+  createBtn.id = "createBusinessWorkspaceBtn";
+  createBtn.textContent = "+ Business";
+
+  createBtn.style.cssText = `
+    margin-left:8px;
+    padding:10px 14px;
+    border-radius:12px;
+    border:none;
+    cursor:pointer;
+    font-weight:700;
+    background:#facc15;
+    color:#111827;
+  `;
+
+  createBtn.onclick = createBusinessWorkspace;
+}
+
+  if (!switcher) {
+    switcher = document.createElement("select");
+    switcher.id = "workspaceSwitcher";
+
+    switcher.style.cssText = `
+  width:210px;
+  max-width:210px;
+  padding:10px 12px;
+  margin-right:10px;
+  border-radius:12px;
+  border:1px solid rgba(250,204,21,.45);
+  color:#f8fafc;
+  background:#0f172a;
+  font-weight:700;
+  cursor:pointer;
+  position:relative;
+  z-index:10000;
+  flex-shrink:0;
+`;
+
+    const walletChip =
+  document.getElementById("walletChip");
+
+const connectButton =
+  document.getElementById("btnConnectWallet");
+
+const targetElement =
+  walletChip || connectButton;
+
+if (targetElement?.parentElement) {
+  targetElement.parentElement.insertBefore(
+    switcher,
+    targetElement
+  );
+
+targetElement.parentElement.insertBefore(
+    createBtn,
+    targetElement.nextSibling
+);
+
+} else {
+  document.body.appendChild(switcher);
+
+  switcher.style.position = "fixed";
+  switcher.style.top = "18px";
+  switcher.style.right = "220px";
+  switcher.style.zIndex = "999999";
+}
+  }
+
+  switcher.innerHTML = "";
+
+  workspaces.forEach((workspace) => {
+    const option = document.createElement("option");
+
+    option.value = workspace.id;
+    option.textContent =
+      workspace.workspace_type === "BUSINESS"
+        ? `🏢 ${workspace.workspace_name}`
+        : `👤 ${workspace.workspace_name}`;
+
+    if (workspace.id === currentWorkspace?.id) {
+      option.selected = true;
+    }
+
+    switcher.appendChild(option);
+  });
+
+  switcher.onchange = () => {
+    const selectedWorkspace = workspaces.find(
+      (workspace) =>
+        workspace.id === switcher.value
+    );
+
+    if (!selectedWorkspace) return;
+
+    localStorage.setItem(
+      "currentWorkspace",
+      JSON.stringify(selectedWorkspace)
+    );
+
+selectedInvoice = null;
+
+// Clear the selected invoice and previous QR code
+renderSelectedInvoice();
+
+// Close the invoice popup if it is open
+closeInvoiceSheet();
+
+renderCustomerDropdown();
+
+loadWorkspaceClaims().catch((err) => {
+  console.error(
+    "Reload workspace claims error:",
+    err
+  );
+});
+
+loadInvoices().catch((err) => {
+  console.error("Reload workspace invoices error:", err);
+});
+
+loadEmployees().catch((err) => {
+  console.error(
+    "Reload workspace employees error:",
+    err
+  );
+});
+
+    setStatus(
+      `Workspace switched to ${selectedWorkspace.workspace_name}.`,
+      "success"
+    );
+
+    window.dispatchEvent(
+      new CustomEvent("workspaceChanged", {
+        detail: selectedWorkspace
+      })
+    );
+  };
+}
+
 async function connectMetaMask() {
   try {
     if (!window.ethereum) {
@@ -1596,7 +3007,13 @@ async function connectMetaMask() {
     // Update topbar wallet chip
     updateWalletChip(metamaskWallet, null);
     clearCircleWalletLocal();
-activeWalletType = "web3";
+    activeWalletType = "web3";
+    const hasProfile =
+  await checkUserProfile(metamaskWallet);
+
+  if (!hasProfile) {
+    return;
+  }
     setStatus("Wallet connected.", "success");
   } catch (err) {
     setStatus("MetaMask connect failed: " + err.message, "error");
@@ -1612,37 +3029,66 @@ function disconnectMetaMask() {
   setStatus("MetaMask disconnected locally.", "success");
 }
 
-// Switch to Arc Testnet network
+// Switch to Arc Testnet or add it when missing
 async function switchArc() {
-  try {
-    if (!window.ethereum) {
-      setStatus("Install MetaMask first.", "error");
-      return;
-    }
-
-    try {
-      await window.ethereum.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: ARC_CHAIN_HEX }]
-      });
-    } catch {
-      // Network not added yet — add it
-      await window.ethereum.request({
-        method: "wallet_addEthereumChain",
-        params: [{
-          chainId: ARC_CHAIN_HEX,
-          chainName: ARC_CHAIN_NAME,
-          rpcUrls: [ARC_RPC],
-          nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
-          blockExplorerUrls: [ARC_EXPLORER]
-        }]
-      });
-    }
-
-    setStatus("Switched to Arc.", "success");
-  } catch (err) {
-    setStatus("Switch Arc failed: " + err.message, "error");
+  if (!window.ethereum) {
+    throw new Error("No Web3 wallet detected.");
   }
+
+  const currentChainId = await window.ethereum.request({
+    method: "eth_chainId",
+  });
+
+  // Already on Arc Testnet
+  if (
+    String(currentChainId).toLowerCase() ===
+    String(ARC_CHAIN_HEX).toLowerCase()
+  ) {
+    return true;
+  }
+
+  try {
+    await window.ethereum.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: ARC_CHAIN_HEX }],
+    });
+
+    return true;
+  } catch (switchError) {
+    const errorCode = Number(switchError?.code);
+
+    // 4902 = wallet does not have this network yet
+    if (errorCode !== 4902) {
+      throw switchError;
+    }
+  }
+
+  await window.ethereum.request({
+    method: "wallet_addEthereumChain",
+    params: [
+      {
+        chainId: ARC_CHAIN_HEX,
+        chainName: ARC_CHAIN_NAME,
+
+        nativeCurrency: {
+          name: "USDC",
+          symbol: "USDC",
+          decimals: 18,
+        },
+
+        rpcUrls: [ARC_RPC],
+        blockExplorerUrls: [ARC_EXPLORER],
+      },
+    ],
+  });
+
+  // Some wallets add the network but do not switch automatically
+  await window.ethereum.request({
+    method: "wallet_switchEthereumChain",
+    params: [{ chainId: ARC_CHAIN_HEX }],
+  });
+
+  return true;
 }
 
 async function payWithMetaMask() {
@@ -1698,6 +3144,10 @@ async function payWithMetaMask() {
 
 setStatus("Approving USDC...");
 
+console.log("Invoice amount:", selectedInvoice.amount);
+console.log("USDC decimals:", USDC_DECIMALS);
+console.log("amountUnits:", amountUnits);
+
 await token.methods
   .approve(CONTRACT_ADDRESS, amountUnits)
   .send({
@@ -1750,6 +3200,21 @@ async function payWithArcMemoMetaMask() {
       return;
     }
 
+setStatus("Checking Arc Testnet network...");
+
+await switchArc();
+
+const activeChainId = await window.ethereum.request({
+  method: "eth_chainId",
+});
+
+if (
+  String(activeChainId).toLowerCase() !==
+  String(ARC_CHAIN_HEX).toLowerCase()
+) {
+  throw new Error("Please switch your wallet to Arc Testnet.");
+}
+
 const paymentMemo =
   document.getElementById("paymentMemoInput")?.value?.trim() || "";
 
@@ -1785,7 +3250,7 @@ const paymentMemo =
 
     const amountUnits = ethers.parseUnits(String(selectedInvoice.amount), 6);
 
-    setStatus("Approving USDC for ArcPay contract...");
+    setStatus("Approving USDC for TROR contract...");
 
     const approveTx = await token.approve(CONTRACT_ADDRESS, amountUnits);
     await approveTx.wait();
@@ -1794,14 +3259,16 @@ const paymentMemo =
       BigInt(selectedInvoice.onchainId)
     ]);
 
-    const memoId = ethers.id(`arcpay-invoice-${selectedInvoice.onchainId}`);
+    const memoId = ethers.id(`tror-invoice-${selectedInvoice.onchainId}`);
 
     const memoText =
   paymentMemo !== ""
     ? paymentMemo
-    : `ArcPay invoice payment | invoiceId=${selectedInvoice.id} | onchainId=${selectedInvoice.onchainId} | amount=${selectedInvoice.amount} USDC`;
+    : `TROR invoice payment | invoiceId=${selectedInvoice.id} | onchainId=${selectedInvoice.onchainId} | amount=${selectedInvoice.amount} USDC`;
 
-const memoData = ethers.toUtf8Bytes(memoText);
+const memoData = ethers.hexlify(
+  ethers.toUtf8Bytes(memoText)
+);
 
     setStatus("Paying invoice with Arc Memo...");
 
@@ -1841,6 +3308,20 @@ const paymentMemo =
       return;
     }
 
+setStatus("Switching wallet to Arc Testnet...");
+
+await appKit.switchNetwork(arcTestnet);
+
+const activeAccount = getAccount(wagmiAdapter.wagmiConfig);
+
+if (
+  Number(activeAccount?.chainId) !== ARC_CHAIN_ID
+) {
+  throw new Error(
+    "Please approve switching your wallet to Arc Testnet."
+  );
+}
+
     const recipient =
       selectedInvoice.recipientAddress ||
       selectedInvoice.recipient ||
@@ -1876,14 +3357,16 @@ const payData = invoiceInterface.encodeFunctionData("payInvoice", [
   BigInt(contractInvoiceId),
 ]);
 
-const memoId = ethers.id(`arcpay-invoice-${contractInvoiceId}`);
+const memoId = ethers.id(`tror-invoice-${contractInvoiceId}`);
 
 const memoText =
   paymentMemo !== ""
     ? paymentMemo
-    : `ArcPay invoice payment | invoiceId=${selectedInvoice.id} | onchainId=${contractInvoiceId} | amount=${selectedInvoice.amount} USDC`;
+    : `TROR invoice payment | invoiceId=${selectedInvoice.id} | onchainId=${contractInvoiceId} | amount=${selectedInvoice.amount} USDC`;
 
-const memoData = ethers.toUtf8Bytes(memoText);
+const memoData = ethers.hexlify(
+  ethers.toUtf8Bytes(memoText)
+);
 
 const hash = await writeContract(wagmiAdapter.wagmiConfig, {
   address: MEMO_ADDRESS,
@@ -1918,6 +3401,292 @@ const hash = await writeContract(wagmiAdapter.wagmiConfig, {
 /* =========================
    CIRCLE WALLET PAYMENT
 ========================= */
+
+async function sendClaimWithCircleWallet() {
+  try {
+    const recipientEmail = claimEmailEl.value.trim().toLowerCase();
+    const amount = claimAmountEl.value;
+    const memo = claimMessageEl.value || "";
+
+    if (!recipientEmail || !amount) {
+      setStatus("Please enter recipient email and amount.", "error");
+      return;
+    }
+
+    const cfg = await api("/api/circle/config");
+    const appId = cfg?.config?.circleAppId;
+
+    if (!appId) {
+      setStatus("Missing CIRCLE_APP_ID.", "error");
+      return;
+    }
+
+    const { userToken, encryptionKey } = await getCircleAuth();
+
+    setStatus("Loading Circle wallet...");
+
+    const walletList = await listCircleWallets(userToken);
+    const wallet = extractWallet(walletList);
+    const walletAddress = extractWalletAddress(walletList);
+
+    if (!wallet?.id || !walletAddress) {
+      setStatus("No Circle wallet found.", "error");
+      return;
+    }
+
+    circleWalletEl.textContent = walletAddress;
+
+    const amountUnits = ethers.parseUnits(String(amount), 6);
+    const emailHash = ethers.keccak256(
+      ethers.toUtf8Bytes(recipientEmail)
+    );
+
+    const expiresAt =
+      Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+
+    const usdc = await findUsdcToken(userToken, wallet.id);
+
+    if (
+      !Number.isFinite(usdc.balance) ||
+      usdc.balance < Number(amount)
+    ) {
+      setStatus(
+        `Not enough USDC in Circle wallet. Balance: ${usdc.balance} USDC`,
+        "error"
+      );
+      return;
+    }
+
+    const sdk = new W3SSdk({
+      appSettings: { appId }
+    });
+
+    sdk.setAuthentication({
+      userToken,
+      encryptionKey
+    });
+
+    // STEP 1: Circle approve USDC
+    setStatus("Circle: approving USDC for Claim contract...");
+
+    const approveData = await api(
+      "/api/circle/contract-execution",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          userToken,
+          walletId: wallet.id,
+          contractAddress: USDC_TOKEN,
+          abiFunctionSignature: "approve(address,uint256)",
+          abiParameters: [
+            CLAIM_CONTRACT_ADDRESS,
+            amountUnits.toString()
+          ]
+        })
+      }
+    );
+
+    const approveChallengeId =
+      approveData?.data?.challengeId ||
+      approveData?.challengeId;
+
+    if (!approveChallengeId) {
+      throw new Error("No Circle approve challengeId returned.");
+    }
+
+    await new Promise((resolve, reject) => {
+      sdk.execute(approveChallengeId, (error, result) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve(result);
+      });
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 6000));
+
+    // STEP 2: Circle createClaim
+    setStatus("Circle: creating Gmail Claim on-chain...");
+
+    const createData = await api(
+      "/api/circle/contract-execution",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          userToken,
+          walletId: wallet.id,
+          contractAddress: CLAIM_CONTRACT_ADDRESS,
+          abiFunctionSignature:
+            "createClaim(bytes32,uint256,string,uint256)",
+          abiParameters: [
+            emailHash,
+            amountUnits.toString(),
+            memo,
+            String(expiresAt)
+          ]
+        })
+      }
+    );
+
+    const createChallengeId =
+      createData?.data?.challengeId ||
+      createData?.challengeId;
+
+    if (!createChallengeId) {
+      throw new Error("No Circle createClaim challengeId returned.");
+    }
+
+    await new Promise((resolve, reject) => {
+      sdk.execute(createChallengeId, (error, result) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve(result);
+      });
+    });
+
+    setStatus("Circle Claim approved. Waiting for transaction...");
+
+    let createTxHash = "";
+
+    for (let i = 0; i < 15; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+
+      const txData = await api("/api/circle/transactions", {
+        method: "POST",
+        body: JSON.stringify({ userToken })
+      });
+
+      const transactions =
+        txData?.data?.transactions || [];
+
+      const tx = transactions.find((item) => {
+        const hash =
+          item?.blockchainTxHash ||
+          item?.txHash ||
+          item?.transactionHash ||
+          "";
+
+        const complete =
+          item?.state === "COMPLETE" ||
+          item?.status === "COMPLETE";
+
+        return (
+          item?.operation === "CONTRACT_EXECUTION" &&
+          complete &&
+          hash.startsWith("0x")
+        );
+      });
+
+      createTxHash =
+        tx?.blockchainTxHash ||
+        tx?.txHash ||
+        tx?.transactionHash ||
+        "";
+
+      if (createTxHash) break;
+    }
+
+    if (!createTxHash) {
+      throw new Error(
+        "Circle createClaim was approved, but its transaction hash is not ready."
+      );
+    }
+
+    // Read receipt from Arc RPC
+    setStatus("Reading Circle Claim on-chain...");
+
+    const rpcProvider = new ethers.JsonRpcProvider(
+  import.meta.env.VITE_ARC_RPC_URL ||
+    "https://rpc.testnet.arc.network"
+);
+
+    const receipt =
+      await rpcProvider.waitForTransaction(createTxHash);
+
+    if (!receipt) {
+      throw new Error("Circle Claim receipt not found.");
+    }
+
+    const claimInterface = new ethers.Interface([
+      "event ClaimCreated(uint256 indexed claimId, address indexed sender, bytes32 indexed emailHash, uint256 amount, string memo, uint256 expiresAt)"
+    ]);
+
+    let onchainClaimId = null;
+
+    for (const log of receipt.logs || []) {
+      try {
+        const parsed = claimInterface.parseLog({
+          topics: log.topics,
+          data: log.data
+        });
+
+        if (parsed?.name === "ClaimCreated") {
+          onchainClaimId =
+            parsed.args.claimId.toString();
+          break;
+        }
+      } catch {}
+    }
+
+    if (!onchainClaimId) {
+      throw new Error(
+        "Could not read Circle on-chain claimId."
+      );
+    }
+
+    const data = await api("/api/claims/send-email", {
+      method: "POST",
+      body: JSON.stringify({
+        claimId: onchainClaimId,
+        recipientEmail,
+        amount,
+        message: memo,
+        txHash: createTxHash,
+        workspaceId: currentWorkspace.id
+      })
+    });
+
+    claimResultEl.innerHTML = `
+      <div style="margin-bottom:12px;">
+        Status: <span id="claimStatus">PENDING</span>
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <a
+          href="${data.claimLink}"
+          target="_blank"
+          style="color:#67e8f9;font-weight:bold;"
+        >
+          Open Claim Page
+        </a>
+      </div>
+
+      <div style="word-break:break-all;">
+        ${data.claimLink}
+      </div>
+
+      <div id="claimInfo" style="margin-top:12px;"></div>
+    `;
+
+    setStatus(
+      "Claim email sent with Circle Wallet.",
+      "success"
+    );
+  } catch (err) {
+    console.error("Circle Gmail Claim error:", err);
+
+    setStatus(
+      "Circle Gmail Claim failed: " +
+        (err.message || String(err)),
+      "error"
+    );
+  }
+}
 
 async function payWithCircleWallet() {
   try {
@@ -1980,8 +3749,8 @@ const paymentMemo =
     const sdk = new W3SSdk({ appSettings: { appId } });
     sdk.setAuthentication({ userToken, encryptionKey });
 
-    // STEP 1: approve USDC for ArcPayInvoice contract
-    setStatus("Circle: approving USDC for ArcPay contract...");
+    // STEP 1: approve USDC for TROR invoice contract
+    setStatus("Circle: approving USDC for TROR contract...");
 
     const approveData = await api("/api/circle/contract-execution", {
       method: "POST",
@@ -2032,13 +3801,13 @@ const encodedPayData = invoiceInterface.encodeFunctionData("payInvoice", [
 ]);
 
 const memoId = ethers.id(
-  `arcpay-invoice-${selectedInvoice.onchainId}`
+  `tror-invoice-${selectedInvoice.onchainId}`
 );
 
 const memoText =
   paymentMemo !== ""
     ? paymentMemo
-    : `ArcPay invoice payment | invoiceId=${selectedInvoice.id} | onchainId=${selectedInvoice.onchainId} | amount=${selectedInvoice.amount} USDC`;
+    : `TROR invoice payment | invoiceId=${selectedInvoice.id} | onchainId=${selectedInvoice.onchainId} | amount=${selectedInvoice.amount} USDC`;
 
 const memoData = ethers.hexlify(
   ethers.toUtf8Bytes(memoText)
@@ -2220,7 +3989,19 @@ function shortTx(tx) {
 
 async function loadDashboard() {
   try {
-    const data = await api("/api/dashboard");
+    const currentWorkspace = JSON.parse(
+      localStorage.getItem("currentWorkspace") || "null"
+    );
+
+    if (!currentWorkspace?.id) {
+      return;
+    }
+
+    const data = await api(
+      `/api/dashboard?workspaceId=${encodeURIComponent(
+        currentWorkspace.id
+      )}`
+    );
 
     document.getElementById("dashTotal").innerText = Number(data.totalReceived || 0).toFixed(2) + " USDC";
     document.getElementById("dashPaid").innerText = data.paidCount || 0;
@@ -2284,7 +4065,7 @@ if (ticker) {
   const tickerItems = items.length ? items : [];
 
   ticker.innerHTML = tickerItems.length
-    ? [...tickerItems, ...tickerItems]
+    ? tickerItems
         .map((item) => {
           const text = item.text || "";
           const icon = getActivityIcon(text);
@@ -2323,6 +4104,249 @@ if (ticker) {
    CLAIM PAGE
 ========================= */
 
+async function loadClaimWithdrawalStatus(claimId) {
+  try {
+    const response = await fetch(
+      `/api/withdrawals/claim/${encodeURIComponent(claimId)}`
+    );
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to load withdrawal status");
+    }
+
+    const button = document.getElementById("btnRequestWithdraw");
+    const statusEl = document.getElementById("claimStatus");
+    const bankForm = document.getElementById("bankWithdrawForm");
+
+    const statusOrder = [
+      "PENDING",
+      "REVIEW",
+      "APPROVED",
+      "COMPLETED"
+    ];
+
+    const currentStatusIndex = statusOrder.indexOf(data.status);
+
+const formatStatusTime = (value) => {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleString();
+};
+
+    const timelineSteps = [
+  {
+    status: "PENDING",
+    title: "Withdrawal Requested",
+    description: "Your bank withdrawal request has been submitted.",
+    time: data.created_at
+  },
+  {
+    status: "REVIEW",
+    title: "Under Review",
+    description: "TROR is reviewing your withdrawal request.",
+    time: data.reviewed_at
+  },
+  {
+    status: "APPROVED",
+    title: "Approved",
+    description: "Your withdrawal has been approved for processing.",
+    time: data.approved_at
+  },
+  {
+    status: "COMPLETED",
+    title: "Completed",
+    description: "Your bank withdrawal has been completed.",
+    time: data.completed_at
+  }
+];
+
+    if (button) {
+      button.disabled = true;
+
+      if (data.status === "PENDING") {
+        button.textContent = "Withdrawal Requested";
+      } else if (data.status === "REVIEW") {
+        button.textContent = "Under Review";
+      } else if (data.status === "APPROVED") {
+        button.textContent = "Withdrawal Approved";
+      } else if (data.status === "COMPLETED") {
+        button.textContent = "Withdrawal Completed";
+      } else if (data.status === "REJECTED") {
+        button.textContent = "Withdrawal Rejected";
+      }
+    }
+
+    if (data.status === "COMPLETED" && bankForm) {
+      bankForm.style.display = "none";
+    }
+
+    if (statusEl) {
+      if (data.status === "REJECTED") {
+        statusEl.innerHTML = `
+          <div style="
+            padding:16px;
+            border-radius:12px;
+            background:rgba(239,68,68,0.12);
+            border:1px solid rgba(239,68,68,0.35);
+            color:#fca5a5;
+            font-weight:700;
+          ">
+            ❌ Your bank withdrawal request was rejected.
+          </div>
+        `;
+      } else {
+        statusEl.innerHTML = `
+          <div style="
+            margin-top:16px;
+            padding:18px;
+            border-radius:16px;
+            background:rgba(15,23,42,0.72);
+            border:1px solid rgba(148,163,184,0.18);
+          ">
+            <div style="
+              font-size:16px;
+              font-weight:800;
+              margin-bottom:16px;
+              color:#ffffff;
+            ">
+              Bank withdrawal progress
+            </div>
+
+            ${timelineSteps
+              .map((step, index) => {
+                const isCompleted =
+                  currentStatusIndex >= index &&
+                  currentStatusIndex !== -1;
+
+                const isCurrent =
+                  data.status === step.status;
+
+                return `
+                  <div style="
+                    display:flex;
+                    gap:12px;
+                    position:relative;
+                    padding-bottom:${index === timelineSteps.length - 1 ? "0" : "18px"};
+                  ">
+                    <div style="
+                      display:flex;
+                      flex-direction:column;
+                      align-items:center;
+                    ">
+                      <div style="
+                        width:28px;
+                        height:28px;
+                        border-radius:50%;
+                        display:flex;
+                        align-items:center;
+                        justify-content:center;
+                        font-weight:800;
+                        background:${
+                          isCompleted
+                            ? "rgba(34,197,94,0.2)"
+                            : "rgba(148,163,184,0.12)"
+                        };
+                        border:1px solid ${
+                          isCompleted
+                            ? "rgba(34,197,94,0.55)"
+                            : "rgba(148,163,184,0.22)"
+                        };
+                        color:${
+                          isCompleted
+                            ? "#86efac"
+                            : "#64748b"
+                        };
+                      ">
+                        ${isCompleted ? "✓" : index + 1}
+                      </div>
+
+                      ${
+                        index !== timelineSteps.length - 1
+                          ? `
+                            <div style="
+                              width:2px;
+                              flex:1;
+                              min-height:34px;
+                              background:${
+                                currentStatusIndex > index
+                                  ? "rgba(34,197,94,0.45)"
+                                  : "rgba(148,163,184,0.18)"
+                              };
+                              margin-top:4px;
+                            "></div>
+                          `
+                          : ""
+                      }
+                    </div>
+
+                    <div style="padding-top:3px;">
+                      <div style="
+                        font-weight:800;
+                        color:${
+                          isCurrent
+                            ? "#ffffff"
+                            : isCompleted
+                            ? "#cbd5e1"
+                            : "#64748b"
+                        };
+                      ">
+                        ${step.title}
+                      </div>
+
+                      <div style="
+                        margin-top:4px;
+                        font-size:13px;
+                        line-height:1.45;
+                        color:${
+                          isCompleted
+                            ? "#94a3b8"
+                            : "#475569"
+                        };
+                      ">
+                        ${step.description}
+                        ${
+  step.time
+    ? `
+      <div style="
+        margin-top:5px;
+        font-size:12px;
+        color:#94a3b8;
+      ">
+        ${formatStatusTime(step.time)}
+      </div>
+    `
+    : ""
+}
+                      </div>
+                    </div>
+                  </div>
+                `;
+              })
+              .join("")}
+          </div>
+        `;
+      }
+    }
+
+    return data;
+  } catch (err) {
+    console.error("Load withdrawal status error:", err);
+    return null;
+  }
+}
+
 async function loadClaimPage() {
   const path = window.location.pathname;
 
@@ -2331,114 +4355,571 @@ async function loadClaimPage() {
   if (path.startsWith("/claim/")) {
     claimId = path.split("/claim/")[1]?.split("?")[0];
   } else {
-    claimId = new URLSearchParams(window.location.search).get("claim");
+    claimId = new URLSearchParams(
+      window.location.search
+    ).get("claim");
   }
 
   if (!claimId) return;
 
+  let claimData = null;
+  let googleVerified = false;
+
   document.body.innerHTML = `
-    <div style="padding:40px;max-width:500px;margin:auto;color:white;font-family:sans-serif;">
-      <h2>Claim your USDC</h2>
+    <div
+      style="
+        padding:40px 20px;
+        max-width:560px;
+        margin:auto;
+        color:white;
+        font-family:sans-serif;
+      "
+    >
+      <h2 style="margin-bottom:8px;">
+        Claim your USDC
+      </h2>
+
       <p id="claimInfo">Loading...</p>
-      <div style="display:flex;flex-direction:column;gap:16px;margin-top:20px;">
-        <button id="btnWalletOption" style="padding:18px;border:none;border-radius:16px;cursor:pointer;background:#2563eb;color:white;font-size:16px;">
-          Withdraw to Web3 Wallet
+
+      <!-- GOOGLE VERIFICATION -->
+      <div
+        id="googleVerifyBox"
+        style="
+          margin-top:24px;
+          padding:20px;
+          border-radius:18px;
+          background:rgba(255,255,255,0.08);
+        "
+      >
+        <h3 style="margin-top:0;">
+          Verify your Gmail
+        </h3>
+
+        <p style="color:#cbd5e1;line-height:1.5;">
+          Sign in with the Google account that received
+          this TROR claim.
+        </p>
+
+        <button
+          id="btnClaimGoogle"
+          style="
+            width:100%;
+            padding:16px;
+            border:none;
+            border-radius:14px;
+            cursor:pointer;
+            background:white;
+            color:#111827;
+            font-size:16px;
+            font-weight:bold;
+          "
+        >
+          Continue with Google
         </button>
-        <button id="btnBankOption" style="padding:18px;border:none;border-radius:16px;cursor:pointer;background:#16a34a;color:white;font-size:16px;">
+
+        <p
+          id="googleVerifyStatus"
+          style="margin-top:14px;"
+        ></p>
+      </div>
+
+      <!-- RECEIVE OPTIONS -->
+      <div
+        id="receiveOptions"
+        style="display:none;margin-top:28px;"
+      >
+        <h3 style="margin-bottom:8px;">
+          Choose how you want to receive your USDC
+        </h3>
+
+        <p style="color:#cbd5e1;margin-top:0;">
+          Select one receiving method.
+        </p>
+
+        <div
+          style="
+            display:flex;
+            flex-direction:column;
+            gap:14px;
+            margin-top:18px;
+          "
+        >
+          <button
+            id="btnWalletOption"
+            style="
+              padding:18px;
+              border:none;
+              border-radius:16px;
+              cursor:pointer;
+              background:linear-gradient(135deg,#38bdf8,#8b5cf6);
+              color:white;
+              font-size:16px;
+              text-align:left;
+            "
+          >
+            <b>🦊 Web3 Wallet</b><br>
+
+            <span style="font-size:13px;opacity:.88;">
+              MetaMask • OKX • Coinbase • WalletConnect
+            </span>
+          </button>
+
+          <button
+            id="btnBankOption"
+            style="
+              padding:18px;
+              border:none;
+              border-radius:16px;
+              cursor:pointer;
+              background:linear-gradient(135deg,#0ea5e9,#10b981);
+              color:white;
+              font-size:16px;
+              text-align:left;
+            "
+          >
+            <b>🏦 Withdraw to Bank</b><br>
+
+            <span style="font-size:13px;opacity:.88;">
+              Use the existing TROR withdrawal flow
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <!-- WEB3 WALLET BOX -->
+      <div
+        id="walletBox"
+        style="
+          display:none;
+          margin-top:24px;
+          padding:20px;
+          border-radius:18px;
+          background:rgba(255,255,255,0.07);
+        "
+      >
+        <h3 style="margin-top:0;">
+          Receive with Web3 Wallet
+        </h3>
+
+        <input
+          id="walletInput"
+          placeholder="0x..."
+          style="
+            width:100%;
+            padding:14px;
+            border-radius:12px;
+            border:none;
+            box-sizing:border-box;
+          "
+        />
+
+        <button
+          id="btnClaim"
+          style="
+            width:100%;
+            margin-top:16px;
+            padding:15px;
+            border:none;
+            border-radius:12px;
+            background:linear-gradient(135deg,#38bdf8,#d946ef);
+            color:white;
+            font-size:16px;
+            font-weight:bold;
+            cursor:pointer;
+          "
+        >
+          Claim to Web3 Wallet
+        </button>
+      </div>
+
+      <!-- BANK BOX -->
+      <div
+        id="bankBox"
+        style="
+          display:none;
+          margin-top:24px;
+          padding:20px;
+          border-radius:18px;
+          background:rgba(255,255,255,0.07);
+        "
+      >
+        <h3 style="margin-top:0;">
           Withdraw to Bank
-        </button>
-      </div>
+        </h3>
 
-      <div id="walletBox" style="display:none;margin-top:24px;">
-        <input id="walletInput" placeholder="Your wallet address" style="width:100%;padding:14px;border-radius:12px;border:none;" />
-        <button id="btnClaim" style="width:100%;margin-top:16px;padding:14px;border:none;border-radius:12px;background:#06b6d4;color:white;font-size:16px;cursor:pointer;">
-          Claim Now
-        </button>
-      </div>
+        <div
+          id="bankWithdrawForm"
+          style="
+            display:flex;
+            flex-direction:column;
+            gap:12px;
+          "
+        >
+          <input
+            id="bankCountry"
+            placeholder="Country"
+            style="
+              padding:14px;
+              border-radius:12px;
+              border:none;
+            "
+          />
 
-      <div id="bankBox" style="display:none;margin-top:24px;">
-        <div id="bankWithdrawForm" style="margin-top:16px;display:none;flex-direction:column;gap:12px;">
-          <input id="bankCountry" placeholder="Country" style="padding:14px;border-radius:12px;border:none;" />
-          <input id="bankName" placeholder="Bank Name" style="padding:14px;border-radius:12px;border:none;" />
-          <input id="bankAccount" placeholder="Account Number" style="padding:14px;border-radius:12px;border:none;" />
-          <input id="bankHolder" placeholder="Account Holder" style="padding:14px;border-radius:12px;border:none;" />
-          <button id="btnRequestWithdraw" style="padding:16px;border:none;border-radius:14px;background:#2563eb;color:white;font-weight:bold;cursor:pointer;">
+          <input
+            id="bankName"
+            placeholder="Bank Name"
+            style="
+              padding:14px;
+              border-radius:12px;
+              border:none;
+            "
+          />
+
+          <input
+            id="bankAccount"
+            placeholder="Account Number"
+            style="
+              padding:14px;
+              border-radius:12px;
+              border:none;
+            "
+          />
+
+          <input
+            id="bankHolder"
+            placeholder="Account Holder"
+            style="
+              padding:14px;
+              border-radius:12px;
+              border:none;
+            "
+          />
+
+          <button
+            id="btnRequestWithdraw"
+            style="
+              padding:16px;
+              border:none;
+              border-radius:14px;
+              background:linear-gradient(135deg,#0ea5e9,#10b981);
+              color:white;
+              font-weight:bold;
+              cursor:pointer;
+            "
+          >
             Request Bank Withdraw
           </button>
         </div>
       </div>
 
-      <p id="claimStatus" style="margin-top:20px;"></p>
+      <p
+        id="claimStatus"
+        style="
+          margin-top:22px;
+          line-height:1.5;
+        "
+      ></p>
     </div>
   `;
 
-  let claimData = null;
-
   try {
-    const data = await api(`/api/claims/${claimId}`);
-    claimData = data;
+    claimData = await api(`/api/claims/${claimId}`);
 
-    if (!data || !data.amount) {
-      document.body.innerHTML = "❌ Claim not found";
+    if (!claimData || !claimData.amount) {
+      document.body.innerHTML =
+        "<div style='padding:40px;color:white;'>❌ Claim not found</div>";
       return;
     }
 
-    document.getElementById("claimInfo").innerText = `You received ${data.amount} USDC`;
+    document.getElementById("claimInfo").innerText =
+      `You received ${claimData.amount} USDC`;
+
+    if (claimData.status === "CLAIMED") {
+      document.getElementById(
+        "googleVerifyBox"
+      ).style.display = "none";
+
+      document.getElementById(
+        "claimStatus"
+      ).innerText =
+        "This claim has already been claimed.";
+
+      return;
+    }
   } catch (err) {
-    document.body.innerHTML = "❌ Claim not found";
+    document.body.innerHTML =
+      "<div style='padding:40px;color:white;'>❌ Claim not found</div>";
+
     return;
   }
 
-  document.getElementById("btnWalletOption").onclick = () => {
-    document.getElementById("walletBox").style.display = "block";
-    document.getElementById("bankBox").style.display = "none";
-  };
+  async function verifyCurrentGoogleUser() {
+    const googleAccessToken =
+      localStorage.getItem("googleToken");
 
-  document.getElementById("btnBankOption").onclick = () => {
-    document.getElementById("bankBox").style.display = "block";
-    document.getElementById("walletBox").style.display = "none";
-    document.getElementById("bankWithdrawForm").style.display = "flex";
-  };
-
-  document.getElementById("btnClaim").onclick = async () => {
-    const wallet = document.getElementById("walletInput").value;
-    try {
-      const result = await api(`/api/claims/${claimId}/claim`, {
-        method: "POST",
-        body: JSON.stringify({ walletAddress: wallet })
-      });
-      document.getElementById("claimStatus").innerText = result.success ? "Claimed!" : "Error: " + result.error;
-    } catch (err) {
-      document.getElementById("claimStatus").innerText = "Error: " + err.message;
+    if (!googleAccessToken) {
+      return false;
     }
+
+    try {
+      const result = await api(
+        `/api/claims/${claimId}/verify-google`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            googleAccessToken
+          })
+        }
+      );
+
+      if (!result.verified) {
+        return false;
+      }
+
+      googleVerified = true;
+
+      document.getElementById(
+        "googleVerifyStatus"
+      ).innerText =
+        `Verified: ${result.email}`;
+
+      document.getElementById(
+        "googleVerifyStatus"
+      ).style.color = "#22c55e";
+
+      document.getElementById(
+        "btnClaimGoogle"
+      ).style.display = "none";
+
+      document.getElementById(
+        "receiveOptions"
+      ).style.display = "block";
+
+      return true;
+    } catch (err) {
+      googleVerified = false;
+
+      document.getElementById(
+        "googleVerifyStatus"
+      ).innerText =
+        err.message ||
+        "This Google account is not the intended recipient.";
+
+      document.getElementById(
+        "googleVerifyStatus"
+      ).style.color = "#f87171";
+
+      return false;
+    }
+  }
+
+  document.getElementById(
+    "btnClaimGoogle"
+  ).onclick = async () => {
+    const verified =
+      await verifyCurrentGoogleUser();
+
+    if (verified) return;
+
+    localStorage.setItem(
+      "claimReturnPath",
+      window.location.pathname
+    );
+
+    await connectGoogleCircle();
   };
 
-  document.getElementById("btnRequestWithdraw")?.addEventListener("click", async () => {
-    const country = document.getElementById("bankCountry").value;
-    const bankName = document.getElementById("bankName").value;
-    const account = document.getElementById("bankAccount").value;
-    const holder = document.getElementById("bankHolder").value;
+  await verifyCurrentGoogleUser();
 
-    const res = await fetch("/api/withdrawals", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: claimData?.recipientEmail || "",
-        amount: claimData?.amount || 0,
-        country,
-        bankName,
-        accountHolder: holder,
-        accountNumber: account
-      })
-    });
+  await loadClaimWithdrawalStatus(claimData.id);
 
-    const data = await res.json();
-    if (!res.ok) {
-      alert(data.error || "Bank withdraw request failed");
+  document.getElementById(
+    "btnWalletOption"
+  ).onclick = () => {
+    if (!googleVerified) return;
+
+    document.getElementById(
+      "walletBox"
+    ).style.display = "block";
+
+    document.getElementById(
+      "circleBox"
+    ).style.display = "none";
+
+    document.getElementById(
+      "bankBox"
+    ).style.display = "none";
+  };
+
+  document.getElementById(
+    "btnBankOption"
+  ).onclick = () => {
+    if (!googleVerified) return;
+
+    document.getElementById(
+      "bankBox"
+    ).style.display = "block";
+
+    document.getElementById(
+      "walletBox"
+    ).style.display = "none";
+
+    document.getElementById(
+      "circleBox"
+    ).style.display = "none";
+  };
+
+  document.getElementById(
+    "btnClaim"
+  ).onclick = async () => {
+    const walletAddress =
+      document.getElementById(
+        "walletInput"
+      ).value.trim();
+
+    const googleAccessToken =
+      localStorage.getItem("googleToken");
+
+    if (
+      !walletAddress ||
+      !ethers.isAddress(walletAddress)
+    ) {
+      document.getElementById(
+        "claimStatus"
+      ).innerText =
+        "Enter a valid Web3 wallet address.";
+
       return;
     }
-    alert("Bank withdraw request submitted");
-  });
+
+    if (!googleAccessToken) {
+      document.getElementById(
+        "claimStatus"
+      ).innerText =
+        "Please verify your Gmail first.";
+
+      return;
+    }
+
+    try {
+      const result = await api(
+        `/api/claims/${claimId}/claim`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            walletAddress,
+            googleAccessToken
+          })
+        }
+      );
+
+      document.getElementById(
+        "claimStatus"
+      ).innerText =
+        result.success
+          ? "Claimed successfully!"
+          : "Error: " + result.error;
+    } catch (err) {
+      document.getElementById(
+        "claimStatus"
+      ).innerText =
+        "Error: " + err.message;
+    }
+  };
+
+  document.getElementById(
+    "btnRequestWithdraw"
+  ).onclick = async () => {
+    if (!googleVerified) {
+      document.getElementById(
+        "claimStatus"
+      ).innerText =
+        "Please verify your Gmail first.";
+
+      return;
+    }
+
+    const country =
+      document.getElementById(
+        "bankCountry"
+      ).value.trim();
+
+    const bankName =
+      document.getElementById(
+        "bankName"
+      ).value.trim();
+
+    const account =
+      document.getElementById(
+        "bankAccount"
+      ).value.trim();
+
+    const holder =
+      document.getElementById(
+        "bankHolder"
+      ).value.trim();
+
+    if (
+      !country ||
+      !bankName ||
+      !account ||
+      !holder
+    ) {
+      document.getElementById(
+        "claimStatus"
+      ).innerText =
+        "Please complete all bank information.";
+
+      return;
+    }
+
+    try {
+
+const currentWorkspace = getCurrentWorkspace();
+
+if (!currentWorkspace?.id) {
+  throw new Error("Please select a workspace.");
+}
+
+      const result = await api(
+        "/api/withdrawals",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            workspaceId: currentWorkspace.id,
+            email:
+              claimData?.recipientEmail || "",
+            amount:
+              claimData?.amount || 0,
+            country,
+            bankName,
+            accountHolder: holder,
+            accountNumber: account,
+            claimId: claimData?.id
+          })
+        }
+      );
+
+      document.getElementById(
+        "claimStatus"
+      ).innerText =
+        result.success === false
+          ? "Bank withdrawal request failed."
+          : "Bank withdrawal request submitted.";
+    } catch (err) {
+  console.error("Bank withdrawal error:", err);
+
+  document.getElementById(
+    "claimStatus"
+  ).innerText =
+    "Error: " +
+    (
+      err?.message ||
+      err?.error ||
+      JSON.stringify(err)
+    );
+}
+  };
 }
 
 /* =========================
@@ -2466,12 +4947,28 @@ document.addEventListener("click", (e) => {
 btnSaveCustomer?.addEventListener("click", saveCustomer);
 
 btnSendClaimEmail?.addEventListener("click", async () => {
-  const paymentMethod = document.querySelector('input[name="paymentMethod"]:checked')?.value;
+  const paymentMethod =
+    document.querySelector(
+      'input[name="paymentMethod"]:checked'
+    )?.value;
+
   if (paymentMethod === "card") {
     alert("Visa/Mastercard flow coming soon");
     return;
   }
-  sendClaimEmail();
+
+  const circleAddress =
+    circleWalletEl?.textContent?.trim() || "";
+
+  if (
+    circleAddress &&
+    circleAddress !== "-" &&
+    circleAddress.startsWith("0x")
+  ) {
+    await sendClaimWithCircleWallet();
+  } else {
+    await sendClaimEmail();
+  }
 });
 
 btnSaveBiz?.addEventListener("click", saveBusinessProfile);
@@ -2546,12 +5043,14 @@ activeWalletType = "web3";
 }
 
 document.getElementById("btnChooseWeb3")?.addEventListener("click", async () => {
+  saveInvoiceReturnPath();
   document.getElementById("walletModal")?.classList.add("hidden");
   await openAppKitWallet();
 });
 
 // Google / Circle option in modal
 document.getElementById("btnChooseCircle")?.addEventListener("click", async () => {
+  saveInvoiceReturnPath();
   document.getElementById("walletModal")?.classList.add("hidden");
   if (walletModalMode === "pay") {
     await payWithCircleWallet();
@@ -2610,9 +5109,29 @@ btnLogoutGoogle?.addEventListener("click", () => {
 });
 
 customerSelectEl?.addEventListener("change", () => {
-  const customers = JSON.parse(localStorage.getItem("customers") || "[]");
-  const selected = customers[customerSelectEl.value];
-  if (selected) recipientEl.value = selected.wallet || "";
+  const customers = getWorkspaceCustomers();
+
+  const selectedCustomer = customers.find(
+    (customer) =>
+      customer.id === customerSelectEl.value
+  );
+
+  if (!selectedCustomer) {
+    return;
+  }
+
+  if (recipientEl) {
+    recipientEl.value =
+      selectedCustomer.wallet || "";
+  }
+
+  const recipientEmailEl =
+    document.getElementById("recipientEmail");
+
+  if (recipientEmailEl) {
+    recipientEmailEl.value =
+      selectedCustomer.email || "";
+  }
 });
 
 // Listen for account changes from MetaMask
@@ -2645,7 +5164,18 @@ if (window.location.pathname.startsWith("/claim/") || initClaimId) {
   });
 
   renderCustomerDropdown();
+  loadWorkspaceClaims();
   loadDashboard();
+  loadBusinessProfile();
+  window.addEventListener(
+  "workspaceChanged",
+  loadDashboard
+);
+
+window.addEventListener(
+  "workspaceChanged",
+  loadBusinessProfile
+);
 
   // Poll for invoice and dashboard updates every 5 seconds
   setInterval(async () => {
@@ -2771,13 +5301,49 @@ btnVoiceInvoice?.addEventListener("click", () => {
 ========================= */
 
 function showTab(tabId) {
+  const dashboardTop = document.getElementById("dashboard-top");
+
+  // Show the large dashboard only on the Dashboard tab
+  if (dashboardTop) {
+    dashboardTop.classList.toggle(
+      "hidden-section",
+      tabId !== "dashboard"
+    );
+  }
+
+  // Display only the selected tab content
   document.querySelectorAll(".app-section").forEach((section) => {
-    section.classList.toggle("hidden-section", section.id !== tabId);
+    section.classList.toggle(
+      "hidden-section",
+      section.id !== tabId
+    );
   });
 
+  // Highlight the active navigation tab
   document.querySelectorAll("[data-tab]").forEach((link) => {
-    link.classList.toggle("active-tab", link.dataset.tab === tabId);
+    link.classList.toggle(
+      "active-tab",
+      link.dataset.tab === tabId
+    );
   });
+
+  // Scroll the active section into view
+  const activeSection =
+    tabId === "dashboard"
+      ? dashboardTop
+      : document.getElementById(tabId);
+
+  if (activeSection) {
+    window.scrollTo({
+      top: Math.max(
+        0,
+        activeSection.getBoundingClientRect().top +
+          window.scrollY -
+          105
+      ),
+      behavior: "smooth"
+    });
+  }
 }
 
 document.querySelectorAll("[data-tab]").forEach((link) => {
@@ -2825,9 +5391,313 @@ async function parseInvoicePrompt(prompt) {
    WITHDRAWALS
 ========================= */
 
+/* =========================
+   EMPLOYEES
+========================= */
+
+let currentEmployeeStatus = "";
+
+function getEmployeeStatusClass(status) {
+  const value = String(status || "").toUpperCase();
+
+  if (value === "ACTIVE") return "employee-status-active";
+  if (value === "INACTIVE") return "employee-status-inactive";
+  return "employee-status-terminated";
+}
+
+async function loadEmployees(status = currentEmployeeStatus) {
+  try {
+    currentEmployeeStatus = status || "";
+
+    const currentWorkspace = getCurrentWorkspace();
+
+if (!currentWorkspace?.id) {
+  const list = document.getElementById("employeesList");
+
+  if (list) {
+    list.innerHTML = "Please select a workspace.";
+  }
+
+  return [];
+}
+
+const workspaceQuery =
+  `workspaceId=${encodeURIComponent(currentWorkspace.id)}`;
+
+const query = currentEmployeeStatus
+  ? `?${workspaceQuery}&status=${encodeURIComponent(
+      currentEmployeeStatus
+    )}`
+  : `?${workspaceQuery}`;
+
+const [rows, allEmployees] = await Promise.all([
+  api(`/api/employees${query}`),
+  api(`/api/employees?${workspaceQuery}`)
+]);
+
+const totalEmployeesEl =
+  document.getElementById("payrollEmployees");
+
+if (totalEmployeesEl) {
+  totalEmployeesEl.textContent = Array.isArray(allEmployees)
+    ? allEmployees.length
+    : 0;
+}
+
+const list = document.getElementById("employeesList");
+
+if (!list) return;
+
+    document.querySelectorAll(".employee-filter").forEach((button) => {
+      const buttonStatus = button.dataset.employeeStatus || "";
+
+      button.classList.toggle(
+        "is-active",
+        buttonStatus === currentEmployeeStatus
+      );
+    });
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      list.innerHTML = "No employees yet.";
+      return;
+    }
+
+    list.innerHTML = rows
+      .map((employee) => {
+        const status =
+          String(employee.employment_status || "ACTIVE").toUpperCase();
+
+        return `
+          <div class="employee-card">
+            <div>
+              <h4>${employee.employee_name || "-"}</h4>
+
+              <p>Email: ${employee.employee_email || "-"}</p>
+
+              <p>Wallet: ${employee.wallet || "-"}</p>
+
+              <p>
+                Base salary:
+                ${Number(employee.base_salary || 0).toFixed(2)} USDC
+              </p>
+
+              <span class="
+                employee-status
+                ${getEmployeeStatusClass(status)}
+              ">
+                ${status}
+              </span>
+            </div>
+
+            <div class="employee-card-actions">
+              ${
+                status !== "ACTIVE"
+                  ? `
+                    <button
+                      type="button"
+                      onclick="updateEmployeeStatus(
+                        '${employee.id}',
+                        'ACTIVE'
+                      )"
+                    >
+                      Activate
+                    </button>
+                  `
+                  : `
+                    <button
+                      type="button"
+                      onclick="updateEmployeeStatus(
+                        '${employee.id}',
+                        'INACTIVE'
+                      )"
+                    >
+                      Inactive
+                    </button>
+                  `
+              }
+
+              ${
+                status !== "TERMINATED"
+                  ? `
+                    <button
+                      type="button"
+                      onclick="updateEmployeeStatus(
+                        '${employee.id}',
+                        'TERMINATED'
+                      )"
+                    >
+                      Mark as Left
+                    </button>
+                  `
+                  : ""
+              }
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+  } catch (err) {
+    console.error("Load employees error:", err);
+
+    const list = document.getElementById("employeesList");
+
+    if (list) {
+      list.textContent = `Error: ${err.message}`;
+    }
+  }
+}
+
+window.updateEmployeeStatus = async function (id, status) {
+  try {
+    await api(`/api/employees/${id}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status })
+    });
+
+    await loadEmployees();
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+document
+  .getElementById("btnToggleEmployeeForm")
+  ?.addEventListener("click", () => {
+    const form = document.getElementById("employeeForm");
+
+    if (form) {
+      form.style.display =
+        form.style.display === "block" ? "none" : "block";
+    }
+  });
+
+document
+  .getElementById("btnCancelEmployee")
+  ?.addEventListener("click", () => {
+    const form = document.getElementById("employeeForm");
+
+    if (form) {
+      form.style.display = "none";
+    }
+  });
+
+document
+  .getElementById("btnSaveEmployee")
+  ?.addEventListener("click", async () => {
+    const name =
+      document.getElementById("employeeName")?.value.trim() || "";
+
+    const email =
+      document.getElementById("employeeEmail")?.value.trim() || "";
+
+    const wallet =
+      document.getElementById("employeeWallet")?.value.trim() || "";
+
+    const salary =
+      document.getElementById("employeeSalary")?.value || "0";
+
+    const startedAt =
+      document.getElementById("employeeStartDate")?.value || "";
+
+    const statusEl =
+      document.getElementById("employeeFormStatus");
+
+    if (!name) {
+      if (statusEl) {
+        statusEl.textContent = "Employee name is required.";
+      }
+      return;
+    }
+
+const currentWorkspace = getCurrentWorkspace();
+
+if (!currentWorkspace?.id) {
+  if (statusEl) {
+    statusEl.textContent =
+      "Please select a workspace first.";
+  }
+
+  return;
+}
+
+    try {
+      if (statusEl) {
+        statusEl.textContent = "Saving employee...";
+      }
+
+      await api("/api/employees", {
+        method: "POST",
+        body: JSON.stringify({
+          employeeName: name,
+          employeeEmail: email,
+          wallet,
+          baseSalary: Number(salary),
+          startedAt,
+          workspaceId: currentWorkspace.id
+        })
+      });
+
+      document.getElementById("employeeName").value = "";
+      document.getElementById("employeeEmail").value = "";
+      document.getElementById("employeeWallet").value = "";
+      document.getElementById("employeeSalary").value = "";
+      document.getElementById("employeeStartDate").value = "";
+
+      const form = document.getElementById("employeeForm");
+
+      if (form) {
+        form.style.display = "none";
+      }
+
+      if (statusEl) {
+        statusEl.textContent = "Employee added successfully.";
+      }
+
+      await loadEmployees();
+    } catch (err) {
+      if (statusEl) {
+        statusEl.textContent = `Error: ${err.message}`;
+      }
+    }
+  });
+
+document
+  .getElementById("btnRefreshEmployees")
+  ?.addEventListener("click", () => {
+    loadEmployees();
+  });
+
+document
+  .querySelectorAll(".employee-filter")
+  .forEach((button) => {
+    button.addEventListener("click", () => {
+      loadEmployees(button.dataset.employeeStatus || "");
+    });
+  });
+
+loadEmployees();
+
 async function loadWithdrawals() {
   try {
-    const rows = await api("/api/withdrawals");
+
+const currentWorkspace = JSON.parse(
+  localStorage.getItem("currentWorkspace") || "null"
+);
+
+if (!currentWorkspace?.id) {
+  const el = document.getElementById("withdrawalsList");
+
+  if (el) {
+    el.innerHTML = "Please select a workspace.";
+  }
+
+  return;
+}
+
+    const rows = await api(
+  "/api/withdrawals?workspaceId=" +
+    encodeURIComponent(currentWorkspace.id)
+);
 
     const el = document.getElementById("withdrawalsList");
     if (!el) return;
@@ -2858,33 +5728,86 @@ async function loadWithdrawals() {
 }
 
 window.updateWithdrawalStatus = async function (id, status) {
+  const currentWorkspace = JSON.parse(
+    localStorage.getItem("currentWorkspace") || "null"
+  );
+
+  if (!currentWorkspace?.id) {
+    alert("Please select a workspace.");
+    return;
+  }
+
   await api(`/api/withdrawals/${id}/status`, {
     method: "POST",
-    body: JSON.stringify({ status })
+    body: JSON.stringify({
+      status,
+      workspaceId: currentWorkspace.id
+    })
   });
+
   await loadWithdrawals();
 };
 
+window.addEventListener(
+  "workspaceChanged",
+  loadWithdrawals
+);
 document.getElementById("btnLoadWithdrawals")?.addEventListener("click", loadWithdrawals);
 
-// Sync AppKit wallet address with ArcPay
+// Sync AppKit wallet address with TROR
 import { watchAccount } from "@wagmi/core";
 
+let lastProfileCheckedWallet = null;
+
 watchAccount(wagmiAdapter.wagmiConfig, {
-  onChange(account) {
+  async onChange(account) {
     if (account.address) {
       metamaskWallet = account.address;
-      if (metamaskWalletEl) metamaskWalletEl.textContent = account.address;
+
+      if (metamaskWalletEl) {
+        metamaskWalletEl.textContent = account.address;
+      }
+
       updateWalletChip(account.address, null);
       clearCircleWalletLocal();
-activeWalletType = "web3";
-    } else {
-  metamaskWallet = null;
-  updateWalletChip(null, null);
+      activeWalletType = "web3";
 
-  if (activeWalletType === "web3") {
-    activeWalletType = null;
+      const normalizedWallet =
+        account.address.toLowerCase();
+
+      if (
+        lastProfileCheckedWallet !== normalizedWallet
+      ) {
+        lastProfileCheckedWallet = normalizedWallet;
+
+        const hasProfile =
+          await checkUserProfile(account.address);
+
+        if (!hasProfile) {
+          setStatus(
+            "Please create your TROR profile.",
+            "error"
+          );
+          return;
+        }
+
+        setStatus(
+          "Wallet and profile connected.",
+          "success"
+        );
+      }
+    } else {
+      metamaskWallet = null;
+      lastProfileCheckedWallet = null;
+
+      updateWalletChip(null, null);
+
+      localStorage.removeItem("currentUser");
+      localStorage.removeItem("currentWorkspace");
+
+      if (activeWalletType === "web3") {
+        activeWalletType = null;
+      }
+    }
   }
- }
-}
 });

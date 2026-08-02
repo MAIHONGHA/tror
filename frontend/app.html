@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>ArcPay</title>
+    <title>TROR</title>
+    <link rel="icon" type="image/svg+xml" href="/brand/favicon.svg" />
   </head>
 
   <body>
@@ -12,26 +13,17 @@
         <div class="brand">
           <!-- New SVG logo synced with brand identity -->
           <div class="brand-logo-svg">
-            <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <linearGradient id="navArc" x1="2" y1="28" x2="38" y2="28" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stop-color="#38bdf8"/>
-                  <stop offset="50%" stop-color="#a78bfa"/>
-                  <stop offset="100%" stop-color="#f472b6"/>
-                </linearGradient>
-              </defs>
-              <path d="M20 2L35 11L35 29L20 38L5 29L5 11Z" stroke="rgba(56,189,248,0.35)" stroke-width="1" fill="none"/>
-              <path d="M4 29 A18 18 0 0 1 36 29" stroke="url(#navArc)" stroke-width="2.8" stroke-linecap="round" fill="none"/>
-              <path d="M9 26.5 A13 13 0 0 1 31 26.5" stroke="url(#navArc)" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.55"/>
-              <circle cx="20" cy="23" r="3" fill="#38bdf8"/>
-              <circle cx="20" cy="23" r="1.4" fill="white" opacity="0.9"/>
-              <line x1="20" y1="18" x2="20" y2="10" stroke="#a78bfa" stroke-width="1.4" stroke-linecap="round" opacity="0.7"/>
-              <path d="M17 14L20 10L23 14" stroke="#a78bfa" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.7"/>
-            </svg>
-          </div>
+    <img
+        src="/brand/tror-icon.svg"
+        alt="TROR"
+        class="brand-logo-img"
+    />
+</div>
           <div>
-            <div class="brand-title">Arc<span style="color:#38bdf8">Pay</span></div>
-            <div class="brand-subtitle">ARC NETWORK · USDC</div>
+            <div class="brand-title">
+    TROR
+</div>
+            <div class="brand-subtitle">BUILT ON ARC</div>
           </div>
         </div>
 
@@ -45,14 +37,17 @@
           <a href="#business" data-tab="business">Business</a>
         </div>
         <div class="topbar-right">
-            <!-- Wallet status chip -->
-            <div class="wallet-chip" id="walletChip">
-              <div class="wc-dot" id="wcDot"></div>
-              <span class="wc-addr" id="walletChipAddress">Disconnected ▾</span>
-            </div>
-            <!-- Primary connect button -->
-            <button class="btn-connect" id="btnConnectWallet">Connect ▾</button>
-            </div>
+  <button
+    class="btn-connect wallet-chip"
+    id="btnConnectWallet"
+    type="button"
+  >
+    <span class="wc-dot" id="wcDot"></span>
+    <span class="wc-addr" id="walletChipAddress">
+      Connect ▾
+    </span>
+  </button>
+</div>
             </aside>
 
       <main class="main-shell">
@@ -78,7 +73,7 @@
         <section id="dashboard-top" class="panel hero-panel dashboard-modern">
   <div class="dash-hero">
     <div>
-      <p class="eyebrow">ArcPay Control Center</p>
+      <p class="eyebrow">TROR Control Center</p>
       <h1>Payments dashboard</h1>
       <p class="muted">
         Monitor invoices, Circle Wallet, Gmail claims, payroll and payouts in one real-time workspace.
@@ -270,6 +265,166 @@
         <section id="payroll" class="panel app-section hidden-section">
           <p class="eyebrow">Payroll</p>
           <h2>Create Payroll & Payroll History</h2>
+<!-- =========================
+     EMPLOYEE MANAGEMENT
+========================= -->
+
+<div
+  id="employeeManagement"
+  style="
+    margin:20px 0;
+    padding:20px;
+    border-radius:18px;
+    background:rgba(15,23,42,0.72);
+    border:1px solid rgba(103,232,249,0.18);
+  "
+>
+  <div
+    style="
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-bottom:16px;
+    "
+  >
+    <div>
+      <p class="eyebrow" style="margin:0 0 5px;">
+        Employees
+      </p>
+
+      <h3 style="margin:0;">
+        Employee Management
+      </h3>
+    </div>
+
+    <button id="btnToggleEmployeeForm" type="button">
+      + Add Employee
+    </button>
+  </div>
+
+  <div
+    id="employeeForm"
+    style="
+      display:none;
+      margin-bottom:20px;
+      padding:16px;
+      border-radius:14px;
+      background:rgba(2,6,23,0.55);
+    "
+  >
+    <input
+      id="employeeName"
+      type="text"
+      placeholder="Employee name"
+    />
+
+    <input
+      id="employeeEmail"
+      type="email"
+      placeholder="Employee email"
+    />
+
+    <input
+      id="employeeWallet"
+      type="text"
+      placeholder="Employee wallet address"
+    />
+
+    <input
+      id="employeeSalary"
+      type="number"
+      min="0"
+      step="0.01"
+      placeholder="Base salary USDC"
+    />
+
+    <input
+      id="employeeStartDate"
+      type="date"
+    />
+
+    <div
+      style="
+        display:flex;
+        gap:10px;
+        flex-wrap:wrap;
+        margin-top:10px;
+      "
+    >
+      <button id="btnSaveEmployee" type="button">
+        Save Employee
+      </button>
+
+      <button
+        id="btnCancelEmployee"
+        type="button"
+        class="secondary"
+      >
+        Cancel
+      </button>
+    </div>
+
+    <div
+      id="employeeFormStatus"
+      style="margin-top:12px;"
+    ></div>
+  </div>
+
+  <div
+    style="
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-bottom:14px;
+    "
+  >
+    <button
+      type="button"
+      class="secondary employee-filter"
+      data-employee-status=""
+    >
+      All
+    </button>
+
+    <button
+      type="button"
+      class="secondary employee-filter"
+      data-employee-status="ACTIVE"
+    >
+      Active
+    </button>
+
+    <button
+      type="button"
+      class="secondary employee-filter"
+      data-employee-status="INACTIVE"
+    >
+      Inactive
+    </button>
+
+    <button
+      type="button"
+      class="secondary employee-filter"
+      data-employee-status="TERMINATED"
+    >
+      Left
+    </button>
+
+    <button
+      id="btnRefreshEmployees"
+      type="button"
+      class="secondary"
+    >
+      Refresh
+    </button>
+  </div>
+
+  <div id="employeesList">
+    No employees yet.
+  </div>
+</div>
           <div class="payroll-analytics">
             <div class="analytics-grid">
               <div class="analytics-card">
@@ -345,23 +500,14 @@
         <!-- Modal header -->
         <div class="wm-header">
           <div class="wm-logo">
-            <svg viewBox="0 0 32 32" fill="none" width="28" height="28">
-              <defs>
-                <linearGradient id="wmArc" x1="2" y1="22" x2="30" y2="22" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stop-color="#38bdf8"/>
-                  <stop offset="50%" stop-color="#a78bfa"/>
-                  <stop offset="100%" stop-color="#f472b6"/>
-                </linearGradient>
-              </defs>
-              <path d="M16 2L28 9L28 23L16 30L4 23L4 9Z" stroke="rgba(56,189,248,0.4)" stroke-width="1" fill="none"/>
-              <path d="M3 22 A14 14 0 0 1 29 22" stroke="url(#wmArc)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
-              <path d="M7 20 A10 10 0 0 1 25 20" stroke="url(#wmArc)" stroke-width="1.8" stroke-linecap="round" fill="none" opacity="0.55"/>
-              <circle cx="16" cy="18" r="2.5" fill="#38bdf8"/>
-              <circle cx="16" cy="18" r="1.1" fill="white" opacity="0.9"/>
-            </svg>
+            <img
+              src="/brand/tror-icon.svg"
+              alt="TROR"
+              class="wm-logo-img"
+            />
           </div>
           <div class="wm-title-wrap">
-            <div class="wm-title">Connect to ArcPay</div>
+            <div class="wm-title">Connect to TROR</div>
             <div class="wm-subtitle">Choose your wallet or sign in</div>
           </div>
           <button id="btnCloseWalletModal" class="wm-close">×</button>
@@ -384,8 +530,10 @@
 <!-- Google + Circle wallet option -->
 <button id="btnChooseCircle" class="wm-option">
   <span class="wm-option-icon">G</span>
-  <span class="wm-option-name">Google + Circle</span>
-  <span class="wm-option-sub">Create wallet automatically with PIN</span>
+  <span class="wm-option-name">Continue with Google</span>
+<span class="wm-option-sub">
+  Circle Wallet will be created automatically
+</span>
   <span class="wm-option-arrow">→</span>
 </button>
 

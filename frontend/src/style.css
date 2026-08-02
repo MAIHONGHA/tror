@@ -7,15 +7,25 @@ html {
 }
 
 body {
-  margin: 0;
-  font-family: Inter, Arial, sans-serif;
-  background:
-    radial-gradient(circle at 10% 0%, rgba(124,58,237,.25), transparent 35%),
-    radial-gradient(circle at 90% 10%, rgba(124,58,237,.22), transparent 35%),
-    radial-gradient(circle at 50% 100%, rgba(0,255,163,.08), transparent 30%),
-    #050816;
-  color: #f8fafc;
-  overflow-x: hidden;
+    background:
+        radial-gradient(circle at top left,
+            rgba(242,242,243,.10),
+            transparent 35%),
+
+        radial-gradient(circle at bottom right,
+            rgba(215,179,90,.08),
+            transparent 40%),
+
+        linear-gradient(
+            135deg,
+            #060606 0%,
+            #121214 30%,
+            #1b1c20 55%,
+            #111214 80%,
+            #050505 100%
+        );
+
+    color: var(--tror-platinum);
 }
 
 #app {
@@ -52,7 +62,11 @@ body {
   place-items: center;
   color: #04111f;
   font-weight: 900;
-  background: linear-gradient(135deg, #00d4ff, #7c3aed);
+  background: linear-gradient(
+  135deg,
+  var(--tror-gold),
+  var(--tror-gold-bright)
+);
   box-shadow:
     0 0 24px rgba(0,212,255,.45),
     0 0 44px rgba(124,58,237,.25);
@@ -104,7 +118,11 @@ body {
 
 .sidebar-menu a:hover {
   color: #06121f;
-  background: linear-gradient(90deg, #7c3aed, #a855f7);
+  background: linear-gradient(
+  135deg,
+  var(--tror-gold),
+  var(--tror-gold-bright)
+);
   box-shadow: 0 14px 30px rgba(0,224,255,0.2);
 }
 
@@ -1775,10 +1793,6 @@ body > .wallet-chip   { display: none !important; }
   color: #e9d5ff;
 }
 
-
-
-
-
 .activity-item {
   display: flex !important;
   align-items: center !important;
@@ -2153,4 +2167,1288 @@ body > .wallet-chip   { display: none !important; }
 .ticker-item:hover{
   color:#7dd3fc;
   transform:scale(1.05);
+}
+
+/* =========================
+   EMPLOYEE MANAGEMENT
+========================= */
+
+#employeeManagement {
+  margin: 20px 0 24px;
+  padding: 20px;
+  border-radius: 20px;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(56, 189, 248, 0.08),
+      rgba(139, 92, 246, 0.08)
+    ),
+    rgba(15, 23, 42, 0.76);
+  border: 1px solid rgba(103, 232, 249, 0.18);
+  box-shadow: 0 18px 45px rgba(2, 6, 23, 0.3);
+}
+
+#employeeForm {
+  display: none;
+  margin-bottom: 20px;
+  padding: 18px;
+  border-radius: 16px;
+  background: rgba(2, 6, 23, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+#employeeForm input,
+#employeeForm select {
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 13px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.9);
+  color: #f8fafc;
+  outline: none;
+}
+
+#employeeForm input:focus,
+#employeeForm select:focus {
+  border-color: rgba(56, 189, 248, 0.72);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+}
+
+#employeeForm input::placeholder {
+  color: #64748b;
+}
+
+#employeesList {
+  display: grid;
+  gap: 12px;
+}
+
+.employee-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.employee-card h4 {
+  margin: 0 0 7px;
+  color: #f8fafc;
+}
+
+.employee-card p {
+  margin: 4px 0;
+  color: #94a3b8;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.employee-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.employee-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 9px;
+  margin-top: 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+}
+
+.employee-status-active {
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.14);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.employee-status-inactive {
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.employee-status-terminated {
+  color: #fda4af;
+  background: rgba(244, 63, 94, 0.14);
+  border: 1px solid rgba(244, 63, 94, 0.3);
+}
+
+.employee-filter.is-active {
+  border-color: rgba(56, 189, 248, 0.75);
+  background: linear-gradient(
+    135deg,
+    rgba(56, 189, 248, 0.24),
+    rgba(139, 92, 246, 0.24)
+  );
+}
+
+#employeeFormStatus {
+  min-height: 20px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  #employeeManagement {
+    padding: 15px;
+  }
+
+  .employee-card {
+    grid-template-columns: 1fr;
+  }
+
+  .employee-card-actions {
+    justify-content: flex-start;
+  }
+}
+
+/* =========================================================
+   TROR — GOLD + SILVER + BLACK THEME
+   Final override: branding only, no app logic affected
+========================================================= */
+
+:root {
+  --tror-black: #050505;
+  --tror-black-soft: #0b0b0d;
+  --tror-panel: rgba(17, 17, 19, 0.92);
+  --tror-panel-soft: rgba(27, 27, 30, 0.88);
+
+  --tror-gold: #d7b35a;
+  --tror-gold-bright: #f4d77f;
+  --tror-gold-dark: #9c772c;
+
+  --tror-silver: #c8c9cc;
+  --tror-platinum: #f2f2f3;
+  --tror-muted: #96979c;
+
+  --tror-border: rgba(215, 179, 90, 0.30);
+  --tror-border-silver: rgba(200, 201, 204, 0.18);
+}
+
+/* PAGE BACKGROUND */
+body {
+  background:
+    radial-gradient(
+      circle at 15% 0%,
+      rgba(215, 179, 90, 0.16),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 85% 8%,
+      rgba(200, 201, 204, 0.10),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 50% 100%,
+      rgba(156, 119, 44, 0.10),
+      transparent 38%
+    ),
+    linear-gradient(
+      135deg,
+      #030303 0%,
+      #0b0b0d 48%,
+      #050505 100%
+    ) !important;
+
+  color: var(--tror-platinum) !important;
+}
+
+/* TOP NAVIGATION / SIDEBAR */
+.sidebar {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(5, 5, 5, 0.98),
+      rgba(14, 14, 16, 0.97)
+    ) !important;
+
+  border-color: rgba(215, 179, 90, 0.24) !important;
+
+  box-shadow:
+    0 16px 50px rgba(0, 0, 0, 0.48),
+    0 1px 0 rgba(255, 255, 255, 0.03) !important;
+}
+
+/* TROR LOGO */
+.brand-logo-svg {
+  width: 46px !important;
+  height: 46px !important;
+
+  filter:
+    drop-shadow(0 0 8px rgba(215, 179, 90, 0.42))
+    drop-shadow(0 0 16px rgba(200, 201, 204, 0.16)) !important;
+}
+
+.brand-logo-img {
+  display: block;
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+}
+
+.brand-title {
+  color: var(--tror-platinum) !important;
+  letter-spacing: 0.05em;
+}
+
+.brand-subtitle {
+  color: var(--tror-gold) !important;
+}
+
+/* NAVIGATION LINKS */
+.sidebar-menu a {
+  color: #bbbcc0 !important;
+}
+
+.sidebar-menu a:hover,
+.sidebar-menu a.active-tab {
+  color: #090909 !important;
+
+  background:
+    linear-gradient(
+      135deg,
+      #f4d77f 0%,
+      #d7b35a 48%,
+      #b99443 100%
+    ) !important;
+
+  border-color: rgba(244, 215, 127, 0.55) !important;
+
+  box-shadow:
+    0 10px 28px rgba(215, 179, 90, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42) !important;
+}
+
+/* MAIN PANELS */
+.hero-panel,
+.panel {
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(215, 179, 90, 0.09),
+      transparent 34%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(24, 24, 27, 0.94),
+      rgba(8, 8, 10, 0.96)
+    ) !important;
+
+  border: 1px solid var(--tror-border) !important;
+
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.34),
+    0 0 30px rgba(215, 179, 90, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+.panel:hover {
+  border-color: rgba(244, 215, 127, 0.55) !important;
+
+  box-shadow:
+    0 22px 58px rgba(0, 0, 0, 0.42),
+    0 0 35px rgba(215, 179, 90, 0.14) !important;
+}
+
+/* CARDS */
+.stat-card,
+.mini-box,
+.box,
+.invoice,
+.card,
+.glass-card,
+.analytics-card,
+.employee-card {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(28, 28, 31, 0.95),
+      rgba(10, 10, 12, 0.96)
+    ) !important;
+
+  border: 1px solid var(--tror-border-silver) !important;
+
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+.stat-card:hover,
+.invoice:hover,
+.employee-card:hover {
+  border-color: rgba(215, 179, 90, 0.48) !important;
+
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.42),
+    0 0 24px rgba(215, 179, 90, 0.12) !important;
+}
+
+/* HEADINGS AND TEXT */
+h1,
+h2,
+h3,
+h4 {
+  color: var(--tror-platinum) !important;
+}
+
+.eyebrow,
+a {
+  color: var(--tror-gold-bright) !important;
+
+  text-shadow:
+    0 0 14px rgba(215, 179, 90, 0.22) !important;
+}
+
+.muted,
+.stat-label,
+.mini-box span,
+label,
+.analytics-card span {
+  color: var(--tror-muted) !important;
+}
+
+/* DASHBOARD NUMBERS */
+.stat-value,
+.analytics-card h3 {
+  color: var(--tror-gold-bright) !important;
+
+  text-shadow:
+    0 0 16px rgba(215, 179, 90, 0.30),
+    0 0 32px rgba(200, 201, 204, 0.08) !important;
+}
+
+.stat-value.small {
+  color: var(--tror-silver) !important;
+}
+
+/* FORM INPUTS */
+input,
+textarea,
+select {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(20, 20, 22, 0.98),
+      rgba(10, 10, 12, 0.98)
+    ) !important;
+
+  color: var(--tror-platinum) !important;
+
+  border:
+    1px solid rgba(200, 201, 204, 0.16) !important;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: rgba(215, 179, 90, 0.72) !important;
+
+  box-shadow:
+    0 0 0 3px rgba(215, 179, 90, 0.10) !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #6f7075 !important;
+}
+
+/* PRIMARY BUTTONS */
+button,
+.btn-connect,
+#btnScanQR {
+  background:
+    linear-gradient(
+      135deg,
+      #f4d77f 0%,
+      #d7b35a 48%,
+      #a87f30 100%
+    ) !important;
+
+  color: #080808 !important;
+
+  border:
+    1px solid rgba(255, 237, 171, 0.42) !important;
+
+  box-shadow:
+    0 10px 25px rgba(215, 179, 90, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42) !important;
+}
+
+button:hover,
+.btn-connect:hover {
+  box-shadow:
+    0 14px 34px rgba(215, 179, 90, 0.32),
+    0 0 24px rgba(244, 215, 127, 0.18) !important;
+}
+
+/* SECONDARY BUTTONS */
+button.secondary,
+.tb-btn-ghost {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(45, 45, 49, 0.95),
+      rgba(21, 21, 24, 0.95)
+    ) !important;
+
+  color: var(--tror-silver) !important;
+
+  border:
+    1px solid rgba(200, 201, 204, 0.20) !important;
+
+  box-shadow: none !important;
+}
+
+button.secondary:hover,
+.tb-btn-ghost:hover {
+  color: var(--tror-gold-bright) !important;
+  border-color: rgba(215, 179, 90, 0.42) !important;
+}
+
+/* TOPBAR */
+.topbar {
+  background: rgba(7, 7, 8, 0.94) !important;
+  border-color: rgba(215, 179, 90, 0.20) !important;
+}
+
+/* WALLET STATUS */
+.wallet-chip {
+  background: rgba(200, 201, 204, 0.05) !important;
+  border-color: rgba(200, 201, 204, 0.16) !important;
+}
+
+.wallet-chip:hover {
+  background: rgba(215, 179, 90, 0.08) !important;
+  border-color: rgba(215, 179, 90, 0.32) !important;
+}
+
+.wc-balance {
+  color: var(--tror-gold-bright) !important;
+}
+
+/* WALLET DROPDOWN */
+.wallet-menu {
+  background: rgba(10, 10, 12, 0.98) !important;
+  border-color: rgba(215, 179, 90, 0.24) !important;
+}
+
+.wallet-menu button {
+  background: transparent !important;
+  color: var(--tror-silver) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.wallet-menu button:hover {
+  background: rgba(215, 179, 90, 0.09) !important;
+  color: var(--tror-gold-bright) !important;
+  border-color: rgba(215, 179, 90, 0.18) !important;
+}
+
+/* WALLET MODAL */
+.wm-card {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(22, 22, 25, 0.99),
+      rgba(6, 6, 7, 0.99)
+    ) !important;
+
+  border-color: rgba(215, 179, 90, 0.28) !important;
+
+  box-shadow:
+    0 28px 90px rgba(0, 0, 0, 0.78),
+    0 0 50px rgba(215, 179, 90, 0.10) !important;
+}
+
+.wm-logo {
+  background: rgba(215, 179, 90, 0.08) !important;
+  border-color: rgba(215, 179, 90, 0.28) !important;
+}
+
+.wm-logo-img {
+  display: block;
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+
+.wm-option:hover {
+  background: rgba(215, 179, 90, 0.07) !important;
+}
+
+.wm-option:active {
+  background: rgba(215, 179, 90, 0.12) !important;
+}
+
+.wm-option:hover .wm-option-arrow {
+  color: var(--tror-gold-bright) !important;
+}
+
+/* QR / INVOICE SHEET / MODALS */
+.invoice-modal-content,
+.invoice-sheet-content,
+.sheet-body,
+.sheet-qr-card,
+.sheet-link-card {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(25, 25, 28, 0.98),
+      rgba(8, 8, 10, 0.98)
+    ) !important;
+
+  border-color: rgba(200, 201, 204, 0.16) !important;
+}
+
+/* SCROLLBAR */
+::-webkit-scrollbar-thumb {
+  background:
+    linear-gradient(
+      180deg,
+      #d7b35a,
+      #70602f
+    ) !important;
+}
+
+::-webkit-scrollbar-track {
+  background: #080808 !important;
+}
+
+/* EMPLOYEE FILTER ACTIVE */
+.employee-filter.is-active {
+  border-color: rgba(215, 179, 90, 0.70) !important;
+
+  background:
+    linear-gradient(
+      135deg,
+      rgba(215, 179, 90, 0.22),
+      rgba(200, 201, 204, 0.10)
+    ) !important;
+}
+
+/* =========================================================
+   TROR — REMOVE REMAINING BLUE ACCENTS
+========================================================= */
+
+.stat-card,
+.mini-box,
+.analytics-card,
+.panel,
+.hero-panel,
+.invoice,
+.employee-card {
+  border-color: rgba(215, 179, 90, 0.28) !important;
+
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.38),
+    0 0 22px rgba(215, 179, 90, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+.stat-card:hover,
+.mini-box:hover,
+.analytics-card:hover,
+.panel:hover,
+.invoice:hover,
+.employee-card:hover {
+  border-color: rgba(244, 215, 127, 0.56) !important;
+
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.44),
+    0 0 26px rgba(215, 179, 90, 0.16) !important;
+}
+
+/* Remove blue focus/selected glow */
+.stat-card:focus,
+.stat-card:focus-visible,
+.stat-card.active,
+.stat-card.selected {
+  outline: none !important;
+  border-color: rgba(244, 215, 127, 0.58) !important;
+
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.42),
+    0 0 26px rgba(215, 179, 90, 0.18) !important;
+}
+
+/* Dashboard card background */
+.stat-card,
+.mini-box {
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(215, 179, 90, 0.07),
+      transparent 36%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(25, 25, 28, 0.97),
+      rgba(9, 9, 11, 0.98)
+    ) !important;
+}
+
+/* Remove old cyan text shadows */
+.stat-value,
+.analytics-card h3 {
+  text-shadow:
+    0 0 14px rgba(215, 179, 90, 0.25) !important;
+}
+
+/* Activity ticker */
+.activity-item,
+.ticker-item {
+  border-color: rgba(215, 179, 90, 0.22) !important;
+}
+
+.ticker-item:hover,
+.activity-item:hover {
+  border-color: rgba(244, 215, 127, 0.45) !important;
+  box-shadow: 0 0 18px rgba(215, 179, 90, 0.12) !important;
+}
+
+/* =========================================================
+   TROR — STATUS BOX FINAL OVERRIDE
+========================================================= */
+
+.status-grid-modern .mini-box,
+.status-grid .mini-box {
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(215, 179, 90, 0.08),
+      transparent 36%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(25, 25, 28, 0.98),
+      rgba(8, 8, 10, 0.99)
+    ) !important;
+
+  border-color:
+    rgba(215, 179, 90, 0.30) !important;
+
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.40),
+    0 0 18px rgba(215, 179, 90, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+.status-grid-modern .mini-box:hover,
+.status-grid .mini-box:hover {
+  transform: translateY(-2px) !important;
+
+  border-color:
+    rgba(244, 215, 127, 0.55) !important;
+
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.46),
+    0 0 24px rgba(215, 179, 90, 0.16) !important;
+}
+
+/* =========================================================
+   TROR — REMOVE STAT CARD BLUE ANIMATION
+========================================================= */
+
+#dashboard-top .stat-card,
+#dashboard-top .stat-card:hover,
+#dashboard-top .stat-card:focus,
+#dashboard-top .stat-card:active {
+  animation: none !important;
+  transition:
+    transform 0.22s ease,
+    border-color 0.22s ease,
+    box-shadow 0.22s ease !important;
+
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(215, 179, 90, 0.08),
+      transparent 38%
+    ),
+    linear-gradient(
+      145deg,
+      #19191c 0%,
+      #09090b 100%
+    ) !important;
+
+  border:
+    1px solid rgba(215, 179, 90, 0.30) !important;
+
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.40),
+    0 0 18px rgba(215, 179, 90, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+#dashboard-top .stat-card:hover {
+  transform: translateY(-2px) !important;
+
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(244, 215, 127, 0.12),
+      transparent 40%
+    ),
+    linear-gradient(
+      145deg,
+      #1d1b16 0%,
+      #0a0a0b 100%
+    ) !important;
+
+  border-color:
+    rgba(244, 215, 127, 0.58) !important;
+
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.46),
+    0 0 24px rgba(215, 179, 90, 0.18) !important;
+}
+
+/* Loại bỏ lớp màu xanh từ pseudo-element */
+#dashboard-top .stat-card::before,
+#dashboard-top .stat-card::after,
+#dashboard-top .stat-card:hover::before,
+#dashboard-top .stat-card:hover::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* =========================================================
+   TROR — PLATINUM BACKGROUND FINAL OVERRIDE
+========================================================= */
+
+html,
+body {
+  background:
+    radial-gradient(
+      circle at 12% 8%,
+      rgba(242, 242, 243, 0.14),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 88% 18%,
+      rgba(200, 201, 204, 0.10),
+      transparent 36%
+    ),
+    radial-gradient(
+      circle at 50% 100%,
+      rgba(215, 179, 90, 0.08),
+      transparent 38%
+    ),
+    linear-gradient(
+      135deg,
+      #050505 0%,
+      #101012 28%,
+      #202126 52%,
+      #121316 78%,
+      #050505 100%
+    ) !important;
+
+  color: var(--tror-platinum) !important;
+}
+
+/* Main application surfaces */
+.main,
+.content,
+.dashboard,
+.app-section,
+#dashboard-top {
+  background: transparent !important;
+}
+
+/* Platinum-black cards */
+.stat-card,
+.mini-box,
+.box,
+.glass-card,
+.invoice,
+.invoice-card,
+.analytics-card,
+.employee-card,
+.panel {
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(242, 242, 243, 0.07),
+      transparent 38%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(34, 35, 39, 0.96),
+      rgba(13, 13, 15, 0.98)
+    ) !important;
+
+  border: 1px solid rgba(200, 201, 204, 0.24) !important;
+
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 14px 34px rgba(0, 0, 0, 0.38) !important;
+}
+
+/* Gold hover */
+.stat-card:hover,
+.mini-box:hover,
+.box:hover,
+.invoice:hover,
+.invoice-card:hover,
+.analytics-card:hover,
+.employee-card:hover {
+  border-color: rgba(244, 215, 127, 0.56) !important;
+
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 18px 42px rgba(0, 0, 0, 0.44),
+    0 0 24px rgba(215, 179, 90, 0.16) !important;
+}
+
+/* Platinum outer dashboard frame */
+.dashboard-grid-modern,
+.status-grid-modern,
+.status-grid {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(32, 33, 37, 0.64),
+      rgba(10, 10, 12, 0.72)
+    ) !important;
+
+  border-color: rgba(200, 201, 204, 0.20) !important;
+}
+
+/* =========================================================
+   TROR — PAYROLL PLATINUM OVERRIDE
+========================================================= */
+
+#payroll,
+.payroll-panel,
+.payroll-section,
+.payroll-card,
+.employee-management,
+.employee-card,
+.payroll-summary-card,
+.payroll-form,
+.payroll-history,
+.payroll-total,
+.final-amount,
+.csv-import-box {
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(242, 242, 243, 0.07),
+      transparent 38%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(34, 35, 39, 0.96),
+      rgba(13, 13, 15, 0.98)
+    ) !important;
+
+  border-color: rgba(200, 201, 204, 0.24) !important;
+
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 14px 34px rgba(0, 0, 0, 0.38) !important;
+}
+
+/* Payroll summary boxes */
+#payroll .mini-box,
+#payroll .stat-card,
+#payroll .box,
+.payroll-panel .mini-box,
+.payroll-panel .stat-card {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(31, 31, 35, 0.97),
+      rgba(12, 12, 14, 0.98)
+    ) !important;
+
+  border-color: rgba(200, 201, 204, 0.26) !important;
+}
+
+/* Inputs, textarea and amount bars */
+#payroll input,
+#payroll textarea,
+#payroll select,
+.payroll-panel input,
+.payroll-panel textarea,
+.payroll-panel select,
+.final-amount,
+.payroll-total {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(24, 24, 27, 0.98),
+      rgba(10, 10, 12, 0.99)
+    ) !important;
+
+  color: var(--tror-platinum) !important;
+
+  border:
+    1px solid rgba(200, 201, 204, 0.24) !important;
+
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Focus */
+#payroll input:focus,
+#payroll textarea:focus,
+#payroll select:focus,
+.payroll-panel input:focus,
+.payroll-panel textarea:focus,
+.payroll-panel select:focus {
+  outline: none !important;
+  border-color: rgba(244, 215, 127, 0.58) !important;
+
+  box-shadow:
+    0 0 0 3px rgba(215, 179, 90, 0.10),
+    0 0 18px rgba(215, 179, 90, 0.12) !important;
+}
+
+/* Payroll cards hover */
+#payroll .employee-card:hover,
+#payroll .mini-box:hover,
+#payroll .stat-card:hover,
+.payroll-panel .employee-card:hover {
+  border-color: rgba(244, 215, 127, 0.56) !important;
+
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.44),
+    0 0 22px rgba(215, 179, 90, 0.14) !important;
+}
+
+/* =========================================================
+   TROR — FINAL GLOBAL COLOR CLEANUP
+   Must remain at the absolute end of style.css
+========================================================= */
+
+/* Main background */
+html,
+body {
+  background:
+    radial-gradient(
+      circle at 12% 8%,
+      rgba(242, 242, 243, 0.13),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 88% 15%,
+      rgba(200, 201, 204, 0.09),
+      transparent 36%
+    ),
+    radial-gradient(
+      circle at 50% 100%,
+      rgba(215, 179, 90, 0.08),
+      transparent 40%
+    ),
+    linear-gradient(
+      135deg,
+      #050505 0%,
+      #111214 32%,
+      #202126 54%,
+      #111214 78%,
+      #050505 100%
+    ) !important;
+
+  color: var(--tror-platinum) !important;
+}
+
+/* Header and navigation */
+.sidebar,
+.topbar {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(7, 7, 8, 0.98),
+      rgba(17, 17, 19, 0.97)
+    ) !important;
+
+  border-color: rgba(215, 179, 90, 0.24) !important;
+}
+
+/* Main panels and cards */
+.hero-panel,
+.panel,
+.stat-card,
+.mini-box,
+.box,
+.card,
+.glass-card,
+.invoice,
+.invoice-card,
+.analytics-card,
+.employee-card,
+.chart-box,
+.invoice-modal-content,
+.invoice-sheet-content,
+.sheet-body,
+.sheet-qr-card,
+.sheet-link-card {
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(242, 242, 243, 0.07),
+      transparent 38%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(34, 35, 39, 0.97),
+      rgba(12, 12, 14, 0.99)
+    ) !important;
+
+  border-color: rgba(200, 201, 204, 0.25) !important;
+
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 14px 34px rgba(0, 0, 0, 0.40) !important;
+}
+
+/* Dashboard and payroll outer frames */
+.dashboard-grid-modern,
+.status-grid-modern,
+.status-grid,
+#employeeManagement,
+#payroll .card,
+#payroll section,
+.payroll-panel,
+.payroll-section {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(30, 31, 35, 0.74),
+      rgba(9, 9, 11, 0.84)
+    ) !important;
+
+  border-color: rgba(200, 201, 204, 0.22) !important;
+}
+
+/* Payroll inputs, amount bars and CSV area */
+#payroll input,
+#payroll textarea,
+#payroll select,
+#payroll pre,
+#payroll .final-amount,
+#payroll .payroll-total,
+.payroll-panel input,
+.payroll-panel textarea,
+.payroll-panel select {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(24, 24, 27, 0.98),
+      rgba(9, 9, 11, 0.99)
+    ) !important;
+
+  color: var(--tror-platinum) !important;
+  border-color: rgba(200, 201, 204, 0.25) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Buttons and active navigation */
+button,
+.btn-connect,
+#btnScanQR,
+.sidebar-menu a.active-tab,
+.employee-filter.is-active {
+  background:
+    linear-gradient(
+      135deg,
+      #f4d77f 0%,
+      #d7b35a 52%,
+      #b99443 100%
+    ) !important;
+
+  color: #090909 !important;
+  border-color: rgba(244, 215, 127, 0.55) !important;
+
+  box-shadow:
+    0 10px 28px rgba(215, 179, 90, 0.20),
+    inset 0 1px 0 rgba(255, 255, 255, 0.38) !important;
+}
+
+/* Secondary and filter buttons */
+button.secondary,
+.employee-filter:not(.is-active),
+.tb-btn-ghost {
+  background: rgba(255, 255, 255, 0.045) !important;
+  color: var(--tror-silver) !important;
+  border: 1px solid rgba(200, 201, 204, 0.20) !important;
+  box-shadow: none !important;
+}
+
+/* Gold hover instead of blue */
+.stat-card:hover,
+.mini-box:hover,
+.box:hover,
+.card:hover,
+.invoice:hover,
+.employee-card:hover,
+.analytics-card:hover {
+  transform: translateY(-2px) !important;
+  border-color: rgba(244, 215, 127, 0.56) !important;
+
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.44),
+    0 0 22px rgba(215, 179, 90, 0.15) !important;
+}
+
+/* Activity ticker */
+.activity-ticker {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(200, 201, 204, 0.06),
+      rgba(215, 179, 90, 0.08)
+    ),
+    rgba(12, 12, 14, 0.90) !important;
+
+  border-color: rgba(215, 179, 90, 0.24) !important;
+  box-shadow: none !important;
+}
+
+/* Wallet chip and dropdown */
+.wallet-chip,
+.wallet-menu,
+.wm-card {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(25, 25, 28, 0.98),
+      rgba(7, 7, 8, 0.99)
+    ) !important;
+
+  border-color: rgba(215, 179, 90, 0.25) !important;
+}
+
+.wallet-chip:hover,
+.wallet-menu button:hover,
+.wm-option:hover {
+  background: rgba(215, 179, 90, 0.10) !important;
+  border-color: rgba(215, 179, 90, 0.28) !important;
+  color: var(--tror-gold-bright) !important;
+}
+
+/* Brand text and values */
+.eyebrow,
+.brand-subtitle,
+.stat-value,
+.analytics-card h3,
+.wc-balance {
+  color: var(--tror-gold-bright) !important;
+  text-shadow: 0 0 14px rgba(215, 179, 90, 0.20) !important;
+}
+
+/* Muted labels */
+.muted,
+.stat-label,
+.mini-box span,
+label,
+.analytics-card span {
+  color: var(--tror-silver) !important;
+}
+
+/* Links */
+a {
+  color: var(--tror-gold-bright) !important;
+  text-shadow: none !important;
+}
+
+/* Remove remaining cyan glow from logo */
+.brand-logo-svg {
+  filter:
+    drop-shadow(0 0 8px rgba(215, 179, 90, 0.38))
+    drop-shadow(0 0 14px rgba(200, 201, 204, 0.14)) !important;
+}
+
+/* TROR wallet modal logo */
+.wm-logo {
+  width: 42px !important;
+  height: 42px !important;
+  padding: 5px !important;
+  border-radius: 13px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(28, 28, 31, 0.98),
+      rgba(10, 10, 12, 0.99)
+    ) !important;
+
+  border: 1px solid rgba(215, 179, 90, 0.30) !important;
+}
+
+.wm-logo-img {
+  display: block !important;
+  width: 32px !important;
+  height: 32px !important;
+  object-fit: contain !important;
+}
+
+/* Card field wrapper */
+.card-field,
+.claim-card-field,
+.secure-field,
+.input-with-eye {
+  position: relative !important;
+  width: 100% !important;
+}
+
+/* Reserve space for eye button */
+.card-field input,
+.claim-card-field input,
+.secure-field input,
+.input-with-eye input {
+  width: 100% !important;
+  padding-right: 72px !important;
+}
+
+/* Eye button alignment */
+.card-field .eye-btn,
+.claim-card-field .eye-btn,
+.secure-field .eye-btn,
+.input-with-eye .eye-btn,
+.toggle-visibility,
+.password-toggle {
+  position: absolute !important;
+  top: 50% !important;
+  right: 12px !important;
+  transform: translateY(-50%) !important;
+
+  width: 54px !important;
+  height: 44px !important;
+  min-width: 54px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+
+  border-radius: 13px !important;
+  z-index: 3 !important;
+}
+
+/* Prevent hover from moving the eye */
+.card-field .eye-btn:hover,
+.claim-card-field .eye-btn:hover,
+.secure-field .eye-btn:hover,
+.input-with-eye .eye-btn:hover,
+.toggle-visibility:hover,
+.password-toggle:hover {
+  transform: translateY(-50%) !important;
 }

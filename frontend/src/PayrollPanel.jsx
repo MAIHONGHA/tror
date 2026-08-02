@@ -2,37 +2,47 @@ import { useEffect, useState } from "react";
 
 const API_BASE = window.location.origin;
 
+function getCurrentWorkspace() {
+  try {
+    return JSON.parse(
+      localStorage.getItem("currentWorkspace") || "null"
+    );
+  } catch {
+    return null;
+  }
+}
+
 export default function PayrollPanel() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [batches, setBatches] = useState([]);
   const [selectedBatchItems, setSelectedBatchItems] = useState([]);
   const [csvText, setCsvText] = useState("");
+  const [employeesLoading, setEmployeesLoading] = useState(false);
 
   const [newPayroll, setNewPayroll] = useState({
   title: "Monthly Payroll",
   frequency: "monthly",
   pay_date: "",
-  employees: [
-    {
-      employee_name: "",
-      employee_email: "",
-      wallet: "",
-      base_salary: "",
-      overtime_hours: "0",
-      overtime_rate: "0",
-      allowance: "0",
-      bonus: "0",
-      deduction: "0",
-    },
-  ],
+  employees: [],
 });
 
   async function loadPayroll() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${API_BASE}/api/payroll-items`);
+      const currentWorkspace = getCurrentWorkspace();
+
+if (!currentWorkspace?.id) {
+  setItems([]);
+  return;
+}
+
+const res = await fetch(
+  `${API_BASE}/api/payroll-items?workspaceId=${encodeURIComponent(
+    currentWorkspace.id
+  )}`
+);
       const data = await res.json();
       setItems(data);
     } catch (err) {
@@ -44,10 +54,90 @@ export default function PayrollPanel() {
   }
 
   async function loadPayrollBatches() {
-    const res = await fetch(`${API_BASE}/api/payroll-batches`);
+  try {
+    const currentWorkspace = getCurrentWorkspace();
+
+    if (!currentWorkspace?.id) {
+      setBatches([]);
+      return;
+    }
+
+    const res = await fetch(
+      `${API_BASE}/api/payroll-batches?workspaceId=${encodeURIComponent(
+        currentWorkspace.id
+      )}`
+    );
+
     const data = await res.json();
-    setBatches(data);
+
+    if (!res.ok) {
+      throw new Error(
+        data.error || "Failed to load payroll history"
+      );
+    }
+
+    setBatches(Array.isArray(data) ? data : []);
+  } catch (err) {
+    console.error("Load payroll batches error:", err);
+    alert(err.message);
   }
+}
+
+async function loadActiveEmployees() {
+  setEmployeesLoading(true);
+
+  try {
+    const currentWorkspace = getCurrentWorkspace();
+
+if (!currentWorkspace?.id) {
+  setNewPayroll((current) => ({
+    ...current,
+    employees: [],
+  }));
+
+  return;
+}
+
+const res = await fetch(
+  `${API_BASE}/api/employees?workspaceId=${encodeURIComponent(
+    currentWorkspace.id
+  )}&status=ACTIVE`
+);
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(
+        data.error || "Failed to load active employees"
+      );
+    }
+
+    const employees = Array.isArray(data)
+      ? data.map((employee) => ({
+          employee_id: employee.id,
+          employee_name: employee.employee_name || "",
+          employee_email: employee.employee_email || "",
+          wallet: employee.wallet || "",
+          base_salary: String(employee.base_salary || 0),
+          overtime_hours: "0",
+          overtime_rate: "0",
+          allowance: "0",
+          bonus: "0",
+          deduction: "0",
+        }))
+      : [];
+
+    setNewPayroll((current) => ({
+      ...current,
+      employees,
+    }));
+  } catch (err) {
+    console.error("Load active employees error:", err);
+    alert(err.message);
+  } finally {
+    setEmployeesLoading(false);
+  }
+}
 
 function importEmployeesFromCsv() {
   const lines = csvText.trim().split("\n");
@@ -78,16 +168,51 @@ function importEmployeesFromCsv() {
 }
 
 async function createPayrollBatch() {
+
+const currentWorkspace = getCurrentWorkspace();
+
+if (!currentWorkspace?.id) {
+  alert("Please select a workspace first.");
+  return;
+}
+
+    if (newPayroll.employees.length === 0) {
+    alert("No active employees available.");
+    return;
+  }
+
+  const validEmployees = newPayroll.employees.filter(
+  (employee) =>
+    String(employee.employee_name || "").trim() &&
+    String(employee.wallet || "").trim() &&
+    Number(employee.base_salary || 0) > 0
+);
+
+const skippedEmployees = newPayroll.employees.filter(
+  (employee) =>
+    !String(employee.employee_name || "").trim() ||
+    !String(employee.wallet || "").trim() ||
+    Number(employee.base_salary || 0) <= 0
+);
+
+if (validEmployees.length === 0) {
+  alert(
+    "No eligible employees found. Each employee needs a name, wallet and base salary greater than 0."
+  );
+  return;
+}
+
   const res = await fetch(`${API_BASE}/api/payroll-batches`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
+      workspaceId: currentWorkspace.id,
       title: newPayroll.title,
       frequency: newPayroll.frequency,
       pay_date: newPayroll.pay_date,
-      employees: newPayroll.employees.map((emp) => ({
+      employees: validEmployees.map((emp) => ({
   employee_name: emp.employee_name,
   employee_email: emp.employee_email,
   wallet: emp.wallet,
@@ -108,14 +233,42 @@ async function createPayrollBatch() {
     return;
   }
 
-  alert("Payroll created ✅");
+  if (skippedEmployees.length > 0) {
+  const skippedNames = skippedEmployees
+    .map(
+      (employee) =>
+        employee.employee_name || "Unnamed employee"
+    )
+    .join(", ");
+
+  alert(
+    `Payroll created for ${validEmployees.length} employee(s) ✅\n\n` +
+    `${skippedEmployees.length} employee(s) skipped:\n${skippedNames}\n\n` +
+    `Reason: missing name, wallet or valid base salary.`
+  );
+} else {
+  alert(
+    `Payroll created for ${validEmployees.length} employee(s) ✅`
+  );
+}
 
   loadPayroll();
   loadPayrollBatches();
 }
 
 async function viewBatchItems(batchId) {
-  const res = await fetch(`${API_BASE}/api/payroll-batches/${batchId}/items`);
+  const currentWorkspace = getCurrentWorkspace();
+
+  if (!currentWorkspace?.id) {
+    alert("Please select a workspace first.");
+    return;
+  }
+
+  const res = await fetch(
+    `${API_BASE}/api/payroll-batches/${batchId}/items?workspaceId=${encodeURIComponent(
+      currentWorkspace.id
+    )}`
+  );
   const data = await res.json();
   setSelectedBatchItems(data);
 }
@@ -289,9 +442,35 @@ async function viewBatchItems(batchId) {
   }
 
   useEffect(() => {
+  const reloadWorkspacePayroll = () => {
+    setItems([]);
+    setBatches([]);
+    setSelectedBatchItems([]);
+
+    setNewPayroll((current) => ({
+      ...current,
+      employees: [],
+    }));
+
     loadPayroll();
     loadPayrollBatches();
-  }, []);
+    loadActiveEmployees();
+  };
+
+  reloadWorkspacePayroll();
+
+  window.addEventListener(
+    "workspaceChanged",
+    reloadWorkspacePayroll
+  );
+
+  return () => {
+    window.removeEventListener(
+      "workspaceChanged",
+      reloadWorkspacePayroll
+    );
+  };
+}, []);
 
   const total = items.reduce(
     (sum, item) => sum + Number(item.final_amount || 0),
@@ -329,69 +508,225 @@ async function viewBatchItems(batchId) {
     }
   />
 
-  {newPayroll.employees.map((emp, index) => (
+  <div style={{ marginBottom: 16 }}>
   <div
-    key={index}
-    className="card"
-    style={{ marginBottom: 12 }}
+    style={{
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+      flexWrap: "wrap",
+      marginBottom: 12,
+    }}
   >
-    <input
-      placeholder="Employee name"
-      value={emp.employee_name}
-      onChange={(e) => {
-        const updated = [...newPayroll.employees];
-        updated[index].employee_name = e.target.value;
+    <h3 style={{ margin: 0 }}>
+      Active Employees ({newPayroll.employees.length})
+    </h3>
 
-        setNewPayroll({
-          ...newPayroll,
-          employees: updated,
-        });
-      }}
-    />
-
-    <input
-      placeholder="Employee email"
-      value={emp.employee_email}
-      onChange={(e) => {
-        const updated = [...newPayroll.employees];
-        updated[index].employee_email = e.target.value;
-
-        setNewPayroll({
-          ...newPayroll,
-          employees: updated,
-        });
-      }}
-    />
-
-    <input
-      placeholder="Employee wallet"
-      value={emp.wallet}
-      onChange={(e) => {
-        const updated = [...newPayroll.employees];
-        updated[index].wallet = e.target.value;
-
-        setNewPayroll({
-          ...newPayroll,
-          employees: updated,
-        });
-      }}
-    />
-
-    <input
-      placeholder="Base salary"
-      value={emp.base_salary}
-      onChange={(e) => {
-        const updated = [...newPayroll.employees];
-        updated[index].base_salary = e.target.value;
-
-        setNewPayroll({
-          ...newPayroll,
-          employees: updated,
-        });
-      }}
-    />
+    <button
+      type="button"
+      onClick={loadActiveEmployees}
+      disabled={employeesLoading}
+    >
+      {employeesLoading
+        ? "Loading Employees..."
+        : "Reload Active Employees"}
+    </button>
   </div>
-))}
+
+  {newPayroll.employees.length === 0 ? (
+    <div className="card">
+      No active employees found. Add or activate an employee
+      in Employee Management first.
+    </div>
+  ) : (
+    newPayroll.employees.map((emp, index) => (
+      <div
+        key={emp.employee_id || index}
+        className="card"
+        style={{ marginBottom: 12 }}
+      >
+        <b>{emp.employee_name}</b>
+
+        <div>Email: {emp.employee_email || "-"}</div>
+        <div>Wallet: {emp.wallet || "-"}</div>
+
+        <label>Base salary USDC</label>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={emp.base_salary}
+          onChange={(e) => {
+            const updated = [...newPayroll.employees];
+
+            updated[index] = {
+              ...updated[index],
+              base_salary: e.target.value,
+            };
+
+            setNewPayroll({
+              ...newPayroll,
+              employees: updated,
+            });
+          }}
+        />
+
+        <label>Overtime hours</label>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={emp.overtime_hours}
+          onChange={(e) => {
+            const updated = [...newPayroll.employees];
+
+            updated[index] = {
+              ...updated[index],
+              overtime_hours: e.target.value,
+            };
+
+            setNewPayroll({
+              ...newPayroll,
+              employees: updated,
+            });
+          }}
+        />
+
+        <label>Overtime rate</label>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={emp.overtime_rate}
+          onChange={(e) => {
+            const updated = [...newPayroll.employees];
+
+            updated[index] = {
+              ...updated[index],
+              overtime_rate: e.target.value,
+            };
+
+            setNewPayroll({
+              ...newPayroll,
+              employees: updated,
+            });
+          }}
+        />
+
+        <label>Allowance</label>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={emp.allowance}
+          onChange={(e) => {
+            const updated = [...newPayroll.employees];
+
+            updated[index] = {
+              ...updated[index],
+              allowance: e.target.value,
+            };
+
+            setNewPayroll({
+              ...newPayroll,
+              employees: updated,
+            });
+          }}
+        />
+
+        <label>Bonus</label>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={emp.bonus}
+          onChange={(e) => {
+            const updated = [...newPayroll.employees];
+
+            updated[index] = {
+              ...updated[index],
+              bonus: e.target.value,
+            };
+
+            setNewPayroll({
+              ...newPayroll,
+              employees: updated,
+            });
+          }}
+        />
+
+        <label>Deduction</label>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          value={emp.deduction}
+          onChange={(e) => {
+            const updated = [...newPayroll.employees];
+
+            updated[index] = {
+              ...updated[index],
+              deduction: e.target.value,
+            };
+
+            setNewPayroll({
+              ...newPayroll,
+              employees: updated,
+            });
+          }}
+        />
+        <div
+  style={{
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    background: "rgba(15, 23, 42, 0.65)",
+    fontWeight: 700,
+  }}
+>
+  Final Amount:{" "}
+  {(
+    Number(emp.base_salary || 0) +
+    Number(emp.overtime_hours || 0) *
+      Number(emp.overtime_rate || 0) +
+    Number(emp.allowance || 0) +
+    Number(emp.bonus || 0) -
+    Number(emp.deduction || 0)
+  ).toFixed(2)}{" "}
+  USDC
+</div>
+      </div>
+    ))
+  )}
+</div>
+
+<div
+  style={{
+    marginTop: 16,
+    padding: 14,
+    borderRadius: 14,
+    background: "rgba(59,130,246,0.12)",
+    border: "1px solid rgba(96,165,250,0.25)",
+    fontWeight: 800
+  }}
+>
+  Payroll Total:{" "}
+  {newPayroll.employees
+    .reduce((sum, emp) => {
+      return (
+        sum +
+        Number(emp.base_salary || 0) +
+        Number(emp.overtime_hours || 0) *
+          Number(emp.overtime_rate || 0) +
+        Number(emp.allowance || 0) +
+        Number(emp.bonus || 0) -
+        Number(emp.deduction || 0)
+      );
+    }, 0)
+    .toFixed(2)}{" "}
+  USDC
+</div>
 
 <h3>Import Employees CSV</h3>
 
@@ -405,30 +740,6 @@ An,an@test.com,0xdef...,80,0`}
 
 <button onClick={importEmployeesFromCsv}>
   Import CSV
-</button>
-
-<button
-  onClick={() => {
-    setNewPayroll({
-      ...newPayroll,
-      employees: [
-        ...newPayroll.employees,
-        {
-          employee_name: "",
-          employee_email: "",
-          wallet: "",
-          base_salary: "",
-          overtime_hours: "0",
-          overtime_rate: "0",
-          allowance: "0",
-          bonus: "0",
-          deduction: "0",
-        },
-      ],
-    });
-  }}
->
-  Add Employee
 </button>
 
   <button onClick={createPayrollBatch}>
@@ -524,7 +835,7 @@ An,an@test.com,0xdef...,80,0`}
 
     <hr />
 
-    <b>Final Amount: {item.final_amount} USDC</b>
+    <b>Final Amount: {Number(item.final_amount || 0).toFixed(2)} USDC</b>
 
     <div>Status: {item.status}</div>
 

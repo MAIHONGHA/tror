@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+
+<defs>
+
+<linearGradient id="gold" x1="8" y1="6" x2="52" y2="58">
+<stop offset="0%" stop-color="#F4D77F"/>
+<stop offset="100%" stop-color="#B88A32"/>
+</linearGradient>
+
+<linearGradient id="silver" x1="30" y1="8" x2="58" y2="60">
+<stop offset="0%" stop-color="#FFFFFF"/>
+<stop offset="100%" stop-color="#A9ADB5"/>
+</linearGradient>
+
+</defs>
+
+<rect
+width="64"
+height="64"
+rx="14"
+fill="#0B0B0D"/>
+
+<path
+d="M32 7 53 19v13"
+fill="none"
+stroke="url(#gold)"
+stroke-width="4.5"
+stroke-linecap="round"/>
+
+<path
+d="M53 36v9L32 57 11 45V19L32 7"
+fill="none"
+stroke="url(#silver)"
+stroke-width="4.5"
+stroke-linecap="round"
+stroke-linejoin="round"/>
+
+<path
+d="M20 21h28l-4 7h-9v21l-6 4V28H16z"
+fill="url(#silver)"/>
+
+<path
+d="M20 21h28l-4 7H16z"
+fill="url(#gold)"/>
+
+</svg>

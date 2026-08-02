@@ -2,13 +2,18 @@ async function main() {
   const USDC_ADDRESS =
     "0x3600000000000000000000000000000000000000";
 
-  const ArcPayInvoice = await ethers.getContractFactory("ArcPayInvoice");
+  const TRORInvoice =
+    await ethers.getContractFactory("TRORInvoice");
 
-  const invoice = await ArcPayInvoice.deploy(USDC_ADDRESS);
+  const invoice =
+    await TRORInvoice.deploy(USDC_ADDRESS);
 
   await invoice.waitForDeployment();
 
-  console.log("ArcPayInvoice deployed to:", await invoice.getAddress());
+  console.log(
+    "TRORInvoice deployed to:",
+    await invoice.getAddress()
+  );
 }
 
 main().catch((error) => {

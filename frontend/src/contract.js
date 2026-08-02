@@ -1,5 +1,5 @@
 export const CONTRACT_ADDRESS =
-  "0x3Fe127d053D4a518b04d5C4eF207F5e9DdB5763f";
+  "0xbb9b26e639d2613132bd964afe1be10931f123a0";
 
 export const CONTRACT_ABI = [
   {
@@ -232,4 +232,43 @@ export const MEMO_ABI = [
       { name: "memoIndex", type: "uint256", indexed: false }
     ]
   }
+];
+
+export const CLAIM_CONTRACT_ADDRESS =
+  "0xa99b752ffe5ecbbedc37136444ca3c190dcfce96";
+
+
+export const CLAIM_CONTRACT_ABI = [
+  {
+    inputs: [
+      { internalType: "bytes32", name: "emailHash", type: "bytes32" },
+      { internalType: "uint256", name: "amount", type: "uint256" },
+      { internalType: "string", name: "memo", type: "string" },
+      { internalType: "uint256", name: "expiresAt", type: "uint256" }
+    ],
+    name: "createClaim",
+    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+    inputs: [
+      { internalType: "uint256", name: "claimId", type: "uint256" },
+      { internalType: "address", name: "receiver", type: "address" }
+    ],
+    name: "claimToWallet",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+  {
+  inputs: [{ internalType: "uint256", name: "claimId", type: "uint256" }],
+  name: "refundExpired",
+  outputs: [],
+  stateMutability: "nonpayable",
+  type: "function"
+},
+
+"event ClaimCreated(uint256 indexed claimId,address indexed sender,bytes32 indexed emailHash,uint256 amount,string memo,uint256 expiresAt)"
+
 ];

@@ -3,8 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ArcPay — USDC Payments on Arc</title>
-
+  <title>TROR — USDC Payments on Arc</title>
+  <link rel="icon"
+      type="image/svg+xml"
+      href="/brand/favicon.svg?v=2" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -401,16 +403,169 @@
       .btn { text-align: center; }
       .screen { min-height: auto; }
     }
+
+    /* =========================================================
+   TROR LANDING PAGE — GOLD + SILVER + BLACK OVERRIDE
+========================================================= */
+
+:root {
+  --tror-black: #050505;
+  --tror-black-soft: #0b0b0d;
+  --tror-panel: rgba(20, 20, 23, 0.86);
+  --tror-gold: #d7b35a;
+  --tror-gold-bright: #f4d77f;
+  --tror-gold-dark: #9c772c;
+  --tror-silver: #c8c9cc;
+  --tror-platinum: #f2f2f3;
+  --tror-muted: #9a9ba0;
+}
+
+body {
+  background:
+    radial-gradient(circle at 15% 0%, rgba(215,179,90,.16), transparent 34%),
+    radial-gradient(circle at 85% 12%, rgba(200,201,204,.10), transparent 36%),
+    radial-gradient(circle at 50% 100%, rgba(156,119,44,.10), transparent 35%),
+    linear-gradient(135deg, #030303 0%, #0b0b0d 48%, #050505 100%) !important;
+  color: var(--tror-platinum) !important;
+}
+
+.nav {
+  background: rgba(5,5,5,.82) !important;
+  border-bottom: 1px solid rgba(215,179,90,.22) !important;
+}
+
+.brand-logo {
+  background: linear-gradient(135deg, #f4d77f, #d7b35a, #9c772c) !important;
+  box-shadow: 0 0 28px rgba(215,179,90,.28) !important;
+}
+
+.brand small {
+  color: var(--tror-gold) !important;
+}
+
+.launch,
+.btn-primary,
+.step-num {
+  background: linear-gradient(135deg, #f4d77f, #d7b35a, #a87f30) !important;
+  color: #080808 !important;
+  box-shadow: 0 16px 38px rgba(215,179,90,.24) !important;
+}
+
+.badge {
+  border-color: rgba(215,179,90,.34) !important;
+  background: rgba(215,179,90,.08) !important;
+  color: var(--tror-gold-bright) !important;
+}
+
+.gradient-text {
+  background: linear-gradient(90deg, #ffffff, #f4d77f, #c8c9cc) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+.subtitle,
+.section-head p,
+.feature p,
+.step p,
+footer {
+  color: var(--tror-muted) !important;
+}
+
+.mockup {
+  background:
+    linear-gradient(135deg, rgba(215,179,90,.18), rgba(200,201,204,.10)),
+    rgba(255,255,255,.03) !important;
+  border-color: rgba(215,179,90,.24) !important;
+  box-shadow:
+    0 30px 90px rgba(0,0,0,.55),
+    0 0 60px rgba(215,179,90,.12) !important;
+}
+
+.mockup::before {
+  background:
+    conic-gradient(
+      from 180deg,
+      transparent,
+      rgba(215,179,90,.28),
+      transparent,
+      rgba(200,201,204,.18),
+      transparent
+    ) !important;
+}
+
+.screen {
+  background: rgba(7,7,8,.95) !important;
+  border-color: rgba(200,201,204,.14) !important;
+}
+
+.screen-title {
+  color: var(--tror-gold-bright) !important;
+}
+
+.stat,
+.feature,
+.step,
+.invoice-card,
+.flow-step {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(28,28,31,.94),
+      rgba(10,10,12,.96)
+    ) !important;
+  border-color: rgba(200,201,204,.16) !important;
+}
+
+.stat b {
+  color: var(--tror-gold-bright) !important;
+}
+
+.invoice-card {
+  border-color: rgba(215,179,90,.28) !important;
+}
+
+.feature:hover {
+  border-color: rgba(215,179,90,.46) !important;
+  box-shadow: 0 24px 60px rgba(215,179,90,.12) !important;
+}
+
+.icon {
+  background:
+    linear-gradient(
+      135deg,
+      rgba(215,179,90,.18),
+      rgba(200,201,204,.10)
+    ) !important;
+  border-color: rgba(215,179,90,.18) !important;
+}
+
+.btn-secondary,
+.pill {
+  background: rgba(255,255,255,.05) !important;
+  border-color: rgba(200,201,204,.16) !important;
+  color: var(--tror-silver) !important;
+}
+
+footer {
+  border-top-color: rgba(215,179,90,.18) !important;
+}
+
   </style>
 </head>
 
 <body>
   <header class="nav">
     <a class="brand" href="/">
-      <div class="brand-logo">A</div>
+      <div class="brand-logo">
+  <img
+    src="/brand/tror-icon.svg"
+    alt="TROR"
+    style="width:32px;height:32px;object-fit:contain"
+  />
+</div>
       <div>
-        <div>ArcPay</div>
-        <small>ARC NETWORK · USDC</small>
+        <div>TROR</div>
+        <small>BUILT ON ARC</small>
       </div>
     </a>
 
@@ -426,15 +581,15 @@
     <section class="hero">
       <div class="hero-wrap">
         <div>
-          <div class="badge">⚡ ARC + USDC PAYMENT INFRASTRUCTURE</div>
+          <div class="badge">⚡ USDC PAYMENTS BUILT ON ARC</div>
 
           <h1>
-            Real-world <span class="gradient-text">USDC payments</span> on Arc.
+            Real-world <span class="gradient-text">USDC payments</span> Built on Arc.
           </h1>
 
           <p class="subtitle">
-            Create invoices, receive USDC, send Gmail crypto claims, manage payroll,
-            and process payouts from one unified ArcPay dashboard.
+            Create invoices, payrolls, Gmail Claims and receive
+USDC payments in one secure platform.
           </p>
 
           <div class="actions">
@@ -458,7 +613,7 @@
                 <div class="dot"></div>
                 <div class="dot"></div>
               </div>
-              <div class="screen-title">ArcPay Dashboard</div>
+              <div class="screen-title">TROR Dashboard</div>
             </div>
 
             <div class="stats">
@@ -499,8 +654,8 @@
     <section class="section" id="features">
       <div class="section-inner">
         <div class="section-head">
-          <h2>One dashboard for Arc payments.</h2>
-          <p>ArcPay combines invoices, wallets, payroll, payouts and email claims.</p>
+          <h2>One dashboard for TROR payments.</h2>
+          <p>TROR combines invoices</p>, wallets, payroll, payouts and email claims.</p>
         </div>
 
         <div class="feature-grid">
@@ -534,7 +689,7 @@
     <section class="section" id="how">
       <div class="section-inner">
         <div class="section-head">
-          <h2>How ArcPay works.</h2>
+          <h2>How TROR works.</h2>
           <p>A simple payment flow for real-world stablecoin commerce.</p>
         </div>
 
@@ -570,14 +725,14 @@
       <div class="section-inner">
         <div class="section-head">
           <h2>Current status.</h2>
-          <p>ArcPay MVP is live with smart contract invoice payments and production-ready wallet flows.</p>
+          <p>TROR MVP is live with smart contract invoice payments and production-ready wallet flows.</p>
         </div>
 
         <div class="feature-grid">
           <div class="feature">
             <div class="icon">✅</div>
             <h3>Live MVP</h3>
-            <p>ArcPay is deployed and accessible at arcpay.pro.</p>
+            <p>TROR is deployed and accessible at tror.app.</p>
           </div>
 
           <div class="feature">
@@ -603,7 +758,7 @@
   </main>
 
   <footer>
-    Built by MAI HONG HA · Arc Network · USDC · Circle Wallet Infrastructure
+    Built by MAI HONG HA · TROR · Arc Network · Circle Wallet Infrastructure
   </footer>
 </body>
 </html>
