@@ -1,3 +1,39 @@
+/* =========================================================
+   TROR DESIGN SYSTEM — FINAL
+   Gold · Platinum · Silver · Charcoal · Black
+   Existing layout and JavaScript hooks are preserved.
+========================================================= */
+
+:root {
+  --tror-black: #050505;
+  --tror-black-soft: #0b0b0d;
+  --tror-charcoal: #111214;
+  --tror-panel: #17181c;
+  --tror-panel-soft: #202126;
+  --tror-input: #121316;
+
+  --tror-gold-dark: #9c772c;
+  --tror-gold: #d7b35a;
+  --tror-gold-bright: #f4d77f;
+  --tror-platinum: #f2f2f3;
+  --tror-silver: #c8c9cc;
+  --tror-muted: #9da1aa;
+
+  --tror-border: rgba(215, 179, 90, 0.34);
+  --tror-border-strong: rgba(244, 215, 127, 0.62);
+  --tror-border-silver: rgba(200, 201, 204, 0.22);
+
+  --tror-focus-ring: 0 0 0 3px rgba(215, 179, 90, 0.18);
+  --tror-gold-glow: 0 0 24px rgba(215, 179, 90, 0.22);
+  --tror-shadow: 0 18px 48px rgba(0, 0, 0, 0.38);
+
+  --tror-success: #22c55e;
+  --tror-warning: #f59e0b;
+  --tror-danger: #ef4444;
+
+  color-scheme: dark;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -43,7 +79,7 @@ body {
   padding: 24px 18px;
   background:
     linear-gradient(180deg, rgba(5,8,22,.98), rgba(10,16,32,.96));
-  border-right: 1px solid rgba(0,212,255,.14);
+  border-right: 1px solid rgba(215,179,90,.14);
   box-shadow: 20px 0 60px rgba(0,0,0,.25);
 }
 
@@ -68,8 +104,8 @@ body {
   var(--tror-gold-bright)
 );
   box-shadow:
-    0 0 24px rgba(0,212,255,.45),
-    0 0 44px rgba(124,58,237,.25);
+    0 0 24px rgba(215,179,90,.45),
+    0 0 44px rgba(156,119,44,.25);
 }
 
 .brand-title {
@@ -123,7 +159,7 @@ body {
   var(--tror-gold),
   var(--tror-gold-bright)
 );
-  box-shadow: 0 14px 30px rgba(0,224,255,0.2);
+  box-shadow: 0 14px 30px rgba(215,179,90,0.2);
 }
 
 /* ── MAIN SHELL ── */
@@ -143,7 +179,7 @@ body {
   margin-bottom: 24px;
   backdrop-filter: blur(22px);
   box-shadow:
-    0 0 20px rgba(0,212,255,0.08),
+    0 0 20px rgba(215,179,90,0.08),
     0 0 40px rgba(255,215,100,0.30),
     inset 0 1px 0 rgba(255,255,255,0.05);
 }
@@ -157,12 +193,12 @@ body {
 
 .hero-panel {
   background:
-    linear-gradient(135deg, rgba(0,212,255,0.08), rgba(124,58,237,0.12)),
+    linear-gradient(135deg, rgba(215,179,90,0.08), rgba(156,119,44,0.12)),
     rgba(12,18,38,0.85);
-  border: 1px solid rgba(124,58,237,0.25);
+  border: 1px solid rgba(156,119,44,0.25);
   box-shadow:
-    0 0 25px rgba(0,212,255,0.12),
-    0 0 50px rgba(124,58,237,0.18);
+    0 0 25px rgba(215,179,90,0.12),
+    0 0 50px rgba(156,119,44,0.18);
 }
 
 .hero-top,
@@ -176,7 +212,7 @@ body {
 
 .eyebrow {
   margin: 0 0 8px;
-  color: #16d9ff;
+  color: var(--tror-gold-bright);
   font-size: 11px;
   font-weight: 900;
   text-transform: uppercase;
@@ -229,7 +265,7 @@ h3 { font-size: 18px; }
 
 .stat-card {
   background: linear-gradient(145deg, rgba(18,22,45,.95), rgba(10,12,30,.95));
-  border: 1px solid rgba(124,58,237,.28);
+  border: 1px solid rgba(156,119,44,.28);
   border-radius: 24px;
   padding: 20px;
   min-height: 116px;
@@ -247,13 +283,13 @@ h3 { font-size: 18px; }
   margin-top: 10px;
   font-size: 30px;
   font-weight: 900;
-  color: #c084fc;
+  color: var(--tror-gold-bright);
   word-break: break-word;
 }
 
 .stat-value.small {
   font-size: 14px;
-  color: #dbeafe;
+  color: var(--tror-platinum);
   word-break: break-all;
 }
 
@@ -331,13 +367,13 @@ textarea {
 button {
   border: none;
   border-radius: 14px;
-  background: linear-gradient(135deg,#7c3aed,#a855f7);
+  background: linear-gradient(135deg,var(--tror-gold-dark),var(--tror-gold));
   color: #06121f;
   font-weight: 900;
   padding: 11px 16px;
   cursor: pointer;
   transition: 0.18s ease;
-  box-shadow: 0 14px 30px rgba(0,224,255,0.18);
+  box-shadow: 0 14px 30px rgba(215,179,90,0.18);
 }
 
 button:hover { transform: translateY(-2px); }
@@ -373,7 +409,7 @@ button.green {
 
 .invoice:hover {
   transform: translateY(-2px);
-  border-color: rgba(0,224,255,0.30);
+  border-color: rgba(215,179,90,0.30);
 }
 
 .invoice-title {
@@ -424,13 +460,13 @@ button.green {
 /* ── TEXT & LINKS ── */
 
 a {
-  color: #16d9ff;
+  color: var(--tror-gold-bright);
   font-weight: 900;
 }
 
 pre {
   white-space: pre-wrap;
-  color: #9cecff;
+  color: var(--tror-platinum);
   background: #0f1628;
   padding: 14px;
   border-radius: 16px;
@@ -591,7 +627,7 @@ pre {
 
 #selectedInvoice { font-size: 15px; line-height: 1.55; }
 #selectedInvoice b { font-size: 22px; color: #fff; }
-#selectedInvoice a { display: inline-block; margin-top: 8px; color: #16d9ff; }
+#selectedInvoice a { display: inline-block; margin-top: 8px; color: var(--tror-gold-bright); }
 
 /* ── PAYROLL ANALYTICS ── */
 
@@ -622,7 +658,7 @@ pre {
 .analytics-card h3 {
   margin-top: 12px;
   font-size: 34px;
-  color: #d8b4fe;
+  color: var(--tror-gold-bright);
 }
 
 /* ── CHART ── */
@@ -632,7 +668,7 @@ pre {
   background: #0d1425;
   border-radius: 24px;
   padding: 24px;
-  border: 1px solid rgba(168,85,247);
+  border: 1px solid rgba(215,179,90);
 }
 
 .fake-chart {
@@ -645,13 +681,13 @@ pre {
 .bar {
   flex: 1;
   border-radius: 18px 18px 6px 6px;
-  background: linear-gradient(180deg,#2445ff,#15d7ff);
+  background: linear-gradient(180deg,var(--tror-gold-dark),var(--tror-gold-bright));
   opacity: .55;
 }
 
 .bar.active {
   opacity: 1;
-  box-shadow: 0 0 25px rgba(21,215,255,.35);
+  box-shadow: 0 0 25px rgba(244,215,127,.35);
 }
 
 /* ── MOBILE BOTTOM NAV ── */
@@ -699,7 +735,7 @@ pre {
   }
 
   .sidebar-menu a:hover {
-    background: linear-gradient(90deg,#16c8ff,#00e0ff) !important;
+    background: linear-gradient(90deg,var(--tror-gold),var(--tror-gold-bright)) !important;
     color: #06121f !important;
   }
 
@@ -887,7 +923,7 @@ pre {
   border-radius: 24px;
   background: #fff;
   padding: 12px;
-  box-shadow: 0 18px 45px rgba(0,224,255,.16);
+  box-shadow: 0 18px 45px rgba(215,179,90,.16);
 }
 
 .sheet-link-card {
@@ -947,82 +983,8 @@ pre {
 
 .sidebar-menu a.active-tab {
   color: white !important;
-  background: linear-gradient(135deg, #7c3aed, #a855f7) !important;
-  box-shadow: 0 0 25px rgba(124,58,237,.35);
-}
-
-/* ── ARCPAY MODERN COLOR OVERRIDE ── */
-
-body {
-  background:
-    radial-gradient(circle at 18% 0%, rgba(99,102,241,.38), transparent 34%),
-    radial-gradient(circle at 82% 8%, rgba(34,211,238,.30), transparent 32%),
-    radial-gradient(circle at 50% 100%, rgba(168,85,247,.20), transparent 38%),
-    linear-gradient(135deg, #070b1f 0%, #10163a 48%, #060816 100%) !important;
-}
-
-.hero-panel,
-.panel {
-  background: linear-gradient(145deg, rgba(30,41,90,.82), rgba(15,23,42,.88)) !important;
-  border: 1px solid rgba(125,211,252,.22) !important;
-  box-shadow:
-    0 0 35px rgba(34,211,238,.18),
-    0 0 70px rgba(168,85,247,.18),
-    inset 0 1px 0 rgba(255,255,255,.10) !important;
-}
-
-.stat-card,
-.mini-box,
-.box,
-.invoice,
-.card,
-.glass-card {
-  background: linear-gradient(145deg, rgba(30,41,90,.88), rgba(15,23,42,.92)) !important;
-  border: 1px solid rgba(147,197,253,.22) !important;
-  box-shadow:
-    0 14px 35px rgba(0,0,0,.28),
-    0 0 24px rgba(99,102,241,.18) !important;
-}
-
-.stat-value {
-  color: #f0abfc !important;
-  text-shadow:
-    0 0 18px rgba(240,171,252,.55),
-    0 0 35px rgba(34,211,238,.18) !important;
-}
-
-button,
-#btnScanQR,
-.sidebar-menu a.active-tab {
-  background: linear-gradient(135deg, #38bdf8, #8b5cf6, #ec4899) !important;
-  color: #ffffff !important;
-  box-shadow:
-    0 0 22px rgba(56,189,248,.38),
-    0 0 35px rgba(139,92,246,.30) !important;
-}
-
-button:hover,
-.stat-card:hover,
-.invoice:hover {
-  transform: translateY(-3px);
-  box-shadow:
-    0 0 30px rgba(56,189,248,.35),
-    0 0 55px rgba(236,72,153,.24) !important;
-}
-
-.eyebrow, a {
-  color: #67e8f9 !important;
-  text-shadow: 0 0 14px rgba(103,232,249,.35);
-}
-
-.sidebar {
-  background: linear-gradient(180deg, rgba(8,13,35,.98), rgba(15,23,42,.96)) !important;
-  border-right: 1px solid rgba(56,189,248,.22) !important;
-}
-
-.brand-logo {
-  background: linear-gradient(135deg, #38bdf8, #8b5cf6, #ec4899) !important;
-  color: white !important;
+  background: linear-gradient(135deg, var(--tror-gold-dark), var(--tror-gold)) !important;
+  box-shadow: 0 0 25px rgba(156,119,44,.35);
 }
 
 /* ══════════════════════════════════════
@@ -1037,7 +999,7 @@ button:hover,
   display: flex;
   align-items: center;
   justify-content: center;
-  filter: drop-shadow(0 0 8px rgba(56,189,248,0.4));
+  filter: drop-shadow(0 0 8px rgba(215,179,90,0.4));
 }
 
 /* ── Sticky topbar ── */
@@ -1051,7 +1013,7 @@ button:hover,
   z-index: 9998;
   background: rgba(7,11,31,0.92);
   backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(56,189,248,0.12);
+  border-bottom: 1px solid rgba(215,179,90,0.12);
   gap: 10px;
   flex-wrap: wrap;
 }
@@ -1090,9 +1052,9 @@ button:hover,
 }
 
 .tb-btn-ghost:hover {
-  background: rgba(56,189,248,0.12) !important;
-  border-color: rgba(56,189,248,0.3) !important;
-  color: #67e8f9 !important;
+  background: rgba(215,179,90,0.12) !important;
+  border-color: rgba(215,179,90,0.3) !important;
+  color: var(--tror-gold-bright) !important;
   transform: none !important;
 }
 
@@ -1118,8 +1080,8 @@ button:hover,
 }
 
 .wallet-chip:hover {
-  background: rgba(56,189,248,0.1);
-  border-color: rgba(56,189,248,0.25);
+  background: rgba(215,179,90,0.1);
+  border-color: rgba(215,179,90,0.25);
 }
 
 /* Connection status indicator dot */
@@ -1144,7 +1106,7 @@ button:hover,
 }
 
 .wc-balance {
-  color: #67e8f9;
+  color: var(--tror-gold-bright);
   font-weight: 900;
   font-size: 12px;
 }
@@ -1158,7 +1120,7 @@ button:hover,
 
 /* ── Primary Connect button ── */
 .btn-connect {
-  background: linear-gradient(135deg, #38bdf8, #8b5cf6, #ec4899) !important;
+  background: linear-gradient(135deg, var(--tror-gold), var(--tror-gold-dark), var(--tror-silver)) !important;
   color: white !important;
   border: none !important;
   border-radius: 8px !important;
@@ -1169,14 +1131,14 @@ button:hover,
   width: auto !important;
   min-width: auto !important;
   height: auto !important;
-  box-shadow: 0 0 18px rgba(56,189,248,0.3) !important;
+  box-shadow: 0 0 18px rgba(215,179,90,0.3) !important;
   transition: all 0.2s !important;
   letter-spacing: 0.01em !important;
 }
 
 .btn-connect:hover {
   transform: translateY(-1px) !important;
-  box-shadow: 0 0 28px rgba(56,189,248,0.5) !important;
+  box-shadow: 0 0 28px rgba(215,179,90,0.5) !important;
 }
 
 @keyframes dropIn {
@@ -1191,7 +1153,7 @@ button:hover,
   padding: 8px;
   border-radius: 12px;
   background: rgba(10,15,35,0.97);
-  border: 1px solid rgba(56,189,248,0.2);
+  border: 1px solid rgba(215,179,90,0.2);
   backdrop-filter: blur(20px);
   box-shadow: 0 8px 32px rgba(0,0,0,0.5);
   animation: dropIn 0.15s ease;
@@ -1215,9 +1177,9 @@ button:hover,
 }
 
 .wallet-menu button:hover {
-  background: rgba(56,189,248,0.1) !important;
-  border-color: rgba(56,189,248,0.2) !important;
-  color: #67e8f9 !important;
+  background: rgba(215,179,90,0.1) !important;
+  border-color: rgba(215,179,90,0.2) !important;
+  color: var(--tror-gold-bright) !important;
   transform: none !important;
 }
 
@@ -1251,14 +1213,14 @@ body > .wallet-chip   { display: none !important; }
 .wm-card {
   width: min(420px, 100%);
   background: #080f22;
-  border: 1px solid rgba(56,189,248,0.2);
+  border: 1px solid rgba(215,179,90,0.2);
   border-radius: 24px;
   padding: 0;
   overflow: hidden;
   box-shadow:
     0 0 0 1px rgba(255,255,255,0.04),
     0 24px 80px rgba(0,0,0,0.7),
-    0 0 60px rgba(56,189,248,0.08);
+    0 0 60px rgba(215,179,90,0.08);
   animation: wmIn 0.22s ease;
 }
 
@@ -1280,8 +1242,8 @@ body > .wallet-chip   { display: none !important; }
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  background: rgba(56,189,248,0.08);
-  border: 1px solid rgba(56,189,248,0.2);
+  background: rgba(215,179,90,0.08);
+  border: 1px solid rgba(215,179,90,0.2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1359,12 +1321,12 @@ body > .wallet-chip   { display: none !important; }
 }
 
 .wm-option:hover {
-  background: rgba(56,189,248,0.07) !important;
+  background: rgba(215,179,90,0.07) !important;
   transform: none !important;
 }
 
 .wm-option:active {
-  background: rgba(56,189,248,0.12) !important;
+  background: rgba(215,179,90,0.12) !important;
 }
 
 /* Wallet icon container */
@@ -1407,7 +1369,7 @@ body > .wallet-chip   { display: none !important; }
 }
 
 .wm-option:hover .wm-option-arrow {
-  color: #67e8f9;
+  color: var(--tror-gold-bright);
   transform: translateX(3px);
 }
 
@@ -1525,7 +1487,7 @@ body > .wallet-chip   { display: none !important; }
     z-index: 999998 !important;
     padding: 20px 14px !important;
     transition: left .22s ease !important;
-    border-right: 1px solid rgba(56,189,248,.22) !important;
+    border-right: 1px solid rgba(215,179,90,.22) !important;
     border-top: none !important;
   }
 
@@ -1631,7 +1593,7 @@ body > .wallet-chip   { display: none !important; }
     align-items: center !important;
     justify-content: space-between !important;
     border-right: none !important;
-    border-bottom: 1px solid rgba(56,189,248,.18) !important;
+    border-bottom: 1px solid rgba(215,179,90,.18) !important;
   }
 
   .brand {
@@ -1740,16 +1702,16 @@ body > .wallet-chip   { display: none !important; }
 }
 
 /* =========================
-   ARCPAY DASHBOARD MODERN UI
+   TROR DASHBOARD MODERN UI
 ========================= */
 
 #dashboard .mini-box {
   background:
-    radial-gradient(circle at top left, rgba(56,189,248,.12), transparent 34%),
+    radial-gradient(circle at top left, rgba(215,179,90,.12), transparent 34%),
     linear-gradient(145deg, rgba(15,23,42,.96), rgba(8,13,30,.96));
-  border: 1px solid rgba(56,189,248,.22);
+  border: 1px solid rgba(215,179,90,.22);
   box-shadow:
-    0 0 35px rgba(56,189,248,.10),
+    0 0 35px rgba(215,179,90,.10),
     inset 0 1px 0 rgba(255,255,255,.06);
 }
 
@@ -1780,17 +1742,17 @@ body > .wallet-chip   { display: none !important; }
 /* payroll */
 #activityFeed div:nth-child(2),
 #activityFeed p:nth-child(2) {
-  border-color: rgba(56,189,248,.34);
-  background: rgba(56,189,248,.10);
+  border-color: rgba(215,179,90,.34);
+  background: rgba(215,179,90,.10);
   color: #bae6fd;
 }
 
 /* gmail claim */
 #activityFeed div:nth-child(3),
 #activityFeed p:nth-child(3) {
-  border-color: rgba(168,85,247,.34);
-  background: rgba(168,85,247,.12);
-  color: #e9d5ff;
+  border-color: rgba(215,179,90,.34);
+  background: rgba(215,179,90,.12);
+  color: var(--tror-platinum);
 }
 
 .activity-item {
@@ -1830,9 +1792,9 @@ body > .wallet-chip   { display: none !important; }
 }
 
 .activity-claim {
-  border-color: rgba(168,85,247,.35) !important;
-  background: rgba(168,85,247,.12) !important;
-  color: #e9d5ff !important;
+  border-color: rgba(215,179,90,.35) !important;
+  background: rgba(215,179,90,.12) !important;
+  color: var(--tror-platinum) !important;
 }
 
 .activity-failed {
@@ -1874,7 +1836,7 @@ body > .wallet-chip   { display: none !important; }
 
 #activityFeed .activity-item:hover {
   transform: translateY(-2px) !important;
-  box-shadow: 0 0 26px rgba(56,189,248,.16) !important;
+  box-shadow: 0 0 26px rgba(215,179,90,.16) !important;
 }
 
 #activityFeed .activity-icon {
@@ -1908,11 +1870,11 @@ body > .wallet-chip   { display: none !important; }
 }
 
 #activityFeed .activity-claim {
-  border-color: rgba(168,85,247,.42) !important;
+  border-color: rgba(215,179,90,.42) !important;
   background:
-    radial-gradient(circle at left, rgba(168,85,247,.20), transparent 40%),
-    rgba(168,85,247,.12) !important;
-  color: #e9d5ff !important;
+    radial-gradient(circle at left, rgba(215,179,90,.20), transparent 40%),
+    rgba(215,179,90,.12) !important;
+  color: var(--tror-platinum) !important;
 }
 
 #activityFeed .activity-failed {
@@ -1978,9 +1940,9 @@ body > .wallet-chip   { display: none !important; }
   margin: 18px 0 4px;
   overflow: hidden;
   border-radius: 18px;
-  border: 1px solid rgba(56,189,248,.22);
+  border: 1px solid rgba(215,179,90,.22);
   background: rgba(15,23,42,.78);
-  box-shadow: 0 0 28px rgba(56,189,248,.10);
+  box-shadow: 0 0 28px rgba(215,179,90,.10);
 }
 
 .activity-ticker-track {
@@ -1997,7 +1959,7 @@ body > .wallet-chip   { display: none !important; }
 
 .ticker-item {
   white-space: nowrap;
-  color: #dbeafe;
+  color: var(--tror-platinum);
   font-size: 13px;
   font-weight: 900;
 }
@@ -2018,12 +1980,12 @@ body > .wallet-chip   { display: none !important; }
   margin: 22px 0 18px;
   overflow: hidden;
   border-radius: 999px;
-  border: 1px solid rgba(56,189,248,.32);
+  border: 1px solid rgba(215,179,90,.32);
   background:
-    linear-gradient(90deg, rgba(56,189,248,.14), rgba(139,92,246,.14)),
+    linear-gradient(90deg, rgba(215,179,90,.14), rgba(215,179,90,.14)),
     rgba(15,23,42,.82);
   box-shadow:
-    0 0 24px rgba(56,189,248,.18),
+    0 0 24px rgba(215,179,90,.18),
     inset 0 1px 0 rgba(255,255,255,.08);
 }
 
@@ -2064,28 +2026,28 @@ body > .wallet-chip   { display: none !important; }
 .dashboard-grid-modern .stat-card:hover,
 .stat-card:hover {
   transform: translateY(-7px);
-  border-color: rgba(56,189,248,.55) !important;
+  border-color: rgba(215,179,90,.55) !important;
   box-shadow:
-    0 22px 55px rgba(56,189,248,.20),
-    0 0 36px rgba(139,92,246,.18) !important;
+    0 22px 55px rgba(215,179,90,.20),
+    0 0 36px rgba(215,179,90,.18) !important;
 }
 
 .status-grid-modern .mini-box,
 .status-grid .mini-box {
   transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
   background:
-    radial-gradient(circle at top left, rgba(56,189,248,.16), transparent 36%),
+    radial-gradient(circle at top left, rgba(215,179,90,.16), transparent 36%),
     linear-gradient(145deg, rgba(30,41,90,.94), rgba(15,23,42,.94)) !important;
-  border-color: rgba(125,211,252,.30) !important;
+  border-color: rgba(200,201,204,.30) !important;
 }
 
 .status-grid-modern .mini-box:hover,
 .status-grid .mini-box:hover {
   transform: translateY(-4px);
-  border-color: rgba(56,189,248,.52) !important;
+  border-color: rgba(215,179,90,.52) !important;
   box-shadow:
-    0 18px 45px rgba(56,189,248,.18),
-    0 0 34px rgba(139,92,246,.14) !important;
+    0 18px 45px rgba(215,179,90,.18),
+    0 0 34px rgba(215,179,90,.14) !important;
 }
 
 .dash-live-badge span {
@@ -2146,7 +2108,7 @@ body > .wallet-chip   { display: none !important; }
 
 .ticker-item:hover{
   transform:scale(1.05);
-  color:#7dd3fc;
+  color:var(--tror-platinum);
 }
 
 .activity-ticker,
@@ -2165,7 +2127,7 @@ body > .wallet-chip   { display: none !important; }
 }
 
 .ticker-item:hover{
-  color:#7dd3fc;
+  color:var(--tror-platinum);
   transform:scale(1.05);
 }
 
@@ -3451,4 +3413,451 @@ a {
 .toggle-visibility:hover,
 .password-toggle:hover {
   transform: translateY(-50%) !important;
+}
+
+/* =========================================================
+   TROR FINAL OVERRIDES
+   This block intentionally comes last.
+========================================================= */
+
+html,
+body {
+  accent-color: var(--tror-gold);
+}
+
+::selection {
+  color: var(--tror-black);
+  background: var(--tror-gold-bright);
+}
+
+a,
+.eyebrow,
+.wc-balance,
+.sheet-link-card a,
+.invoice a,
+#selectedInvoice a {
+  color: var(--tror-gold-bright) !important;
+  text-shadow: none !important;
+}
+
+button,
+.btn-connect,
+#btnScanQR,
+.sidebar-menu a.active-tab,
+.mobile-menu-btn {
+  color: var(--tror-black) !important;
+  background: linear-gradient(
+    135deg,
+    var(--tror-gold-dark),
+    var(--tror-gold),
+    var(--tror-gold-bright)
+  ) !important;
+  border-color: var(--tror-border) !important;
+  box-shadow: 0 12px 30px rgba(215, 179, 90, 0.16) !important;
+}
+
+button:hover,
+.btn-connect:hover,
+#btnScanQR:hover,
+.sidebar-menu a.active-tab:hover {
+  border-color: var(--tror-border-strong) !important;
+  box-shadow: var(--tror-gold-glow) !important;
+}
+
+button.secondary,
+.tb-btn-ghost,
+.wallet-menu button,
+.wm-close,
+.sheet-close,
+.close-btn {
+  color: var(--tror-platinum) !important;
+  background: rgba(255, 255, 255, 0.055) !important;
+  border: 1px solid var(--tror-border-silver) !important;
+  box-shadow: none !important;
+}
+
+button.secondary:hover,
+.tb-btn-ghost:hover,
+.wallet-menu button:hover,
+.wm-close:hover,
+.sheet-close:hover,
+.close-btn:hover {
+  color: var(--tror-gold-bright) !important;
+  background: rgba(215, 179, 90, 0.10) !important;
+  border-color: var(--tror-border) !important;
+}
+
+input,
+textarea,
+select {
+  color: var(--tror-platinum) !important;
+  background-color: var(--tror-input) !important;
+  border: 1px solid var(--tror-border-silver) !important;
+  caret-color: var(--tror-gold-bright);
+  color-scheme: dark;
+}
+
+input:hover,
+textarea:hover,
+select:hover {
+  border-color: var(--tror-border) !important;
+}
+
+input:focus,
+textarea:focus,
+select:focus,
+button:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: none !important;
+  border-color: var(--tror-gold) !important;
+  box-shadow: var(--tror-focus-ring) !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--tror-muted) !important;
+  opacity: 0.78;
+}
+
+select {
+  cursor: pointer;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--tror-gold) 50%),
+    linear-gradient(135deg, var(--tror-gold) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) calc(50% - 2px),
+    calc(100% - 12px) calc(50% - 2px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 38px !important;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+select option,
+select optgroup {
+  color: var(--tror-platinum) !important;
+  background: var(--tror-panel) !important;
+}
+
+select option:checked {
+  color: var(--tror-black) !important;
+  background: var(--tror-gold) !important;
+}
+
+.workspace-switcher,
+#workspaceSwitcher,
+#customerSelect,
+#payoutMode,
+#payrollFrequency,
+.employee-filter,
+select[name="frequency"],
+select[name="mode"] {
+  color: var(--tror-platinum) !important;
+  background-color: var(--tror-input) !important;
+  border-color: var(--tror-border) !important;
+}
+
+/* Native file input and CSV import */
+input[type="file"] {
+  padding: 8px !important;
+  color: var(--tror-muted) !important;
+  background: var(--tror-input) !important;
+}
+
+input[type="file"]::file-selector-button {
+  margin-right: 12px;
+  padding: 9px 13px;
+  border: 1px solid var(--tror-border);
+  border-radius: 10px;
+  color: var(--tror-black);
+  background: linear-gradient(
+    135deg,
+    var(--tror-gold-dark),
+    var(--tror-gold-bright)
+  );
+  font-weight: 800;
+  cursor: pointer;
+}
+
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"],
+progress {
+  accent-color: var(--tror-gold) !important;
+}
+
+/* Panels, cards and menus */
+.panel,
+.hero-panel,
+.stat-card,
+.mini-box,
+.box,
+.invoice,
+.card,
+.glass-card,
+.analytics-card,
+.chart-box,
+.wallet-menu,
+.wm-card,
+.invoice-modal-content,
+.invoice-sheet-content,
+.sheet-body,
+.sheet-qr-card,
+.sheet-link-card {
+  border-color: var(--tror-border-silver) !important;
+}
+
+.panel:hover,
+.stat-card:hover,
+.invoice:hover,
+.card:hover,
+.glass-card:hover {
+  border-color: var(--tror-border) !important;
+  box-shadow: var(--tror-gold-glow) !important;
+}
+
+/* Wallet modal */
+.wallet-chip:hover,
+.wm-option:hover,
+.wm-option:active,
+.wm-logo {
+  background: rgba(215, 179, 90, 0.09) !important;
+  border-color: var(--tror-border) !important;
+}
+
+.wm-option:hover .wm-option-arrow {
+  color: var(--tror-gold-bright) !important;
+}
+
+/* Keep third-party identity branding subtle without turning the UI blue */
+.wm-google,
+.wm-google:hover {
+  background: rgba(255, 255, 255, 0.045) !important;
+}
+
+/* Dashboard and chart accents */
+.stat-value,
+.analytics-card h3 {
+  color: var(--tror-gold-bright) !important;
+  text-shadow: 0 0 18px rgba(215, 179, 90, 0.18) !important;
+}
+
+.bar {
+  background: linear-gradient(
+    180deg,
+    var(--tror-gold-bright),
+    var(--tror-gold-dark)
+  ) !important;
+}
+
+.bar.active {
+  box-shadow: 0 0 25px rgba(215, 179, 90, 0.32) !important;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    var(--tror-gold-dark),
+    var(--tror-gold)
+  ) !important;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--tror-black-soft) !important;
+}
+
+* {
+  scrollbar-color: var(--tror-gold-dark) var(--tror-black-soft);
+}
+
+/* State colors remain semantic */
+.success,
+.status-paid,
+.toast.success {
+  color: var(--tror-success) !important;
+}
+
+.error,
+.status-overdue,
+.toast.error {
+  color: var(--tror-danger) !important;
+}
+
+.status-created,
+.status-reminder {
+  color: var(--tror-warning) !important;
+}
+
+/* Remove legacy glow from the logo and navigation */
+.brand-logo,
+.brand-logo-svg {
+  filter: drop-shadow(0 0 9px rgba(215, 179, 90, 0.30)) !important;
+}
+
+.sidebar,
+.topbar {
+  border-color: var(--tror-border-silver) !important;
+}
+
+/*
+  Note:
+  On some Windows/Chromium versions, the blue highlight inside an OPEN native
+  <select> popup is painted by the operating system. The closed control,
+  focus ring and selected value are fully themed here. Replacing that popup
+  itself would require a custom dropdown component rather than native <select>.
+*/
+
+/* =========================================================
+   TROR — FIX DASHBOARD OUTER CORNERS
+========================================================= */
+
+.dashboard-grid-modern,
+.status-grid-modern,
+.status-grid,
+.dashboard {
+  border-radius: 26px !important;
+  overflow: hidden !important;
+}
+
+/* Keep spacing so the cards do not touch the outer container */
+.dashboard-grid-modern,
+.status-grid-modern,
+.status-grid {
+  padding: 2px !important;
+}
+
+/* Ensure each card keeps rounded corners and prevents the background from showing through */
+.dashboard-grid-modern .stat-card,
+.dashboard .stat-card,
+.status-grid-modern .mini-box,
+.status-grid .mini-box {
+  border-radius: 24px !important;
+  overflow: hidden !important;
+  background-clip: padding-box !important;
+}
+
+/* =========================================================
+   TROR — FIX EMPTY RESULT AND STATUS BARS
+========================================================= */
+
+/* Hide result containers when they have no content */
+#status:empty,
+#aiResult:empty,
+#claimResult:empty,
+#employeeFormStatus:empty {
+  display: none !important;
+  min-height: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Display the container as a TROR-style card when it contains content */
+#status:not(:empty),
+#aiResult:not(:empty),
+#claimResult:not(:empty),
+#employeeFormStatus:not(:empty) {
+  display: block !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+
+  margin: 14px 0 !important;
+  padding: 14px 16px !important;
+
+  color: var(--tror-platinum) !important;
+
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(215, 179, 90, 0.08),
+      transparent 40%
+    ),
+    linear-gradient(
+      145deg,
+      rgba(30, 31, 35, 0.97),
+      rgba(10, 10, 12, 0.99)
+    ) !important;
+
+  border: 1px solid rgba(215, 179, 90, 0.28) !important;
+  border-radius: 16px !important;
+
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 12px 30px rgba(0, 0, 0, 0.32) !important;
+
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Success state */
+#status.success,
+#aiResult.success,
+#claimResult.success,
+#employeeFormStatus.success {
+  color: #bbf7d0 !important;
+  border-color: rgba(34, 197, 94, 0.35) !important;
+  background: rgba(34, 197, 94, 0.10) !important;
+}
+
+/* Error state */
+#status.error,
+#aiResult.error,
+#claimResult.error,
+#employeeFormStatus.error {
+  color: #fecaca !important;
+  border-color: rgba(239, 68, 68, 0.38) !important;
+  background: rgba(239, 68, 68, 0.10) !important;
+}
+
+/* Links displayed in Gmail Claim and AI results */
+#claimResult a,
+#aiResult a {
+  color: var(--tror-gold-bright) !important;
+}
+
+/* =========================================================
+   TROR — RESTORE SELECT ARROWS
+========================================================= */
+
+select,
+#payroll select,
+.payroll-panel select,
+#payout-root select {
+  cursor: pointer !important;
+
+  appearance: none !important;
+  -webkit-appearance: none !important;
+
+  background-color: var(--tror-input) !important;
+
+  background-image:
+    linear-gradient(
+      45deg,
+      transparent 50%,
+      var(--tror-gold-bright) 50%
+    ),
+    linear-gradient(
+      135deg,
+      var(--tror-gold-bright) 50%,
+      transparent 50%
+    ) !important;
+
+  background-position:
+    calc(100% - 18px) calc(50% - 2px),
+    calc(100% - 12px) calc(50% - 2px) !important;
+
+  background-size:
+    6px 6px,
+    6px 6px !important;
+
+  background-repeat: no-repeat !important;
+
+  padding-right: 42px !important;
 }
