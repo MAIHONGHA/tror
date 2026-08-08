@@ -8,3 +8,5 @@ db.json
 frontend/node_modules/
 frontend/dist
 public/assets
+artifacts/
+cache/
