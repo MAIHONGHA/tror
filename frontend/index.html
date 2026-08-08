@@ -59,11 +59,17 @@
     .brand-logo {
       width: 46px;
       height: 46px;
-      border-radius: 16px;
       display: grid;
       place-items: center;
-      background: linear-gradient(135deg, var(--cyan), var(--violet), var(--pink));
-      box-shadow: 0 0 34px rgba(139,92,246,.45);
+      background: transparent;
+      box-shadow: none;
+    }
+
+    .brand-logo img {
+      width: 46px !important;
+      height: 46px !important;
+      display: block;
+      object-fit: contain;
     }
 
     .brand small {
@@ -435,8 +441,8 @@ body {
 }
 
 .brand-logo {
-  background: linear-gradient(135deg, #f4d77f, #d7b35a, #9c772c) !important;
-  box-shadow: 0 0 28px rgba(215,179,90,.28) !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .brand small {
@@ -617,28 +623,26 @@ USDC payments in one secure platform.
             </div>
 
             <div class="stats">
-              <div class="stat">
-                <span>Total Volume</span>
-                <b>16.19 USDC</b>
-              </div>
-              <div class="stat">
-                <span>Paid Invoices</span>
-                <b>36</b>
-              </div>
-              <div class="stat">
-                <span>Total Claims</span>
-                <b>13</b>
-              </div>
-              <div class="stat">
-                <span>Payrolls</span>
-                <b>2</b>
-              </div>
-            </div>
+  <div class="stat">
+    <span>Total Volume</span>
+    <b id="landingTotalVolume">0.00 USDC</b>
+  </div>
 
-            <div class="invoice-card">
-              <h3>Invoice Paid</h3>
-              <p>0.75 USDC settled on Arc Testnet with memo reference and TX verification.</p>
-            </div>
+  <div class="stat">
+    <span>Paid Invoices</span>
+    <b id="landingPaidInvoices">0</b>
+  </div>
+
+  <div class="stat">
+    <span>Total Claims</span>
+    <b id="landingTotalClaims">0</b>
+  </div>
+
+  <div class="stat">
+    <span>Payrolls</span>
+    <b id="landingTotalPayrolls">0</b>
+  </div>
+</div>
 
             <div class="mini-flow">
               <div class="flow-step">① Create USDC Invoice</div>
@@ -655,7 +659,7 @@ USDC payments in one secure platform.
       <div class="section-inner">
         <div class="section-head">
           <h2>One dashboard for TROR payments.</h2>
-          <p>TROR combines invoices</p>, wallets, payroll, payouts and email claims.</p>
+          <p>TROR combines invoices, wallets, payroll, payouts and email claims.</p>
         </div>
 
         <div class="feature-grid">
@@ -674,7 +678,7 @@ USDC payments in one secure platform.
           <div class="feature">
             <div class="icon">👛</div>
             <h3>Circle Wallet</h3>
-            <p>Google login, Circle wallet onboarding and USDC balance support inside ArcPay.</p>
+            <p>Google login, Circle wallet onboarding and USDC balance support inside TROR.</p>
           </div>
 
           <div class="feature">
@@ -758,7 +762,60 @@ USDC payments in one secure platform.
   </main>
 
   <footer>
-    Built by MAI HONG HA · TROR · Arc Network · Circle Wallet Infrastructure
-  </footer>
+  TROR · Built on Arc · USDC · Circle Wallet Infrastructure
+</footer>
+
+<script>
+async function loadLandingDashboard() {
+  try {
+    const currentWorkspace = JSON.parse(
+      localStorage.getItem("currentWorkspace") || "null"
+    );
+
+    if (!currentWorkspace?.id) {
+      return;
+    }
+
+    const response = await fetch(
+      `/api/dashboard?workspaceId=${encodeURIComponent(currentWorkspace.id)}`
+    );
+
+    if (!response.ok) {
+      throw new Error("Failed to load dashboard");
+    }
+
+    const data = await response.json();
+
+    const totalVolume = document.getElementById("landingTotalVolume");
+    const paidInvoices = document.getElementById("landingPaidInvoices");
+    const totalClaims = document.getElementById("landingTotalClaims");
+    const totalPayrolls = document.getElementById("landingTotalPayrolls");
+
+    if (totalVolume) {
+      totalVolume.textContent =
+        Number(data.totalVolume || 0).toFixed(2) + " USDC";
+    }
+
+    if (paidInvoices) {
+      paidInvoices.textContent = data.paidCount || 0;
+    }
+
+    if (totalClaims) {
+      totalClaims.textContent = data.totalClaims || 0;
+    }
+
+    if (totalPayrolls) {
+      totalPayrolls.textContent = data.totalPayrolls || 0;
+    }
+  } catch (err) {
+    console.error("Landing dashboard error:", err);
+  }
+}
+
+loadLandingDashboard();
+
+setInterval(loadLandingDashboard, 5000);
+</script>
+
 </body>
 </html>
