@@ -1787,6 +1787,12 @@ if (!hasProfile) {
 
 setStatus("Circle wallet and workspace loaded.", "success");
 
+if (!isInvoicePaymentMode()) {
+  showTab("dashboard");
+  updateTopbarTitle("dashboard");
+  window.location.hash = "dashboard";
+}
+
 document
   .getElementById("btnSetupPin")
   ?.classList.add("hidden");
@@ -2054,13 +2060,18 @@ if (address) {
   }
 
   setStatus(
-    "Circle wallet and workspace created.",
-    "success"
-  );
+  "Circle wallet and workspace created.",
+  "success"
+);
 
-  return;
+if (!isInvoicePaymentMode()) {
+  showTab("dashboard");
+  updateTopbarTitle("dashboard");
+  window.location.hash = "dashboard";
 }
 
+return;
+}
         await loadCircleWallet(userToken);
       } catch (err) {
         if (String(err.message || "").includes("already")) {
@@ -5888,9 +5899,24 @@ watchAccount(wagmiAdapter.wagmiConfig, {
         }
 
         setStatus(
-          "Wallet and profile connected.",
-          "success"
-        );
+  "Wallet and profile connected.",
+  "success"
+);
+
+// Close AppKit after successful wallet connection
+appKit?.close?.();
+
+document
+  .getElementById("walletModal")
+  ?.classList.add("hidden");
+
+// Normal Connect flow -> stay on Dashboard.
+// Invoice payment flow -> keep invoice page open.
+if (!isInvoicePaymentMode()) {
+  showTab("dashboard");
+  updateTopbarTitle("dashboard");
+  window.location.hash = "dashboard";
+}
       }
     } else {
       metamaskWallet = null;
