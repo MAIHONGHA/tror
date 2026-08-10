@@ -545,9 +545,21 @@ let metamaskWallet = null;
 let activeWalletType = null; // "web3" | "circle"
 
 function clearCircleWalletLocal() {
+  // Clear Circle wallet from UI
   if (circleWalletEl) {
     circleWalletEl.textContent = "-";
   }
+
+  // Clear Google email from UI
+  if (emailEl) {
+    emailEl.textContent = "-";
+  }
+
+  // Clear Google / Circle identity from browser
+  localStorage.removeItem("googleUser");
+  localStorage.removeItem("googleToken");
+  localStorage.removeItem("circleUserToken");
+  localStorage.removeItem("circleEncryptionKey");
 
   if (activeWalletType === "circle") {
     activeWalletType = null;
