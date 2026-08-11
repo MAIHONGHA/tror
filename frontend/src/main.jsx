@@ -6,6 +6,7 @@ import { W3SSdk } from "@circle-fin/w3s-pw-web-sdk";
 import Web3 from "web3";
 import PayrollPanel from "./PayrollPanel.jsx";
 import { Html5Qrcode } from "html5-qrcode";
+import QRCode from "qrcode";
 import { ethers } from "ethers";
 import {
   CONTRACT_ADDRESS,
@@ -785,6 +786,665 @@ document.getElementById("viewWalletExplorer")?.addEventListener("click", () => {
     .getElementById("walletMenu")
     ?.classList.add("hidden");
 });
+
+/* =========================
+   WALLET — SEND USDC
+========================= */
+
+document
+  .getElementById("btnWalletSend")
+  ?.addEventListener("click", async () => {
+    const circleAddress =
+      circleWalletEl?.textContent?.startsWith("0x")
+        ? circleWalletEl.textContent.trim()
+        : null;
+
+    const activeAddress =
+      activeWalletType === "circle"
+        ? circleAddress
+        : metamaskWallet || circleAddress;
+
+    if (!activeAddress) {
+      setStatus("No wallet connected.", "error");
+      return;
+    }
+
+    document
+      .getElementById("walletMenu")
+      ?.classList.add("hidden");
+
+    let modal = document.getElementById("walletSendModal");
+
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.id = "walletSendModal";
+
+      modal.style.cssText = `
+        position: fixed;
+        inset: 0;
+        z-index: 1000000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: rgba(0, 0, 0, 0.72);
+        backdrop-filter: blur(10px);
+      `;
+
+      document.body.appendChild(modal);
+    }
+
+    modal.innerHTML = `
+      <div style="
+        width:100%;
+        max-width:420px;
+        background:#121a2b;
+        border:1px solid rgba(215,180,90,.35);
+        border-radius:18px;
+        padding:22px;
+        color:#fff;
+        box-shadow:0 24px 70px rgba(0,0,0,.45);
+      ">
+
+        <div style="
+          color:#d8b46a;
+          font-size:12px;
+          font-weight:700;
+          letter-spacing:.12em;
+          margin-bottom:8px;
+        ">
+          TROR WALLET
+        </div>
+
+        <h2 style="margin:0 0 8px;">
+          Send USDC
+        </h2>
+
+        <div style="
+          color:#9da8ba;
+          font-size:13px;
+          margin-bottom:18px;
+        ">
+          Arc Testnet
+        </div>
+
+        <label style="
+          display:block;
+          font-size:12px;
+          margin-bottom:6px;
+        ">
+          Recipient address
+        </label>
+
+        <input
+          id="walletSendRecipient"
+          type="text"
+          placeholder="0x..."
+          autocomplete="off"
+          style="
+            box-sizing:border-box;
+            width:100%;
+            padding:12px;
+            margin-bottom:14px;
+            border-radius:10px;
+            border:1px solid rgba(255,255,255,.12);
+            background:#090d16;
+            color:#fff;
+            outline:none;
+          "
+        />
+
+        <label style="
+          display:block;
+          font-size:12px;
+          margin-bottom:6px;
+        ">
+          Amount
+        </label>
+
+        <input
+          id="walletSendAmount"
+          type="number"
+          min="0"
+          step="0.000001"
+          placeholder="0.00 USDC"
+          style="
+            box-sizing:border-box;
+            width:100%;
+            padding:12px;
+            margin-bottom:16px;
+            border-radius:10px;
+            border:1px solid rgba(255,255,255,.12);
+            background:#090d16;
+            color:#fff;
+            outline:none;
+          "
+        />
+
+        <button
+          id="confirmWalletSend"
+          style="
+            width:100%;
+            padding:12px;
+            border:0;
+            border-radius:10px;
+            cursor:pointer;
+            font-weight:700;
+            margin-bottom:10px;
+          "
+        >
+          Review & Send
+        </button>
+
+        <button
+          id="closeWalletSendModal"
+          style="
+            width:100%;
+            padding:12px;
+            border-radius:10px;
+            cursor:pointer;
+            background:transparent;
+            border:1px solid rgba(255,255,255,.15);
+            color:#fff;
+          "
+        >
+          Close
+        </button>
+
+      </div>
+    `;
+
+    modal.style.display = "flex";
+
+    document
+      .getElementById("closeWalletSendModal")
+      ?.addEventListener("click", () => {
+        modal.style.display = "none";
+      });
+
+    document
+  .getElementById("confirmWalletSend")
+  ?.addEventListener("click", async () => {
+
+const sendButton =
+  document.getElementById("confirmWalletSend");
+
+    const recipient =
+      document
+        .getElementById("walletSendRecipient")
+        ?.value.trim();
+
+    const amount =
+      document
+        .getElementById("walletSendAmount")
+        ?.value.trim();
+
+    // Validate recipient
+    if (!recipient || !ethers.isAddress(recipient)) {
+      setStatus("Enter a valid recipient address.", "error");
+      return;
+    }
+
+    // Validate amount
+    if (!amount || Number(amount) <= 0) {
+      setStatus("Enter a valid USDC amount.", "error");
+      return;
+    }
+
+    // Circle Wallet will be connected separately next
+    if (activeWalletType === "circle") {
+  try {
+    const cfg = await api("/api/circle/config");
+    const appId = cfg?.config?.circleAppId;
+
+    if (!appId) {
+      throw new Error("Missing CIRCLE_APP_ID.");
+    }
+
+    const { userToken, encryptionKey } = await getCircleAuth();
+
+    setStatus("Loading Circle Wallet...");
+
+    const walletList = await listCircleWallets(userToken);
+    const wallet = extractWallet(walletList);
+    const walletAddress = extractWalletAddress(walletList);
+
+    if (!wallet?.id || !walletAddress) {
+      throw new Error("No Circle Wallet found.");
+    }
+
+    const usdc = await findUsdcToken(userToken, wallet.id);
+
+    if (
+      !Number.isFinite(usdc.balance) ||
+      usdc.balance < Number(amount)
+    ) {
+      throw new Error(
+        `Not enough USDC in Circle Wallet. Balance: ${usdc.balance} USDC`
+      );
+    }
+
+    const amountUnits = ethers.parseUnits(
+      String(amount),
+      USDC_DECIMALS
+    );
+
+    const sdk = new W3SSdk({
+      appSettings: { appId }
+    });
+
+    sdk.setAuthentication({
+      userToken,
+      encryptionKey
+    });
+
+    setStatus("Circle Wallet: preparing USDC transfer...");
+
+    const transferData = await api(
+      "/api/circle/contract-execution",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          userToken,
+          walletId: wallet.id,
+          contractAddress: USDC_TOKEN,
+          abiFunctionSignature: "transfer(address,uint256)",
+          abiParameters: [
+            recipient,
+            amountUnits.toString()
+          ]
+        })
+      }
+    );
+
+    const challengeId =
+      transferData?.data?.challengeId ||
+      transferData?.challengeId;
+
+    if (!challengeId) {
+      throw new Error(
+        "No Circle transfer challengeId returned."
+      );
+    }
+
+    if (sendButton) {
+      sendButton.textContent = "Confirm in Circle Wallet...";
+    }
+
+    await new Promise((resolve, reject) => {
+      sdk.execute(challengeId, (error, result) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        console.log(
+          "Circle USDC transfer approved:",
+          result
+        );
+
+        resolve(result);
+      });
+    });
+
+    setStatus(
+      "Circle transfer approved. Waiting for transaction...",
+      "success"
+    );
+
+    let txHash = "";
+
+    for (let i = 0; i < 15; i++) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, 3000)
+      );
+
+      const txData = await api(
+        "/api/circle/transactions",
+        {
+          method: "POST",
+          body: JSON.stringify({ userToken })
+        }
+      );
+
+      const transactions =
+        txData?.data?.transactions || [];
+
+      const tx = transactions.find((item) => {
+        const hash =
+          item?.blockchainTxHash ||
+          item?.txHash ||
+          item?.transactionHash ||
+          "";
+
+        const complete =
+          item?.state === "COMPLETE" ||
+          item?.status === "COMPLETE";
+
+        return (
+          item?.operation === "CONTRACT_EXECUTION" &&
+          complete &&
+          hash.startsWith("0x")
+        );
+      });
+
+      txHash =
+        tx?.blockchainTxHash ||
+        tx?.txHash ||
+        tx?.transactionHash ||
+        "";
+
+      if (txHash) break;
+    }
+
+    if (!txHash) {
+      throw new Error(
+        "Circle transfer was approved, but transaction hash is not ready yet."
+      );
+    }
+
+    setStatus(
+      `Sent ${amount} USDC successfully. TX: ${txHash}`,
+      "success"
+    );
+
+    console.log("TROR Circle USDC transfer:", {
+      from: walletAddress,
+      to: recipient,
+      amount,
+      txHash
+    });
+
+    modal.style.display = "none";
+
+    return;
+  } catch (err) {
+    console.error(
+      "TROR Circle Send USDC error:",
+      err
+    );
+
+    setStatus(
+      err?.message || "Circle USDC transfer failed.",
+      "error"
+    );
+
+    return;
+  }
+}
+
+    try {
+      const config = wagmiAdapter.wagmiConfig;
+
+      const account = getAccount(config);
+
+      if (!account?.address) {
+        setStatus("Connect your Web3 wallet first.", "error");
+        return;
+      }
+
+      if (sendButton) {
+        sendButton.disabled = true;
+        sendButton.textContent = "Confirm in wallet...";
+      }
+
+      setStatus(
+        `Preparing ${amount} USDC transfer...`,
+        "success"
+      );
+
+      const amountUnits = parseUnits(
+        amount,
+        USDC_DECIMALS
+      );
+
+      const hash = await writeContract(config, {
+        address: USDC_TOKEN,
+        abi: ERC20_ABI,
+        functionName: "transfer",
+        args: [
+          recipient,
+          amountUnits
+        ],
+        account: account.address
+      });
+
+      if (sendButton) {
+        sendButton.textContent = "Sending USDC...";
+      }
+
+      setStatus(
+        "Transaction submitted. Waiting for confirmation...",
+        "success"
+      );
+
+      const receipt =
+        await waitForTransactionReceipt(config, {
+          hash
+        });
+
+      if (receipt.status !== "success") {
+        throw new Error("USDC transfer failed.");
+      }
+
+      setStatus(
+        `Sent ${amount} USDC successfully. TX: ${hash}`,
+        "success"
+      );
+
+      console.log("TROR USDC transfer successful:", {
+        from: account.address,
+        to: recipient,
+        amount,
+        hash
+      });
+
+      modal.style.display = "none";
+
+    } catch (err) {
+      console.error("TROR Send USDC error:", err);
+
+      const message =
+        err?.shortMessage ||
+        err?.message ||
+        "USDC transfer failed.";
+
+      setStatus(message, "error");
+
+    } finally {
+      const sendButton =
+        document.getElementById("confirmWalletSend");
+
+      if (sendButton) {
+        sendButton.disabled = false;
+        sendButton.textContent = "Review & Send";
+      }
+    }
+  });
+  });
+
+// =========================
+// WALLET RECEIVE
+// =========================
+
+document
+  .getElementById("btnWalletReceive")
+  ?.addEventListener("click", async () => {
+    const circleAddress =
+      circleWalletEl?.textContent?.startsWith("0x")
+        ? circleWalletEl.textContent.trim()
+        : null;
+
+    const activeAddress =
+      activeWalletType === "circle"
+        ? circleAddress
+        : metamaskWallet || circleAddress;
+
+    if (!activeAddress) {
+      setStatus("No wallet connected.", "error");
+      return;
+    }
+
+    document
+      .getElementById("walletMenu")
+      ?.classList.add("hidden");
+
+    let modal =
+      document.getElementById("walletReceiveModal");
+
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.id = "walletReceiveModal";
+
+      modal.style.cssText = `
+        position: fixed;
+        inset: 0;
+        z-index: 1000000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: rgba(0, 0, 0, 0.72);
+        backdrop-filter: blur(10px);
+      `;
+
+      document.body.appendChild(modal);
+    }
+
+    modal.innerHTML = `
+      <div style="
+        width:100%;
+        max-width:420px;
+        background:#121a2b;
+        border:1px solid rgba(215,180,90,.35);
+        border-radius:18px;
+        padding:22px;
+        color:#fff;
+        box-shadow:0 24px 70px rgba(0,0,0,.45);
+      ">
+        <div style="
+          color:#d8b45a;
+          font-size:12px;
+          font-weight:700;
+          letter-spacing:.12em;
+          margin-bottom:8px;
+        ">
+          TROR WALLET
+        </div>
+
+        <h2 style="margin:0 0 8px;">
+          Receive USDC
+        </h2>
+
+        <div style="
+          color:#9da8ba;
+          font-size:13px;
+          margin-bottom:18px;
+        ">
+          Arc Testnet
+        </div>
+
+<div
+  id="receiveQrBox"
+  style="
+    width:190px;
+    height:190px;
+    margin:0 auto 18px;
+    padding:10px;
+    background:#ffffff;
+    border-radius:14px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  "
+></div>
+
+        <div style="
+          padding:14px;
+          background:#090d16;
+          border:1px solid rgba(255,255,255,.08);
+          border-radius:12px;
+          word-break:break-all;
+          font-family:monospace;
+          font-size:13px;
+          margin-bottom:14px;
+        ">
+          ${activeAddress}
+        </div>
+
+        <button
+          id="receiveCopyAddress"
+          style="
+            width:100%;
+            padding:12px;
+            border:0;
+            border-radius:10px;
+            cursor:pointer;
+            font-weight:700;
+            margin-bottom:10px;
+          "
+        >
+          Copy Address
+        </button>
+
+        <button
+          id="closeReceiveModal"
+          style="
+            width:100%;
+            padding:12px;
+            border-radius:10px;
+            cursor:pointer;
+            background:transparent;
+            border:1px solid rgba(255,255,255,.15);
+            color:#fff;
+          "
+        >
+          Close
+        </button>
+      </div>
+    `;
+
+    modal.style.display = "flex";
+
+    const receiveQrBox = document.getElementById("receiveQrBox");
+
+if (receiveQrBox) {
+  try {
+    const qrDataUrl = await QRCode.toDataURL(activeAddress, {
+      width: 190,
+      margin: 1
+    });
+
+    receiveQrBox.innerHTML = `
+      <img
+        src="${qrDataUrl}"
+        alt="Receive wallet QR"
+        style="
+          width:100%;
+          height:100%;
+          display:block;
+        "
+      />
+    `;
+  } catch (err) {
+    console.error("Receive QR error:", err);
+    receiveQrBox.innerHTML = "QR unavailable";
+  }
+}
+
+    document
+      .getElementById("receiveCopyAddress")
+      ?.addEventListener("click", async () => {
+        await navigator.clipboard.writeText(activeAddress);
+        setStatus("Wallet address copied.", "success");
+      });
+
+    document
+      .getElementById("closeReceiveModal")
+      ?.addEventListener("click", () => {
+        modal.style.display = "none";
+      });
+  });
 
 /* =========================
    TOAST & STATUS
