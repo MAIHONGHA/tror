@@ -20,7 +20,8 @@ import {
   openAppKitWallet,
   wagmiAdapter,
   appKit,
-  arcTestnet
+  arcTestnet,
+  TROR_NETWORKS
 } from "./appkit.js";
 import { getAccount, readContract, writeContract, waitForTransactionReceipt } from "@wagmi/core";
 import { parseUnits } from "viem";
@@ -498,6 +499,31 @@ const ARC_CHAIN_NAME = "Arc Testnet";
 // USDC token address on Arc
 const USDC_TOKEN = "0x3600000000000000000000000000000000000000";
 const USDC_DECIMALS = 6;
+const WEB3_USDC_BY_CHAIN = {
+  // Arc Testnet
+  5042002: "0x3600000000000000000000000000000000000000",
+
+  // Ethereum Sepolia
+  11155111: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+
+  // Base Sepolia
+  84532: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+
+  // Arbitrum Sepolia
+  421614: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+
+  // Avalanche Fuji
+  43113: "0x5425890298aed601595a70AB815c96711a31Bc65",
+
+  // Optimism Sepolia
+  11155420: "0x5fd84259d66Cd46123540766Be93DFE6D43130D7",
+
+  // Polygon Amoy
+  80002: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
+
+  // Unichain Sepolia
+  1301: "0x31d0220469e10c4E71834a79b1f276d740d3768F",
+};
 
 // Minimal ERC-20 ABI for transfer and balanceOf
 const ERC20_ABI = [
@@ -1269,6 +1295,24 @@ return;
         return;
       }
 
+const activeChainId = Number(account.chainId);
+
+const web3UsdcToken =
+  WEB3_USDC_BY_CHAIN[activeChainId];
+
+if (!web3UsdcToken) {
+  setStatus(
+    `USDC is not configured for chain ${activeChainId}.`,
+    "error"
+  );
+  return;
+}
+
+console.log("TROR Web3 Send network:", {
+  chainId: activeChainId,
+  usdcToken: web3UsdcToken
+});
+
       if (sendButton) {
         sendButton.disabled = true;
         sendButton.textContent = "Confirm in wallet...";
@@ -1285,7 +1329,7 @@ return;
       );
 
       const hash = await writeContract(config, {
-        address: USDC_TOKEN,
+        address: web3UsdcToken,
         abi: ERC20_ABI,
         functionName: "transfer",
         args: [
@@ -1317,6 +1361,27 @@ return;
         `Sent ${amount} USDC successfully. TX: ${hash}`,
         "success"
       );
+
+const refreshedAccount =
+  getAccount(config);
+
+const refreshedBalance =
+  await loadWeb3UsdcBalance(
+    refreshedAccount
+  );
+
+const web3BalanceEl =
+  document.getElementById(
+    "web3UsdcBalance"
+  );
+
+if (
+  web3BalanceEl &&
+  refreshedBalance !== null
+) {
+  web3BalanceEl.textContent =
+    `${refreshedBalance} USDC`;
+}
 
       console.log("TROR USDC transfer successful:", {
         from: account.address,
@@ -7111,6 +7176,110 @@ document.getElementById("btnLoadWithdrawals")?.addEventListener("click", loadWit
 // Sync AppKit wallet address with TROR
 import { watchAccount } from "@wagmi/core";
 
+async function loadWeb3UsdcBalance(account) {
+  try {
+    if (!account?.address || !account?.chainId) {
+      return null;
+    }
+
+    const chainId = Number(account.chainId);
+
+    const usdcToken =
+      WEB3_USDC_BY_CHAIN[chainId];
+
+    if (!usdcToken) {
+      console.log(
+        "TROR Web3 USDC token not configured:",
+        chainId
+      );
+
+      return null;
+    }
+
+    const rawBalance = await readContract(
+      wagmiAdapter.wagmiConfig,
+      {
+        address: usdcToken,
+        abi: ERC20_ABI,
+        functionName: "balanceOf",
+        args: [account.address]
+      }
+    );
+
+    const balance =
+      Number(
+        ethers.formatUnits(
+          rawBalance,
+          USDC_DECIMALS
+        )
+      );
+
+    console.log("TROR Web3 USDC balance:", {
+      chainId,
+      address: account.address,
+      usdcToken,
+      balance
+    });
+
+    return balance;
+
+  } catch (err) {
+    console.error(
+      "TROR Web3 balance error:",
+      err
+    );
+
+    return null;
+  }
+}
+
+async function switchWeb3Network(chainId) {
+  try {
+    const targetChain =
+      TROR_NETWORKS.find(
+        (network) =>
+          Number(network.id) === Number(chainId)
+      );
+
+    if (!targetChain) {
+      throw new Error(
+        `Unsupported Web3 network: ${chainId}`
+      );
+    }
+
+    setStatus(
+      `Switching Web3 wallet to ${targetChain.name}...`
+    );
+
+    await appKit.switchNetwork(targetChain);
+
+    console.log(
+      "TROR Web3 network switched:",
+      {
+        chainId: targetChain.id,
+        name: targetChain.name
+      }
+    );
+
+setStatus(
+  `Web3 wallet switched to ${targetChain.name}.`,
+  "success"
+);
+
+  } catch (err) {
+    console.error(
+      "TROR Web3 network switch error:",
+      err
+    );
+
+    setStatus(
+      err?.message ||
+        "Failed to switch Web3 network.",
+      "error"
+    );
+  }
+}
+
 let lastProfileCheckedWallet = null;
 
 watchAccount(wagmiAdapter.wagmiConfig, {
@@ -7118,13 +7287,109 @@ watchAccount(wagmiAdapter.wagmiConfig, {
     if (account.address) {
       metamaskWallet = account.address;
 
-      if (metamaskWalletEl) {
-        metamaskWalletEl.textContent = account.address;
-      }
+      const web3UsdcBalance =
+  await loadWeb3UsdcBalance(account);
 
-      updateWalletChip(account.address, null);
-      clearCircleWalletLocal();
-      activeWalletType = "web3";
+if (metamaskWalletEl) {
+  const networkOptions =
+    TROR_NETWORKS
+      .map(
+        (network) => `
+          <option
+            value="${network.id}"
+            ${
+              Number(network.id) ===
+              Number(account.chainId)
+                ? "selected"
+                : ""
+            }
+          >
+            ${network.name}
+          </option>
+        `
+      )
+      .join("");
+
+  metamaskWalletEl.innerHTML = `
+    <div style="
+      word-break:break-all;
+      margin-bottom:10px;
+    ">
+      ${account.address}
+    </div>
+
+    <div style="
+      font-size:11px;
+      color:#9ca3af;
+      margin-bottom:5px;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+    ">
+      Network
+    </div>
+
+    <select
+      id="web3NetworkSelect"
+      style="
+        width:100%;
+        box-sizing:border-box;
+        padding:9px 10px;
+        margin-bottom:12px;
+        border-radius:10px;
+        border:1px solid rgba(214,175,74,.75);
+        background:#111318;
+        color:#fff;
+        outline:none;
+      "
+    >
+      ${networkOptions}
+    </select>
+
+    <div style="
+      font-size:11px;
+      color:#9ca3af;
+      margin-bottom:3px;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+    ">
+      USDC Balance
+    </div>
+
+    <div
+  id="web3UsdcBalance"
+  style="
+    font-size:18px;
+    font-weight:800;
+  "
+>
+  ${
+    web3UsdcBalance === null
+      ? "-"
+      : `${web3UsdcBalance} USDC`
+  }
+</div>
+  `;
+
+  document
+    .getElementById("web3NetworkSelect")
+    ?.addEventListener(
+      "change",
+      async (event) => {
+        const chainId =
+          Number(event.target.value);
+
+        await switchWeb3Network(chainId);
+      }
+    );
+}
+
+updateWalletChip(
+  account.address,
+  web3UsdcBalance
+);
+
+clearCircleWalletLocal();
+activeWalletType = "web3";
 
       const normalizedWallet =
         account.address.toLowerCase();
