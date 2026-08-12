@@ -160,13 +160,74 @@
       <b id="email">-</b>
     </div>
 
-    <div class="mini-box">
-      <span>Circle Wallet</span>
-      <b id="circleWallet">-</b>
-      <button id="btnSetupPin" class="mini-action hidden">
-        Create Circle Wallet
-      </button>
+    <div class="mini-box circle-wallet-box">
+  <span>Circle Wallet</span>
+
+  <b id="circleWallet">-</b>
+
+  <div
+    id="circleNetworkSection"
+    style="
+      margin-top:12px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    "
+  >
+    <label
+      for="circleNetworkSelect"
+      style="
+        font-size:11px;
+        opacity:.7;
+      "
+    >
+      Network
+    </label>
+
+    <select
+      id="circleNetworkSelect"
+      style="
+        width:100%;
+        padding:9px 10px;
+        border-radius:10px;
+      "
+    >
+      <option value="ARC-TESTNET">Arc Testnet</option>
+      <option value="ETH-SEPOLIA">Ethereum Sepolia</option>
+      <option value="BASE-SEPOLIA">Base Sepolia</option>
+      <option value="ARB-SEPOLIA">Arbitrum Sepolia</option>
+      <option value="AVAX-FUJI">Avalanche Fuji</option>
+      <option value="OP-SEPOLIA">Optimism Sepolia</option>
+      <option value="MATIC-AMOY">Polygon Amoy</option>
+      <option value="UNI-SEPOLIA">Unichain Sepolia</option>
+    </select>
+
+    <div
+      id="circleNetworkAddress"
+      style="
+        font-size:11px;
+        word-break:break-all;
+        opacity:.75;
+      "
+    >
+      -
     </div>
+
+    <div
+      id="circleNetworkBalance"
+      style="
+        font-size:18px;
+        font-weight:700;
+      "
+    >
+      0 USDC
+    </div>
+  </div>
+
+  <button id="btnSetupPin" class="mini-action hidden">
+    Create Circle Wallet
+  </button>
+</div>
 
     <div class="mini-box">
       <span>Connected Wallet</span>

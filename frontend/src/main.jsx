@@ -1005,159 +1005,245 @@ const sendButton =
 
     setStatus("Loading Circle Wallet...");
 
-    const walletList = await listCircleWallets(userToken);
-    const wallet = extractWallet(walletList);
-    const walletAddress = extractWalletAddress(walletList);
+    const activeCircleWallet =
+  window.trorActiveCircleWallet;
 
-    if (!wallet?.id || !walletAddress) {
-      throw new Error("No Circle Wallet found.");
-    }
+if (
+  !activeCircleWallet?.walletId ||
+  !activeCircleWallet?.address
+) {
+  throw new Error(
+    "Please select a Circle network first."
+  );
+}
 
-    const usdc = await findUsdcToken(userToken, wallet.id);
+const wallet = {
+  id: activeCircleWallet.walletId,
+  blockchain: activeCircleWallet.blockchain,
+  address: activeCircleWallet.address
+};
 
-    if (
-      !Number.isFinite(usdc.balance) ||
-      usdc.balance < Number(amount)
-    ) {
-      throw new Error(
-        `Not enough USDC in Circle Wallet. Balance: ${usdc.balance} USDC`
-      );
-    }
+const walletAddress =
+  activeCircleWallet.address;
 
-    const amountUnits = ethers.parseUnits(
-      String(amount),
-      USDC_DECIMALS
-    );
+const usdc = {
+  tokenId: activeCircleWallet.tokenId,
+  balance: Number(activeCircleWallet.balance || 0)
+};
+
+if (!usdc.tokenId) {
+  throw new Error(
+    `No USDC token found on ${activeCircleWallet.blockchain}.`
+  );
+}
+
+if (
+  !Number.isFinite(usdc.balance) ||
+  usdc.balance < Number(amount)
+) {
+  throw new Error(
+    `Not enough USDC on ${activeCircleWallet.blockchain}. Balance: ${usdc.balance} USDC`
+  );
+}
 
     const sdk = new W3SSdk({
-      appSettings: { appId }
-    });
+  appSettings: { appId }
+});
 
-    sdk.setAuthentication({
+sdk.setAuthentication({
+  userToken,
+  encryptionKey
+});
+
+setStatus(
+  `Circle Wallet: preparing ${wallet.blockchain} USDC transfer...`
+);
+
+console.log("TROR Circle Send source:", {
+  blockchain: wallet.blockchain,
+  walletId: wallet.id,
+  tokenId: usdc.tokenId,
+  balance: usdc.balance,
+  from: walletAddress,
+  to: recipient,
+  amount
+});
+
+const transferData = await api(
+  "/api/circle/transfer",
+  {
+    method: "POST",
+    body: JSON.stringify({
       userToken,
-      encryptionKey
-    });
+      walletId: wallet.id,
+      tokenId: usdc.tokenId,
+      amount: String(amount),
+      destinationAddress: recipient
+    })
+  }
+);
 
-    setStatus("Circle Wallet: preparing USDC transfer...");
+console.log(
+  "Circle token transfer response:",
+  transferData
+);
 
-    const transferData = await api(
-      "/api/circle/contract-execution",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          userToken,
-          walletId: wallet.id,
-          contractAddress: USDC_TOKEN,
-          abiFunctionSignature: "transfer(address,uint256)",
-          abiParameters: [
-            recipient,
-            amountUnits.toString()
-          ]
-        })
-      }
+const challengeId =
+  transferData?.data?.challengeId ||
+  transferData?.challengeId;
+
+if (!challengeId) {
+  throw new Error(
+    "No Circle transfer challengeId returned."
+  );
+}
+
+if (sendButton) {
+  sendButton.textContent = "Confirm in Circle Wallet...";
+}
+
+await new Promise((resolve, reject) => {
+  sdk.execute(challengeId, (error, result) => {
+    if (error) {
+      reject(error);
+      return;
+    }
+
+    console.log(
+      "Circle USDC transfer approved:",
+      result
     );
 
-    const challengeId =
-      transferData?.data?.challengeId ||
-      transferData?.challengeId;
+    resolve(result);
+  });
+});
 
-    if (!challengeId) {
-      throw new Error(
-        "No Circle transfer challengeId returned."
-      );
+setStatus(
+  `Circle ${wallet.blockchain} transfer approved. Waiting for transaction...`,
+  "success"
+);
+
+let txHash = "";
+
+const expectedRecipient =
+  String(recipient || "").toLowerCase();
+
+const expectedAmount =
+  Number(amount);
+
+for (let i = 0; i < 30; i++) {
+  await new Promise((resolve) =>
+    setTimeout(resolve, 3000)
+  );
+
+  const txData = await api(
+    "/api/circle/transactions",
+    {
+      method: "POST",
+      body: JSON.stringify({ userToken })
     }
+  );
 
-    if (sendButton) {
-      sendButton.textContent = "Confirm in Circle Wallet...";
-    }
+  const transactions =
+    txData?.data?.transactions || [];
 
-    await new Promise((resolve, reject) => {
-      sdk.execute(challengeId, (error, result) => {
-        if (error) {
-          reject(error);
-          return;
-        }
+  const tx = transactions.find((item) => {
+    const hash =
+      item?.blockchainTxHash ||
+      item?.txHash ||
+      item?.transactionHash ||
+      "";
 
-        console.log(
-          "Circle USDC transfer approved:",
-          result
-        );
+    const state =
+      String(
+        item?.state ||
+        item?.status ||
+        ""
+      ).toUpperCase();
 
-        resolve(result);
-      });
-    });
+    const operation =
+      String(item?.operation || "").toUpperCase();
 
-    setStatus(
-      "Circle transfer approved. Waiting for transaction...",
-      "success"
+    const sameWallet =
+      String(item?.walletId || "") ===
+      String(wallet.id);
+
+    const sameRecipient =
+      String(
+        item?.destinationAddress || ""
+      ).toLowerCase() === expectedRecipient;
+
+    const txAmount =
+      Array.isArray(item?.amounts)
+        ? Number(item.amounts[0] || 0)
+        : Number(item?.amount || 0);
+
+    const sameAmount =
+      Math.abs(txAmount - expectedAmount) < 0.000001;
+
+    return (
+      operation === "TRANSFER" &&
+      state === "COMPLETE" &&
+      sameWallet &&
+      sameRecipient &&
+      sameAmount &&
+      hash.startsWith("0x")
     );
+  });
 
-    let txHash = "";
+  txHash =
+    tx?.blockchainTxHash ||
+    tx?.txHash ||
+    tx?.transactionHash ||
+    "";
 
-    for (let i = 0; i < 15; i++) {
-      await new Promise((resolve) =>
-        setTimeout(resolve, 3000)
-      );
-
-      const txData = await api(
-        "/api/circle/transactions",
-        {
-          method: "POST",
-          body: JSON.stringify({ userToken })
-        }
-      );
-
-      const transactions =
-        txData?.data?.transactions || [];
-
-      const tx = transactions.find((item) => {
-        const hash =
-          item?.blockchainTxHash ||
-          item?.txHash ||
-          item?.transactionHash ||
-          "";
-
-        const complete =
-          item?.state === "COMPLETE" ||
-          item?.status === "COMPLETE";
-
-        return (
-          item?.operation === "CONTRACT_EXECUTION" &&
-          complete &&
-          hash.startsWith("0x")
-        );
-      });
-
-      txHash =
-        tx?.blockchainTxHash ||
-        tx?.txHash ||
-        tx?.transactionHash ||
-        "";
-
-      if (txHash) break;
-    }
-
-    if (!txHash) {
-      throw new Error(
-        "Circle transfer was approved, but transaction hash is not ready yet."
-      );
-    }
-
-    setStatus(
-      `Sent ${amount} USDC successfully. TX: ${txHash}`,
-      "success"
+  if (txHash) {
+    console.log(
+      "TROR Circle transfer transaction found:",
+      tx
     );
+    break;
+  }
+}
 
-    console.log("TROR Circle USDC transfer:", {
-      from: walletAddress,
-      to: recipient,
-      amount,
-      txHash
-    });
+if (!txHash) {
+  console.log(
+    "Circle transfer submitted successfully. Transaction is still confirming on-chain."
+  );
 
-    modal.style.display = "none";
+  setStatus(
+    `Sent ${amount} USDC on ${wallet.blockchain}. Transaction is still confirming on-chain.`,
+    "success"
+  );
 
-    return;
+  await loadCircleWallet(userToken);
+
+  modal.style.display = "none";
+
+  return;
+}
+
+setStatus(
+  `Sent ${amount} USDC on ${wallet.blockchain} successfully. TX: ${txHash}`,
+  "success"
+);
+
+console.log("TROR Circle USDC transfer:", {
+  blockchain: wallet.blockchain,
+  walletId: wallet.id,
+  tokenId: usdc.tokenId,
+  from: walletAddress,
+  to: recipient,
+  amount,
+  txHash
+});
+
+await loadCircleWallet(userToken);
+
+modal.style.display = "none";
+
+return;
+
   } catch (err) {
     console.error(
       "TROR Circle Send USDC error:",
@@ -2481,6 +2567,30 @@ function extractWallet(data) {
   );
 }
 
+// Extract all Circle wallets for multi-chain support
+function extractCircleWallets(data) {
+  const wallets =
+    data?.data?.wallets ||
+    data?.wallets ||
+    [];
+
+  return Array.isArray(wallets)
+    ? wallets.filter(Boolean)
+    : [];
+}
+
+function getCircleWalletByBlockchain(data, blockchain) {
+  const wallets = extractCircleWallets(data);
+
+  return (
+    wallets.find(
+      (wallet) =>
+        String(wallet?.blockchain || "").toUpperCase() ===
+        String(blockchain || "").toUpperCase()
+    ) || null
+  );
+}
+
 // Extract wallet address from Circle API response
 function extractWalletAddress(data) {
   const wallet = extractWallet(data);
@@ -2519,6 +2629,8 @@ async function getCircleAuth() {
   return { user, userToken, encryptionKey };
 }
 
+window.getCircleAuth = getCircleAuth;
+
 // List Circle wallets (try both endpoints for compatibility)
 async function listCircleWallets(userToken) {
   try {
@@ -2538,6 +2650,118 @@ async function listCircleWallets(userToken) {
 async function loadCircleWallet(userToken) {
   const listData = await listCircleWallets(userToken);
   console.log("List wallets response:", listData);
+
+const wallets = extractCircleWallets(listData);
+
+console.log(
+  "Circle multi-chain wallets:",
+  wallets.map((w) => ({
+    id: w?.id,
+    blockchain: w?.blockchain,
+    address: w?.address || w?.walletAddress || w?.accounts?.[0]?.address || null
+  }))
+);
+
+const multiChainBalances =
+  await loadCircleMultiChainBalances(
+    userToken,
+    wallets
+  );
+
+console.log(
+  "Circle multi-chain USDC balances:",
+  multiChainBalances
+);
+
+window.trorCircleMultiChainBalances =
+  multiChainBalances;
+
+  const networkSelect =
+  document.getElementById("circleNetworkSelect");
+
+const networkAddress =
+  document.getElementById("circleNetworkAddress");
+
+const networkBalance =
+  document.getElementById("circleNetworkBalance");
+
+function renderCircleNetwork(blockchain) {
+  const selected = multiChainBalances.find(
+    (item) =>
+      String(item?.blockchain || "").toUpperCase() ===
+      String(blockchain || "").toUpperCase()
+  );
+
+  if (!selected) {
+    if (networkAddress) {
+      networkAddress.textContent = "Wallet not available";
+    }
+
+    if (networkBalance) {
+      networkBalance.textContent = "0 USDC";
+    }
+
+    return;
+  }
+
+  if (networkAddress) {
+    networkAddress.textContent =
+      selected.address || "-";
+  }
+
+  if (networkBalance) {
+    networkBalance.textContent =
+      `${Number(selected.balance || 0)} USDC`;
+  }
+}
+
+if (networkSelect) {
+  const setActiveCircleNetwork = (blockchain) => {
+    const selected = multiChainBalances.find(
+      (item) =>
+        String(item?.blockchain || "").toUpperCase() ===
+        String(blockchain || "").toUpperCase()
+    );
+
+    if (!selected) {
+      window.trorActiveCircleNetwork = null;
+      window.trorActiveCircleWallet = null;
+
+      renderCircleNetwork(blockchain);
+      return;
+    }
+
+    window.trorActiveCircleNetwork =
+      String(selected.blockchain || "").toUpperCase();
+
+    window.trorActiveCircleWallet = {
+      blockchain: selected.blockchain,
+      walletId: selected.walletId,
+      address: selected.address,
+      tokenId: selected.tokenId,
+      balance: selected.balance
+    };
+
+    console.log(
+      "TROR active Circle network:",
+      window.trorActiveCircleNetwork
+    );
+
+    console.log(
+      "TROR active Circle wallet:",
+      window.trorActiveCircleWallet
+    );
+
+    renderCircleNetwork(blockchain);
+  };
+
+  networkSelect.onchange = () => {
+    setActiveCircleNetwork(networkSelect.value);
+  };
+
+  networkSelect.value = "ARC-TESTNET";
+  setActiveCircleNetwork("ARC-TESTNET");
+}
 
   const wallet = extractWallet(listData);
   const address = extractWalletAddress(listData);
@@ -2574,7 +2798,7 @@ document
   .getElementById("btnSetupPin")
   ?.classList.add("hidden");
 
-return { wallet, address };
+return { wallet, address, wallets };
 }
 
 // Find USDC token in Circle wallet balances
@@ -2617,6 +2841,99 @@ async function findUsdcToken(userToken, walletId) {
   }
 
   return { tokenId, balance, raw: usdc };
+}
+
+async function findUsdcTokenByBlockchain(userToken, walletId, blockchain) {
+  const balanceData = await api("/api/circle/wallet-balances", {
+    method: "POST",
+    body: JSON.stringify({
+      userToken,
+      walletId
+    })
+  });
+
+  const tokenBalances =
+    balanceData?.data?.tokenBalances ||
+    balanceData?.tokenBalances ||
+    [];
+
+  const targetChain = String(blockchain || "").toUpperCase();
+
+  const usdc = tokenBalances.find((b) => {
+    const symbol = String(b?.token?.symbol || "").toUpperCase();
+    const tokenBlockchain = String(
+      b?.token?.blockchain || ""
+    ).toUpperCase();
+
+    return (
+      symbol === "USDC" &&
+      tokenBlockchain === targetChain
+    );
+  });
+
+  if (!usdc) {
+    return {
+      tokenId: null,
+      balance: 0,
+      raw: null
+    };
+  }
+
+  return {
+    tokenId: usdc?.token?.id || null,
+    balance: Number(usdc?.amount || 0),
+    raw: usdc
+  };
+}
+
+async function loadCircleMultiChainBalances(userToken, wallets) {
+  const results = [];
+
+  for (const wallet of wallets || []) {
+    if (!wallet?.id || !wallet?.blockchain) continue;
+
+    try {
+      const usdc = await findUsdcTokenByBlockchain(
+        userToken,
+        wallet.id,
+        wallet.blockchain
+      );
+
+      results.push({
+        walletId: wallet.id,
+        blockchain: wallet.blockchain,
+        address:
+          wallet?.address ||
+          wallet?.walletAddress ||
+          wallet?.accounts?.[0]?.address ||
+          null,
+        tokenId: usdc.tokenId,
+        balance: usdc.balance,
+        raw: usdc.raw
+      });
+    } catch (err) {
+      console.error(
+        `Failed to load ${wallet.blockchain} USDC balance:`,
+        err
+      );
+
+      results.push({
+        walletId: wallet.id,
+        blockchain: wallet.blockchain,
+        address:
+          wallet?.address ||
+          wallet?.walletAddress ||
+          wallet?.accounts?.[0]?.address ||
+          null,
+        tokenId: null,
+        balance: 0,
+        raw: null,
+        error: err?.message || "Failed to load balance"
+      });
+    }
+  }
+
+  return results;
 }
 
 /* =========================
@@ -2786,13 +3103,129 @@ async function setupCirclePin() {
       });
       challengeId = initData?.data?.challengeId || initData?.challengeId;
     } catch (err) {
-      if (String(err.message || "").includes("already been initialized")) {
-        setStatus("User already initialized. Loading wallet...");
-        await loadCircleWallet(userToken);
-        return;
-      }
-      throw err;
+  if (String(err.message || "").includes("already been initialized")) {
+    setStatus("User already initialized. Checking wallets...");
+
+    const sdk = new W3SSdk({
+      appSettings: { appId }
+    });
+
+    sdk.setAuthentication({
+      userToken,
+      encryptionKey
+    });
+
+    const listData = await listCircleWallets(userToken);
+    const existingWallets = extractCircleWallets(listData);
+
+    const requiredChains = [
+      "ARC-TESTNET",
+      "ETH-SEPOLIA",
+      "BASE-SEPOLIA",
+      "ARB-SEPOLIA",
+      "AVAX-FUJI",
+      "OP-SEPOLIA",
+      "MATIC-AMOY",
+      "UNI-SEPOLIA"
+    ];
+
+    const existingChains = new Set(
+      existingWallets.map((wallet) =>
+        String(wallet?.blockchain || "").toUpperCase()
+      )
+    );
+
+    const missingChains = requiredChains.filter(
+      (chain) => !existingChains.has(chain)
+    );
+
+    console.log("Existing Circle chains:", [...existingChains]);
+    console.log("Missing Circle chains:", missingChains);
+
+    if (missingChains.length === 0) {
+  console.log("All required Circle chains already exist.");
+  await loadCircleWallet(userToken);
+  return;
+}
+
+console.log(
+  "Creating missing Circle chains:",
+  missingChains
+);
+
+const walletData = await api("/api/circle/create-wallet", {
+  method: "POST",
+  body: JSON.stringify({
+    userToken,
+    blockchains: missingChains
+  })
+});
+
+console.log(
+  "Missing Circle wallets creation response:",
+  walletData
+);
+
+const walletChallengeId =
+  walletData?.data?.challengeId ||
+  walletData?.challengeId;
+
+if (!walletChallengeId) {
+  console.error(
+    "No challengeId returned for missing Circle wallets:",
+    walletData
+  );
+
+  setStatus(
+    "Circle did not return a wallet creation challenge.",
+    "error"
+  );
+
+  return;
+}
+
+setStatus(
+  "Confirm creation of the missing Circle wallets...",
+  "success"
+);
+
+await new Promise((resolve, reject) => {
+  sdk.execute(walletChallengeId, (error, result) => {
+    if (error) {
+      console.error(
+        "Missing Circle wallets creation error:",
+        error
+      );
+
+      reject(error);
+      return;
     }
+
+    console.log(
+      "Missing Circle wallets creation approved:",
+      result
+    );
+
+    resolve(result);
+  });
+});
+
+setStatus(
+  "Circle wallets created. Loading wallets...",
+  "success"
+);
+
+await new Promise((resolve) =>
+  setTimeout(resolve, 3000)
+);
+
+await loadCircleWallet(userToken);
+return;
+
+  }
+
+  throw err;
+}
 
     if (!challengeId) {
       setStatus("No challengeId returned.", "error");
@@ -2820,7 +3253,50 @@ async function setupCirclePin() {
 
         console.log("Wallet response:", walletData);
 
-        const address = extractWalletAddress(walletData);
+const walletChallengeId =
+  walletData?.data?.challengeId ||
+  walletData?.challengeId;
+
+if (walletChallengeId) {
+  setStatus(
+    "Confirm multi-chain wallet creation in Circle...",
+    "success"
+  );
+
+  await new Promise((resolve, reject) => {
+    sdk.execute(walletChallengeId, (error, result) => {
+      if (error) {
+        console.error(
+          "Circle wallet creation error:",
+          error
+        );
+        reject(error);
+        return;
+      }
+
+      console.log(
+        "Circle multi-chain wallet creation approved:",
+        result
+      );
+
+      resolve(result);
+    });
+  });
+
+  setStatus(
+    "Circle wallets created. Loading wallets...",
+    "success"
+  );
+
+  await new Promise((resolve) =>
+    setTimeout(resolve, 3000)
+  );
+
+  await loadCircleWallet(userToken);
+  return;
+}
+
+const address = extractWalletAddress(walletData);
 
 if (address) {
   circleWalletEl.textContent = address;

@@ -3406,7 +3406,10 @@ app.post("/api/circle/create-wallet", async (req, res) => {
   try {
     if (!requireCircle(res)) return;
 
-    const { userToken } = req.body;
+    const {
+  userToken,
+  blockchains
+} = req.body;
 
     if (!userToken) {
       return res.status(400).json({
@@ -3423,12 +3426,28 @@ app.post("/api/circle/create-wallet", async (req, res) => {
       },
       body: JSON.stringify({
         idempotencyKey: crypto.randomUUID(),
-        blockchains: ["ARC-TESTNET"],
-        accountType: "SCA"
+        blockchains:
+  Array.isArray(blockchains) && blockchains.length > 0
+    ? blockchains
+    : [
+        "ARC-TESTNET",
+        "ETH-SEPOLIA",
+        "BASE-SEPOLIA",
+        "ARB-SEPOLIA",
+        "AVAX-FUJI",
+        "OP-SEPOLIA",
+        "MATIC-AMOY",
+        "UNI-SEPOLIA"
+      ],
+accountType: "SCA"
       })
     });
 
     const data = await response.json();
+    console.log(
+  "Circle create-wallet response:",
+  JSON.stringify(data, null, 2)
+);
     res.status(response.status).json(data);
   } catch (err) {
     res.status(500).json({
