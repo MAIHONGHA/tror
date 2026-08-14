@@ -26,6 +26,14 @@ import {
 import { getAccount, readContract, writeContract, waitForTransactionReceipt } from "@wagmi/core";
 import { parseUnits } from "viem";
 window.openAppKitWallet = openAppKitWallet;
+import {
+  getTrorUnifiedBalance,
+  depositToTrorUnifiedBalance,
+  spendFromTrorUnifiedBalance,
+  estimateTrorUnifiedSpend
+} from "./gateway.js";
+
+window.getTrorUnifiedBalance = getTrorUnifiedBalance;
 
 /* =========================
    WALLET CONNECT UI PATCH
@@ -7233,6 +7241,77 @@ async function loadWeb3UsdcBalance(account) {
   }
 }
 
+async function loadTrorUnifiedBalance(address) {
+  try {
+    if (!address) {
+      return null;
+    }
+
+    console.log(
+      "TROR: loading Circle Unified Balance:",
+      address
+    );
+
+    const result =
+      await getTrorUnifiedBalance(address);
+
+    console.log(
+      "TROR Unified Balance result:",
+      result
+    );
+
+    const balance =
+      Number(
+        result?.totalConfirmedBalance ?? 0
+      );
+
+const pendingBalance =
+  Number(
+    result?.totalPendingBalance ?? 0
+  );
+
+    const balanceEl =
+      document.getElementById(
+        "trorUnifiedBalance"
+      );
+
+    if (balanceEl) {
+      balanceEl.textContent =
+        `${balance.toFixed(6)} USDC`;
+    }
+
+const pendingEl =
+  document.getElementById(
+    "trorUnifiedPendingBalance"
+  );
+
+if (pendingEl) {
+  pendingEl.textContent =
+    `${pendingBalance.toFixed(6)} USDC`;
+}
+
+    return balance;
+
+  } catch (err) {
+    console.error(
+      "TROR Unified Balance error:",
+      err
+    );
+
+    const balanceEl =
+      document.getElementById(
+        "trorUnifiedBalance"
+      );
+
+    if (balanceEl) {
+      balanceEl.textContent =
+        "Unavailable";
+    }
+
+    return null;
+  }
+}
+
 async function switchWeb3Network(chainId) {
   try {
     const targetChain =
@@ -7368,7 +7447,363 @@ if (metamaskWalletEl) {
       : `${web3UsdcBalance} USDC`
   }
 </div>
+
+<div style="
+  margin-top:14px;
+  padding-top:12px;
+  border-top:1px solid rgba(255,255,255,0.10);
+">
+  <div style="
+    font-size:11px;
+    color:#9ca3af;
+    margin-bottom:3px;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+  ">
+    Unified Balance
+  </div>
+
+  <div
+    id="trorUnifiedBalance"
+    style="
+      font-size:18px;
+      font-weight:800;
+    "
+  >
+    -
+  </div>
+
+<div style="
+  margin-top:8px;
+  font-size:11px;
+  color:#9ca3af;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+">
+  Pending
+</div>
+
+<div
+  id="trorUnifiedPendingBalance"
+  style="
+    margin-top:3px;
+    font-size:14px;
+    font-weight:700;
+  "
+>
+  -
+</div>
+
+<div
+  style="
+    display:flex;
+    gap:8px;
+    margin-top:12px;
+  "
+>
+  <button
+    id="trorUnifiedDepositBtn"
+    type="button"
+    style="
+      flex:1;
+      padding:10px 8px;
+      border-radius:10px;
+      border:1px solid rgba(214,175,74,.75);
+      background:rgba(214,175,74,.12);
+      color:#fff;
+      font-weight:800;
+      cursor:pointer;
+    "
+  >
+    Deposit
+  </button>
+
+  <button
+    id="trorUnifiedSpendBtn"
+    type="button"
+    style="
+      flex:1;
+      padding:10px 8px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.20);
+      background:rgba(255,255,255,.06);
+      color:#fff;
+      font-weight:800;
+      cursor:pointer;
+    "
+  >
+    Send
+  </button>
+</div>
+
+<div
+  id="trorUnifiedSendForm"
+  style="
+    display:none;
+    position:fixed;
+    top:0;
+    right:0;
+    bottom:0;
+    left:0;
+    width:100vw;
+    height:100vh;
+    z-index:2147483000;
+    align-items:center;
+    justify-content:center;
+    box-sizing:border-box;
+    padding:20px;
+    margin:0;
+    background:rgba(0,0,0,.72);
+  "
+>
+
+<div
+  style="
+    width:100%;
+    max-width:380px;
+    max-height:90vh;
+    overflow-y:auto;
+    box-sizing:border-box;
+    padding:20px;
+    border-radius:18px;
+    background:#121a2b;
+    border:1px solid rgba(214,175,74,.35);
+    box-shadow:0 24px 70px rgba(0,0,0,.45);
+    color:#fff;
+  "
+>
+
+<div
+  style="
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    margin-bottom:12px;
+  "
+>
+  <div
+    style="
+      font-size:12px;
+      font-weight:800;
+    "
+  >
+    Send from Unified Balance
+  </div>
+
+  <button
+    id="trorUnifiedSendCloseBtn"
+    type="button"
+    aria-label="Close"
+    style="
+      width:32px;
+      height:32px;
+      padding:0;
+      border-radius:50%;
+      border:1px solid rgba(255,255,255,.14);
+      background:rgba(255,255,255,.06);
+      color:#fff;
+      font-size:20px;
+      line-height:1;
+      cursor:pointer;
+    "
+  >
+    ×
+  </button>
+</div>
+
+  <input
+    id="trorUnifiedRecipient"
+    type="text"
+    placeholder="Recipient 0x..."
+    style="
+      width:100%;
+      box-sizing:border-box;
+      padding:10px;
+      margin-bottom:8px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.18);
+      background:#111318;
+      color:#fff;
+    "
+  />
+
+  <input
+    id="trorUnifiedAmount"
+    type="number"
+    min="0"
+    step="0.000001"
+    placeholder="Amount USDC"
+    value="0.05"
+    style="
+      width:100%;
+      box-sizing:border-box;
+      padding:10px;
+      margin-bottom:8px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.18);
+      background:#111318;
+      color:#fff;
+    "
+  />
+
+  <select
+    id="trorUnifiedDestination"
+    style="
+      width:100%;
+      box-sizing:border-box;
+      padding:10px;
+      margin-bottom:10px;
+      border-radius:10px;
+      border:1px solid rgba(214,175,74,.75);
+      background:#111318;
+      color:#fff;
+    "
+  >
+    <option value="5042002">
+      Arc Testnet
+    </option>
+
+    <option value="11155111">
+      Ethereum Sepolia
+    </option>
+
+    <option value="84532">
+      Base Sepolia
+    </option>
+
+    <option value="421614">
+      Arbitrum Sepolia
+    </option>
+
+    <option value="43113">
+      Avalanche Fuji
+    </option>
+
+    <option value="11155420">
+      Optimism Sepolia
+    </option>
+
+    <option value="80002">
+      Polygon Amoy
+    </option>
+
+    <option value="1301">
+      Unichain Sepolia
+    </option>
+  </select>
+
+<div
+  style="
+    margin-bottom:10px;
+    padding:10px;
+    border-radius:10px;
+    background:rgba(255,255,255,.04);
+    border:1px solid rgba(255,255,255,.10);
+  "
+>
+  <div
+    style="
+      display:flex;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:6px;
+      font-size:12px;
+      color:#9ca3af;
+    "
+  >
+    <span>Estimated Fee</span>
+
+    <span
+      id="trorUnifiedSpendFee"
+      style="color:#fff;font-weight:700;"
+    >
+      -
+    </span>
+  </div>
+
+  <div
+    style="
+      display:flex;
+      justify-content:space-between;
+      gap:12px;
+      font-size:12px;
+      color:#9ca3af;
+    "
+  >
+    <span>Estimated Total</span>
+
+    <span
+      id="trorUnifiedSpendTotal"
+      style="color:#fff;font-weight:800;"
+    >
+      -
+    </span>
+  </div>
+</div>
+
+  <button
+    id="trorUnifiedSendConfirmBtn"
+    type="button"
+    style="
+      width:100%;
+      padding:10px 12px;
+      border-radius:10px;
+      border:1px solid rgba(214,175,74,.75);
+      background:rgba(214,175,74,.16);
+      color:#fff;
+      font-weight:800;
+      cursor:pointer;
+    "
+  >
+    Send USDC
+  </button>
+</div>
+</div>
+</div>
   `;
+
+// Move Unified Balance Send modal outside
+// the Connected Wallet card.
+// This prevents fixed-position flickering.
+const oldUnifiedSendModal =
+  document.querySelector(
+    "body > #trorUnifiedSendForm"
+  );
+
+if (oldUnifiedSendModal) {
+  oldUnifiedSendModal.remove();
+}
+
+const unifiedSendModal =
+  metamaskWalletEl.querySelector(
+    "#trorUnifiedSendForm"
+  );
+
+if (unifiedSendModal) {
+  document.body.appendChild(
+    unifiedSendModal
+  );
+
+document
+  .getElementById(
+    "trorUnifiedSendCloseBtn"
+  )
+  ?.addEventListener(
+    "click",
+    () => {
+      const form =
+        document.getElementById(
+          "trorUnifiedSendForm"
+        );
+
+      if (form) {
+        form.style.display = "none";
+      }
+    }
+  );
+
+}
 
   document
     .getElementById("web3NetworkSelect")
@@ -7383,10 +7818,360 @@ if (metamaskWalletEl) {
     );
 }
 
+document
+  .getElementById("trorUnifiedDepositBtn")
+  ?.addEventListener(
+    "click",
+    async () => {
+      try {
+        const amount = window.prompt(
+          "Enter USDC amount to deposit:",
+          "0.10"
+        );
+
+        if (!amount) {
+          return;
+        }
+
+        const numericAmount = Number(amount);
+
+        if (
+          !Number.isFinite(numericAmount) ||
+          numericAmount <= 0
+        ) {
+          setStatus(
+            "Enter a valid USDC amount.",
+            "error"
+          );
+          return;
+        }
+
+        setStatus(
+          `Depositing ${amount} USDC to Unified Balance...`
+        );
+
+        const result =
+          await depositToTrorUnifiedBalance(
+            amount
+          );
+
+        console.log(
+          "TROR Unified deposit result:",
+          result
+        );
+
+        await loadTrorUnifiedBalance(
+          account.address
+        );
+
+        setStatus(
+          `Deposited ${amount} USDC to Unified Balance.`,
+          "success"
+        );
+      } catch (err) {
+        console.error(
+          "TROR Unified deposit error:",
+          err
+        );
+
+        setStatus(
+          err?.message ||
+            "Unified Balance deposit failed.",
+          "error"
+        );
+      }
+    }
+  );
+
+document
+  .getElementById("trorUnifiedSpendBtn")
+  ?.addEventListener(
+    "click",
+    () => {
+      const form =
+        document.getElementById(
+          "trorUnifiedSendForm"
+        );
+
+      if (!form) {
+        return;
+      }
+
+      const isHidden =
+        form.style.display === "none";
+
+      form.style.display =
+  isHidden ? "flex" : "none";
+    }
+  );
+
+async function handleTrorUnifiedSpendEstimate() {
+  const recipientAddress =
+    document.getElementById(
+      "trorUnifiedRecipient"
+    )?.value?.trim();
+
+  const amount =
+    document.getElementById(
+      "trorUnifiedAmount"
+    )?.value?.trim();
+
+  const destinationChainId =
+    Number(
+      document.getElementById(
+        "trorUnifiedDestination"
+      )?.value
+    );
+
+  const feeEl =
+    document.getElementById(
+      "trorUnifiedSpendFee"
+    );
+
+  const totalEl =
+    document.getElementById(
+      "trorUnifiedSpendTotal"
+    );
+
+  if (
+    !recipientAddress ||
+    !amount ||
+    !destinationChainId
+  ) {
+    if (feeEl) {
+      feeEl.textContent = "-";
+    }
+
+    if (totalEl) {
+      totalEl.textContent = "-";
+    }
+
+    return;
+  }
+
+  try {
+    if (feeEl) {
+      feeEl.textContent = "Estimating...";
+    }
+
+    const estimate =
+      await estimateTrorUnifiedSpend({
+        recipientAddress,
+        amount,
+        destinationChainId
+      });
+
+    const fees =
+      Array.isArray(estimate?.fees)
+        ? estimate.fees
+        : [];
+
+    const totalFee =
+      fees.reduce(
+        (sum, fee) =>
+          sum + Number(fee?.amount || 0),
+        0
+      );
+
+    const total =
+      Number(amount) + totalFee;
+
+    if (feeEl) {
+      feeEl.textContent =
+        `${totalFee.toFixed(6)} USDC`;
+    }
+
+    if (totalEl) {
+      totalEl.textContent =
+        `${total.toFixed(6)} USDC`;
+    }
+
+    console.log(
+      "TROR Unified Spend estimate:",
+      {
+        amount,
+        fees,
+        totalFee,
+        total
+      }
+    );
+
+  } catch (err) {
+    console.error(
+      "TROR Unified Spend estimate error:",
+      err
+    );
+
+    if (feeEl) {
+      feeEl.textContent =
+        "Unavailable";
+    }
+
+    if (totalEl) {
+      totalEl.textContent = "-";
+    }
+  }
+}
+
+document
+  .getElementById("trorUnifiedAmount")
+  ?.addEventListener(
+    "input",
+    () => {
+      handleTrorUnifiedSpendEstimate();
+    }
+  );
+
+document
+  .getElementById("trorUnifiedRecipient")
+  ?.addEventListener(
+    "input",
+    () => {
+      handleTrorUnifiedSpendEstimate();
+    }
+  );
+
+document
+  .getElementById("trorUnifiedDestination")
+  ?.addEventListener(
+    "change",
+    () => {
+      handleTrorUnifiedSpendEstimate();
+    }
+  );
+
+  document
+  .getElementById(
+    "trorUnifiedSendConfirmBtn"
+  )
+  ?.addEventListener(
+    "click",
+    async () => {
+      try {
+        const recipientAddress =
+          document
+            .getElementById(
+              "trorUnifiedRecipient"
+            )
+            ?.value
+            ?.trim();
+
+        const amount =
+          document
+            .getElementById(
+              "trorUnifiedAmount"
+            )
+            ?.value
+            ?.trim();
+
+        const destinationChainId =
+          Number(
+            document
+              .getElementById(
+                "trorUnifiedDestination"
+              )
+              ?.value
+          );
+
+        if (!recipientAddress) {
+          setStatus(
+            "Recipient address is required.",
+            "error"
+          );
+          return;
+        }
+
+        const numericAmount =
+          Number(amount);
+
+        if (
+          !Number.isFinite(numericAmount) ||
+          numericAmount <= 0
+        ) {
+          setStatus(
+            "Enter a valid USDC amount.",
+            "error"
+          );
+          return;
+        }
+
+        const sendBtn =
+          document.getElementById(
+            "trorUnifiedSendConfirmBtn"
+          );
+
+        if (sendBtn) {
+          sendBtn.disabled = true;
+          sendBtn.textContent =
+            "Sending...";
+        }
+
+        setStatus(
+          `Sending ${amount} USDC from Unified Balance...`
+        );
+
+        const result =
+          await spendFromTrorUnifiedBalance({
+            recipientAddress,
+            amount,
+            destinationChainId
+          });
+
+        console.log(
+          "TROR Unified spend UI result:",
+          result
+        );
+
+        await loadTrorUnifiedBalance(
+          account.address
+        );
+
+        setStatus(
+          `Sent ${amount} USDC from Unified Balance.`,
+          "success"
+        );
+
+        const form =
+          document.getElementById(
+            "trorUnifiedSendForm"
+          );
+
+        if (form) {
+          form.style.display = "none";
+        }
+
+      } catch (err) {
+        console.error(
+          "TROR Unified spend UI error:",
+          err
+        );
+
+        setStatus(
+          err?.message ||
+            "Unified Balance spend failed.",
+          "error"
+        );
+      } finally {
+        const sendBtn =
+          document.getElementById(
+            "trorUnifiedSendConfirmBtn"
+          );
+
+        if (sendBtn) {
+          sendBtn.disabled = false;
+          sendBtn.textContent =
+            "Send USDC";
+        }
+      }
+    }
+  );
+
 updateWalletChip(
   account.address,
   web3UsdcBalance
 );
+
+loadTrorUnifiedBalance(account.address);
 
 clearCircleWalletLocal();
 activeWalletType = "web3";
