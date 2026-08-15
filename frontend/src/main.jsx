@@ -3967,6 +3967,821 @@ async function mintCircleGatewayTransfer({
 window.mintCircleGatewayTransfer =
   mintCircleGatewayTransfer;
 
+/* =========================================================
+   CIRCLE UNIFIED BALANCE - SEND POPUP
+========================================================= */
+
+document
+  .getElementById("btnCircleUnifiedSend")
+  ?.addEventListener("click", () => {
+    openCircleUnifiedSendModal();
+  });
+
+function openCircleUnifiedSendModal() {
+  const gatewayEoa =
+    window.trorCircleGatewayEoa;
+
+  if (!gatewayEoa?.address) {
+    setStatus(
+      "Circle Unified Balance is not available.",
+      "error"
+    );
+    return;
+  }
+
+  const balanceText =
+    document
+      .getElementById("circleUnifiedBalance")
+      ?.textContent || "0";
+
+  const availableBalance =
+    Number.parseFloat(balanceText) || 0;
+
+  let modal =
+    document.getElementById(
+      "circleUnifiedSendModal"
+    );
+
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "circleUnifiedSendModal";
+
+    modal.style.cssText = `
+      position:fixed;
+      inset:0;
+      z-index:1000002;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:20px;
+      background:rgba(0,0,0,.76);
+      backdrop-filter:blur(10px);
+    `;
+
+    document.body.appendChild(modal);
+  }
+
+  const networkOptions =
+    Object.entries(TROR_GATEWAY_TESTNETS)
+      .map(
+        ([chainId, network]) => `
+          <option value="${chainId}">
+            ${network.name}
+          </option>
+        `
+      )
+      .join("");
+
+  function closeModal() {
+    modal.style.display = "none";
+  }
+
+  function renderForm() {
+    modal.innerHTML = `
+      <div style="
+        width:100%;
+        max-width:420px;
+        padding:22px;
+        border-radius:18px;
+        color:#fff;
+        background:#121a2b;
+        border:1px solid rgba(215,180,90,.38);
+        box-shadow:0 24px 70px rgba(0,0,0,.5);
+      ">
+
+        <div style="
+          display:flex;
+          justify-content:space-between;
+          align-items:center;
+          margin-bottom:4px;
+        ">
+          <div style="
+            color:#d8b46a;
+            font-size:12px;
+            font-weight:800;
+            letter-spacing:.12em;
+          ">
+            TROR UNIFIED BALANCE
+          </div>
+
+          <button
+            id="closeCircleUnifiedSend"
+            type="button"
+            style="
+              border:0;
+              background:transparent;
+              color:#fff;
+              cursor:pointer;
+              font-size:22px;
+            "
+          >
+            ×
+          </button>
+        </div>
+
+        <h2 style="margin:4px 0 18px;">
+          Send from Unified Balance
+        </h2>
+
+        <div style="
+          padding:12px 14px;
+          margin-bottom:16px;
+          border-radius:12px;
+          background:rgba(255,255,255,.05);
+          border:1px solid rgba(255,255,255,.08);
+        ">
+          <div style="
+            font-size:11px;
+            color:#9da8ba;
+            text-transform:uppercase;
+            letter-spacing:.08em;
+          ">
+            Available
+          </div>
+
+          <div style="
+            margin-top:4px;
+            font-size:20px;
+            font-weight:800;
+          ">
+            ${availableBalance.toFixed(6)} USDC
+          </div>
+        </div>
+
+        <label style="
+          display:block;
+          margin-bottom:6px;
+          font-size:12px;
+          color:#cbd5e1;
+        ">
+          Destination Network
+        </label>
+
+        <select
+          id="circleUnifiedSendNetwork"
+          style="
+            box-sizing:border-box;
+            width:100%;
+            padding:12px;
+            margin-bottom:14px;
+            border-radius:10px;
+            border:1px solid rgba(255,255,255,.12);
+            background:#090d16;
+            color:#fff;
+          "
+        >
+          ${networkOptions}
+        </select>
+
+        <label style="
+          display:block;
+          margin-bottom:6px;
+          font-size:12px;
+          color:#cbd5e1;
+        ">
+          Recipient
+        </label>
+
+        <input
+          id="circleUnifiedSendRecipient"
+          type="text"
+          placeholder="0x..."
+          autocomplete="off"
+          style="
+            box-sizing:border-box;
+            width:100%;
+            padding:12px;
+            margin-bottom:14px;
+            border-radius:10px;
+            border:1px solid rgba(255,255,255,.12);
+            background:#090d16;
+            color:#fff;
+            outline:none;
+          "
+        />
+
+        <label style="
+          display:block;
+          margin-bottom:6px;
+          font-size:12px;
+          color:#cbd5e1;
+        ">
+          Amount
+        </label>
+
+        <input
+          id="circleUnifiedSendAmount"
+          type="number"
+          min="0"
+          step="0.000001"
+          placeholder="0.00 USDC"
+          style="
+            box-sizing:border-box;
+            width:100%;
+            padding:12px;
+            margin-bottom:18px;
+            border-radius:10px;
+            border:1px solid rgba(255,255,255,.12);
+            background:#090d16;
+            color:#fff;
+            outline:none;
+          "
+        />
+
+        <button
+          id="continueCircleUnifiedSend"
+          type="button"
+          style="
+            width:100%;
+            padding:13px;
+            border:0;
+            border-radius:11px;
+            cursor:pointer;
+            font-weight:800;
+            background:linear-gradient(
+              135deg,
+              #c49a36,
+              #f0cf69
+            );
+            color:#111;
+          "
+        >
+          Continue
+        </button>
+
+        <button
+          id="cancelCircleUnifiedSend"
+          type="button"
+          style="
+            width:100%;
+            padding:12px;
+            margin-top:9px;
+            border-radius:11px;
+            cursor:pointer;
+            background:transparent;
+            border:1px solid rgba(255,255,255,.13);
+            color:#fff;
+          "
+        >
+          Cancel
+        </button>
+
+      </div>
+    `;
+
+    modal.style.display = "flex";
+
+    document
+      .getElementById(
+        "closeCircleUnifiedSend"
+      )
+      ?.addEventListener(
+        "click",
+        closeModal
+      );
+
+    document
+      .getElementById(
+        "cancelCircleUnifiedSend"
+      )
+      ?.addEventListener(
+        "click",
+        closeModal
+      );
+
+    document
+      .getElementById(
+        "continueCircleUnifiedSend"
+      )
+      ?.addEventListener(
+        "click",
+        prepareReview
+      );
+  }
+
+  async function prepareReview() {
+    try {
+      const recipient =
+        document
+          .getElementById(
+            "circleUnifiedSendRecipient"
+          )
+          ?.value.trim();
+
+      const amount =
+        document
+          .getElementById(
+            "circleUnifiedSendAmount"
+          )
+          ?.value.trim();
+
+      const destinationChainId =
+        Number(
+          document
+            .getElementById(
+              "circleUnifiedSendNetwork"
+            )
+            ?.value
+        );
+
+      if (
+        !recipient ||
+        !ethers.isAddress(recipient)
+      ) {
+        throw new Error(
+          "Enter a valid recipient address."
+        );
+      }
+
+      const numericAmount =
+        Number(amount);
+
+      if (
+        !Number.isFinite(numericAmount) ||
+        numericAmount <= 0
+      ) {
+        throw new Error(
+          "Enter a valid USDC amount."
+        );
+      }
+
+      const continueButton =
+        document.getElementById(
+          "continueCircleUnifiedSend"
+        );
+
+      if (continueButton) {
+        continueButton.disabled = true;
+        continueButton.textContent =
+          "Estimating...";
+      }
+
+      const estimate =
+        await estimateCircleGatewaySend({
+          recipientAddress: recipient,
+          amount,
+          destinationChainId
+        });
+
+      const maxFeeUnits =
+        Number(
+          estimate?.burnIntent?.maxFee || 0
+        );
+
+      const estimatedFee =
+        maxFeeUnits / 1_000_000;
+
+      const total =
+        numericAmount + estimatedFee;
+
+      if (total > availableBalance) {
+        throw new Error(
+          `Not enough Unified Balance. Required: ${total.toFixed(
+            6
+          )} USDC`
+        );
+      }
+
+      renderReview({
+        recipient,
+        amount,
+        destinationChainId,
+        estimatedFee,
+        total,
+        estimate
+      });
+
+    } catch (err) {
+      console.error(
+        "TROR Unified Send estimate error:",
+        err
+      );
+
+      setStatus(
+        err?.message ||
+          "Unable to estimate Unified Balance send.",
+        "error"
+      );
+
+      const continueButton =
+        document.getElementById(
+          "continueCircleUnifiedSend"
+        );
+
+      if (continueButton) {
+        continueButton.disabled = false;
+        continueButton.textContent =
+          "Continue";
+      }
+    }
+  }
+
+  function renderReview({
+    recipient,
+    amount,
+    destinationChainId,
+    estimatedFee,
+    total,
+    estimate
+  }) {
+    const network =
+      TROR_GATEWAY_TESTNETS[
+        destinationChainId
+      ];
+
+    modal.innerHTML = `
+      <div style="
+        width:100%;
+        max-width:420px;
+        padding:22px;
+        border-radius:18px;
+        color:#fff;
+        background:#121a2b;
+        border:1px solid rgba(215,180,90,.38);
+        box-shadow:0 24px 70px rgba(0,0,0,.5);
+      ">
+
+        <div style="
+          color:#d8b46a;
+          font-size:12px;
+          font-weight:800;
+          letter-spacing:.12em;
+          margin-bottom:7px;
+        ">
+          TROR UNIFIED BALANCE
+        </div>
+
+        <h2 style="margin:0 0 18px;">
+          Review Send
+        </h2>
+
+        <div style="
+          padding:14px;
+          border-radius:12px;
+          background:#090d16;
+          border:1px solid rgba(255,255,255,.08);
+          font-size:13px;
+          line-height:1.7;
+        ">
+          <div>
+            <span style="color:#9da8ba;">
+              Network
+            </span><br>
+            <b>${network?.name || "-"}</b>
+          </div>
+
+          <div style="margin-top:10px;">
+            <span style="color:#9da8ba;">
+              Recipient
+            </span><br>
+            <b style="
+              display:block;
+              word-break:break-all;
+            ">
+              ${recipient}
+            </b>
+          </div>
+
+          <div style="margin-top:10px;">
+            <span style="color:#9da8ba;">
+              Send
+            </span><br>
+            <b>
+              ${Number(amount).toFixed(6)}
+              USDC
+            </b>
+          </div>
+
+          <div style="margin-top:10px;">
+            <span style="color:#9da8ba;">
+              Estimated Gateway Fee
+            </span><br>
+            <b>
+              ${estimatedFee.toFixed(6)}
+              USDC
+            </b>
+          </div>
+
+          <div style="
+            margin-top:12px;
+            padding-top:12px;
+            border-top:1px solid
+              rgba(255,255,255,.1);
+          ">
+            <span style="color:#9da8ba;">
+              Estimated Total
+            </span><br>
+
+            <b style="
+              font-size:19px;
+              color:#f0cf69;
+            ">
+              ${total.toFixed(6)} USDC
+            </b>
+          </div>
+        </div>
+
+        <button
+          id="confirmCircleUnifiedSend"
+          type="button"
+          style="
+            width:100%;
+            padding:13px;
+            margin-top:16px;
+            border:0;
+            border-radius:11px;
+            cursor:pointer;
+            font-weight:800;
+            background:linear-gradient(
+              135deg,
+              #c49a36,
+              #f0cf69
+            );
+            color:#111;
+          "
+        >
+          Confirm Send
+        </button>
+
+        <button
+          id="backCircleUnifiedSend"
+          type="button"
+          style="
+            width:100%;
+            padding:12px;
+            margin-top:9px;
+            border-radius:11px;
+            cursor:pointer;
+            background:transparent;
+            border:1px solid rgba(255,255,255,.13);
+            color:#fff;
+          "
+        >
+          Back
+        </button>
+
+      </div>
+    `;
+
+    document
+      .getElementById(
+        "backCircleUnifiedSend"
+      )
+      ?.addEventListener(
+        "click",
+        renderForm
+      );
+
+    document
+      .getElementById(
+        "confirmCircleUnifiedSend"
+      )
+      ?.addEventListener(
+        "click",
+        async () => {
+          await executeUnifiedSend({
+            recipient,
+            amount,
+            destinationChainId,
+            estimatedFee,
+            estimate
+          });
+        }
+      );
+  }
+
+  async function executeUnifiedSend({
+    recipient,
+    amount,
+    destinationChainId,
+    estimatedFee,
+    estimate
+  }) {
+    const button =
+      document.getElementById(
+        "confirmCircleUnifiedSend"
+      );
+
+    try {
+      if (button) {
+        button.disabled = true;
+        button.textContent =
+          "Confirm in Circle...";
+      }
+
+      /*
+       * STEP 1
+       * Sign the exact BurnIntent
+       * generated on the Review screen.
+       */
+      const signed =
+        await signCircleGatewayBurnIntent(
+          estimate.burnIntent
+        );
+
+      if (button) {
+        button.textContent =
+          "Creating transfer...";
+      }
+
+      /*
+       * STEP 2
+       * Submit signed BurnIntent.
+       */
+      const transfer =
+        await submitCircleGatewayTransfer({
+          burnIntent:
+            estimate.burnIntent,
+
+          signature:
+            signed.signature
+        });
+
+      const attestation =
+        transfer?.data?.attestation;
+
+      const operatorSignature =
+        transfer?.data?.signature;
+
+      if (
+        !attestation ||
+        !operatorSignature
+      ) {
+        throw new Error(
+          "Gateway attestation was not returned."
+        );
+      }
+
+      if (button) {
+        button.textContent =
+          "Confirm mint in Circle...";
+      }
+
+      /*
+       * STEP 3
+       * Mint on destination network.
+       */
+      await mintCircleGatewayTransfer({
+        attestation,
+        operatorSignature,
+        destinationChainId
+      });
+
+      /*
+       * STEP 4
+       * Refresh Gateway balance.
+       */
+      await loadCircleUnifiedBalance();
+
+      renderSuccess({
+        recipient,
+        amount,
+        destinationChainId,
+        estimatedFee,
+        transferId:
+          transfer?.data?.transferId ||
+          ""
+      });
+
+    } catch (err) {
+      console.error(
+        "TROR Circle Unified Send error:",
+        err
+      );
+
+      setStatus(
+        err?.message ||
+          "Unified Balance send failed.",
+        "error"
+      );
+
+      if (button) {
+        button.disabled = false;
+        button.textContent =
+          "Confirm Send";
+      }
+    }
+  }
+
+  function renderSuccess({
+    recipient,
+    amount,
+    destinationChainId,
+    estimatedFee,
+    transferId
+  }) {
+    const network =
+      TROR_GATEWAY_TESTNETS[
+        destinationChainId
+      ];
+
+    modal.innerHTML = `
+      <div style="
+        width:100%;
+        max-width:420px;
+        padding:28px 22px;
+        border-radius:18px;
+        text-align:center;
+        color:#fff;
+        background:#121a2b;
+        border:1px solid rgba(50,210,120,.35);
+        box-shadow:0 24px 70px rgba(0,0,0,.5);
+      ">
+
+        <div style="
+          font-size:42px;
+          margin-bottom:10px;
+        ">
+          ✓
+        </div>
+
+        <h2 style="margin:0 0 8px;">
+          USDC Sent Successfully
+        </h2>
+
+        <div style="
+          color:#a7f3d0;
+          font-size:22px;
+          font-weight:800;
+          margin:14px 0;
+        ">
+          ${Number(amount).toFixed(6)}
+          USDC
+        </div>
+
+        <div style="
+          color:#9da8ba;
+          font-size:13px;
+          line-height:1.7;
+        ">
+          ${network?.name || "-"}<br>
+          ${recipient}<br>
+          Gateway fee:
+          ${estimatedFee.toFixed(6)} USDC
+        </div>
+
+        ${
+          transferId
+            ? `
+              <div style="
+                margin-top:14px;
+                padding:10px;
+                border-radius:10px;
+                background:rgba(255,255,255,.04);
+                color:#9da8ba;
+                font-size:11px;
+                word-break:break-all;
+              ">
+                Transfer ID:
+                ${transferId}
+              </div>
+            `
+            : ""
+        }
+
+        <button
+          id="doneCircleUnifiedSend"
+          type="button"
+          style="
+            width:100%;
+            padding:13px;
+            margin-top:18px;
+            border:0;
+            border-radius:11px;
+            cursor:pointer;
+            font-weight:800;
+            background:linear-gradient(
+              135deg,
+              #c49a36,
+              #f0cf69
+            );
+            color:#111;
+          "
+        >
+          Done
+        </button>
+
+      </div>
+    `;
+
+    document
+      .getElementById(
+        "doneCircleUnifiedSend"
+      )
+      ?.addEventListener(
+        "click",
+        closeModal
+      );
+
+    setStatus(
+      `Sent ${amount} USDC from Unified Balance successfully.`,
+      "success"
+    );
+  }
+
+  renderForm();
+}
+
 // Load and display Circle wallet address
 async function loadCircleWallet(userToken) {
   const listData = await listCircleWallets(userToken);
