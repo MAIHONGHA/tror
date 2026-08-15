@@ -3516,6 +3516,260 @@ app.post("/api/circle/wallets", async (req, res) => {
   }
 });
 
+/* =========================================================
+   CIRCLE GATEWAY - UNIFIED BALANCE
+========================================================= */
+
+app.get("/api/circle/gateway/balance", async (req, res) => {
+  try {
+    const depositor = String(
+      req.query.depositor || ""
+    ).trim();
+
+    if (!depositor) {
+      return res.status(400).json({
+        error: "Missing depositor address"
+      });
+    }
+
+    if (!ethers.isAddress(depositor)) {
+      return res.status(400).json({
+        error: "Invalid depositor address"
+      });
+    }
+
+    const response = await fetch(
+      "https://gateway-api-testnet.circle.com/v1/balances",
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json"
+        },
+
+        body: JSON.stringify({
+  token: "USDC",
+
+  sources: [
+    {
+      depositor
+    }
+  ]
+})
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error(
+        "TROR Circle Gateway balance error:",
+        data
+      );
+
+      return res.status(response.status).json({
+        error:
+          data?.message ||
+          data?.error ||
+          "Failed to load Unified Balance"
+      });
+    }
+
+    console.log(
+      "TROR Circle Gateway Unified Balance:",
+      {
+        depositor,
+        data
+      }
+    );
+
+    return res.json({
+      success: true,
+      depositor,
+      data
+    });
+  } catch (err) {
+    console.error(
+      "TROR Circle Gateway balance error:",
+      err
+    );
+
+    return res.status(500).json({
+      error:
+        err?.message ||
+        "Failed to load Unified Balance"
+    });
+  }
+});
+
+/* =========================================================
+   CIRCLE GATEWAY - ESTIMATE UNIFIED BALANCE TRANSFER
+========================================================= */
+
+app.post("/api/circle/gateway/estimate", async (req, res) => {
+  try {
+    const { spec } = req.body;
+
+    if (!spec || typeof spec !== "object") {
+      return res.status(400).json({
+        error: "Missing Gateway transfer spec"
+      });
+    }
+
+    console.log(
+      "TROR Circle Gateway estimate spec:",
+      spec
+    );
+
+    const response = await fetch(
+      "https://gateway-api-testnet.circle.com/v1/estimate",
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json"
+        },
+
+        body: JSON.stringify([
+          {
+            spec
+          }
+        ])
+      }
+    );
+
+    const data = await response.json();
+
+    console.log(
+      "TROR Circle Gateway estimate response:",
+      response.status,
+      data
+    );
+
+    if (!response.ok) {
+      return res.status(response.status).json({
+        error:
+          data?.message ||
+          data?.error ||
+          "Circle Gateway estimate failed",
+
+        details: data
+      });
+    }
+
+    return res.json({
+      success: true,
+      data
+    });
+
+  } catch (err) {
+    console.error(
+      "TROR Circle Gateway estimate error:",
+      err
+    );
+
+    return res.status(500).json({
+      error:
+        err?.message ||
+        "Circle Gateway estimate failed"
+    });
+  }
+});
+
+/* =========================================================
+   CIRCLE GATEWAY - CREATE TRANSFER ATTESTATION
+========================================================= */
+
+app.post("/api/circle/gateway/transfer", async (req, res) => {
+  try {
+    const {
+      burnIntent,
+      signature
+    } = req.body;
+
+    if (!burnIntent?.spec) {
+      return res.status(400).json({
+        error: "Missing Gateway burnIntent"
+      });
+    }
+
+    if (
+      !signature ||
+      typeof signature !== "string" ||
+      !signature.startsWith("0x")
+    ) {
+      return res.status(400).json({
+        error: "Invalid Gateway signature"
+      });
+    }
+
+    const requestBody = [
+      {
+        burnIntent,
+        signature
+      }
+    ];
+
+    console.log(
+      "TROR Circle Gateway transfer request:",
+      {
+        burnIntent,
+        signature:
+          `${signature.slice(0, 12)}...${signature.slice(-8)}`
+      }
+    );
+
+    const response = await fetch(
+      "https://gateway-api-testnet.circle.com/v1/transfer",
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json"
+        },
+
+        body: JSON.stringify(requestBody)
+      }
+    );
+
+    const data = await response.json();
+
+    console.log(
+      "TROR Circle Gateway transfer response:",
+      response.status,
+      data
+    );
+
+    if (!response.ok) {
+      return res.status(response.status).json({
+        error:
+          data?.message ||
+          data?.error ||
+          "Circle Gateway transfer failed",
+
+        details: data
+      });
+    }
+
+    return res.status(response.status).json({
+      success: true,
+      data
+    });
+
+  } catch (err) {
+    console.error(
+      "TROR Circle Gateway transfer error:",
+      err
+    );
+
+    return res.status(500).json({
+      error:
+        err?.message ||
+        "Circle Gateway transfer failed"
+    });
+  }
+});
+
 app.post("/api/circle/wallet-balances", async (req, res) => {
   try {
     if (!requireCircle(res)) return;
@@ -3663,6 +3917,109 @@ app.post("/api/circle/contract-execution", async (req, res) => {
     res.status(response.status).json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+/* =========================================================
+   CIRCLE USER-CONTROLLED WALLET - SIGN TYPED DATA
+========================================================= */
+
+app.post("/api/circle/sign-typed-data", async (req, res) => {
+  try {
+    if (!requireCircle(res)) return;
+
+    const {
+      userToken,
+      walletId,
+      data,
+      memo
+    } = req.body;
+
+    if (!userToken) {
+      return res.status(400).json({
+        error: "Missing userToken"
+      });
+    }
+
+    if (!walletId) {
+      return res.status(400).json({
+        error: "Missing walletId"
+      });
+    }
+
+    if (!data) {
+      return res.status(400).json({
+        error: "Missing typed data"
+      });
+    }
+
+    const payload = {
+      walletId: String(walletId),
+
+      data:
+        typeof data === "string"
+          ? data
+          : JSON.stringify(data),
+
+      memo:
+        String(
+          memo ||
+          "TROR Unified Balance transfer"
+        )
+    };
+
+    console.log(
+      "TROR Circle sign typed data payload:",
+      {
+        walletId: payload.walletId,
+        memo: payload.memo
+      }
+    );
+
+    const response = await fetch(
+      "https://api.circle.com/v1/w3s/user/sign/typedData",
+      {
+        method: "POST",
+
+        headers: {
+          Authorization:
+            `Bearer ${CIRCLE_API_KEY}`,
+
+          "X-User-Token":
+            userToken,
+
+          "Content-Type":
+            "application/json"
+        },
+
+        body: JSON.stringify(payload)
+      }
+    );
+
+    const result =
+      await response.json();
+
+    console.log(
+      "TROR Circle sign typed data response:",
+      response.status,
+      result
+    );
+
+    return res
+      .status(response.status)
+      .json(result);
+
+  } catch (err) {
+    console.error(
+      "TROR Circle sign typed data error:",
+      err
+    );
+
+    return res.status(500).json({
+      error:
+        err?.message ||
+        "Failed to create typed-data signing challenge"
+    });
   }
 });
 

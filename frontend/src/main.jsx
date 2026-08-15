@@ -2628,11 +2628,86 @@ qrScannerModal?.addEventListener("click", (e) => {
    CIRCLE WALLET HELPERS
 ========================= */
 
+function getPrimaryCircleAddress(wallets = []) {
+  const counts = new Map();
+
+  for (const wallet of wallets) {
+    const address =
+      wallet?.address ||
+      wallet?.walletAddress ||
+      wallet?.accounts?.[0]?.address ||
+      "";
+
+    const normalized =
+      String(address).trim().toLowerCase();
+
+    if (!normalized.startsWith("0x")) continue;
+
+    counts.set(
+      normalized,
+      (counts.get(normalized) || 0) + 1
+    );
+  }
+
+  let primaryAddress = "";
+  let highestCount = 0;
+
+  for (const [address, count] of counts.entries()) {
+    if (count > highestCount) {
+      primaryAddress = address;
+      highestCount = count;
+    }
+  }
+
+  console.log(
+    "TROR primary Circle address:",
+    primaryAddress,
+    "network count:",
+    highestCount
+  );
+
+  return primaryAddress;
+}
+
 // Extract wallet object from Circle API response
 function extractWallet(data) {
-  const wallets = data?.data?.wallets || data?.wallets || [];
+  const wallets =
+    data?.data?.wallets ||
+    data?.wallets ||
+    [];
+
+  const primaryAddress =
+    getPrimaryCircleAddress(wallets);
+
+  const primaryArcWallet =
+    wallets.find((wallet) => {
+      const blockchain =
+        String(
+          wallet?.blockchain || ""
+        ).toUpperCase();
+
+      const address =
+        String(
+          wallet?.address ||
+          wallet?.walletAddress ||
+          wallet?.accounts?.[0]?.address ||
+          ""
+        ).toLowerCase();
+
+      return (
+        blockchain === "ARC-TESTNET" &&
+        address === primaryAddress
+      );
+    });
+
   return (
-    wallets.find((w) => String(w.blockchain || "").toUpperCase() === "ARC-TESTNET") ||
+    primaryArcWallet ||
+    wallets.find(
+      (wallet) =>
+        String(
+          wallet?.blockchain || ""
+        ).toUpperCase() === "ARC-TESTNET"
+    ) ||
     wallets[0] ||
     data?.data?.wallet ||
     data?.wallet ||
@@ -2719,12 +2794,1193 @@ async function listCircleWallets(userToken) {
   }
 }
 
+function findExistingCircleGatewayEoa(listData) {
+  const wallets =
+    extractCircleWallets(listData);
+
+  const eoa =
+    wallets.find(
+      (wallet) =>
+        String(
+          wallet?.blockchain || ""
+        ).toUpperCase() === "ARC-TESTNET" &&
+        String(
+          wallet?.accountType || ""
+        ).toUpperCase() === "EOA" &&
+        String(
+          wallet?.state || ""
+        ).toUpperCase() === "LIVE"
+    ) || null;
+
+  if (eoa) {
+    console.log(
+      "TROR existing Circle Gateway EOA:",
+      {
+        walletId: eoa.id,
+        address: eoa.address,
+        blockchain: eoa.blockchain,
+        accountType: eoa.accountType
+      }
+    );
+  } else {
+    console.log(
+      "TROR Circle Gateway EOA not found."
+    );
+  }
+
+  return eoa;
+}
+
+async function loadCircleUnifiedBalance() {
+  const balanceEl =
+    document.getElementById(
+      "circleUnifiedBalance"
+    );
+
+  const pendingEl =
+    document.getElementById(
+      "circleUnifiedPending"
+    );
+
+  try {
+    const eoa =
+      window.trorCircleGatewayEoa;
+
+    if (!eoa?.address) {
+      if (balanceEl) {
+        balanceEl.textContent =
+          "0.000000 USDC";
+      }
+
+      if (pendingEl) {
+        pendingEl.textContent =
+          "0.000000 USDC";
+      }
+
+      return null;
+    }
+
+    console.log(
+      "TROR loading Circle Unified Balance:",
+      eoa.address
+    );
+
+    const response = await fetch(
+      `/api/circle/gateway/balance?depositor=${encodeURIComponent(
+        eoa.address
+      )}`
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        result?.error ||
+        "Failed to load Circle Unified Balance"
+      );
+    }
+
+    const balances =
+      Array.isArray(result?.data?.balances)
+        ? result.data.balances
+        : [];
+
+    const unifiedBalance =
+      balances.reduce(
+        (total, item) =>
+          total +
+          Number(item?.balance || 0),
+        0
+      );
+
+    const pendingBalance =
+      balances.reduce(
+        (total, item) =>
+          total +
+          Number(item?.pendingBatch || 0),
+        0
+      );
+
+    if (balanceEl) {
+      balanceEl.textContent =
+        `${unifiedBalance.toFixed(6)} USDC`;
+    }
+
+    if (pendingEl) {
+      pendingEl.textContent =
+        `${pendingBalance.toFixed(6)} USDC`;
+    }
+
+    console.log(
+      "TROR Circle Unified Balance loaded:",
+      {
+        eoa: eoa.address,
+        unifiedBalance,
+        pendingBalance,
+        balances
+      }
+    );
+
+    return {
+      unifiedBalance,
+      pendingBalance,
+      balances
+    };
+
+  } catch (err) {
+    console.error(
+      "TROR Circle Unified Balance error:",
+      err
+    );
+
+    if (balanceEl) {
+      balanceEl.textContent =
+        "Unavailable";
+    }
+
+    if (pendingEl) {
+      pendingEl.textContent =
+        "Unavailable";
+    }
+
+    return null;
+  }
+}
+
+async function executeCircleChallenge(
+  challengeId,
+  userToken,
+  encryptionKey
+) {
+  const cfg = await api("/api/circle/config");
+  const appId = cfg?.config?.circleAppId;
+
+  if (!appId) {
+    throw new Error("Missing CIRCLE_APP_ID.");
+  }
+
+  if (!challengeId) {
+    throw new Error("Missing Circle challengeId.");
+  }
+
+  const sdk = new W3SSdk({
+    appSettings: {
+      appId
+    }
+  });
+
+  sdk.setAuthentication({
+    userToken,
+    encryptionKey
+  });
+
+  return await new Promise(
+    (resolve, reject) => {
+      sdk.execute(
+        challengeId,
+        (error, result) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve(result);
+        }
+      );
+    }
+  );
+}
+
+async function depositCircleToUnifiedBalance(
+  amount
+) {
+  const GATEWAY_WALLET =
+    "0x0077777d7EBA4688BDeF3E311b846F25870A19B9";
+
+  const ARC_USDC =
+    "0x3600000000000000000000000000000000000000";
+
+  const numericAmount =
+    Number(amount);
+
+  if (
+    !Number.isFinite(numericAmount) ||
+    numericAmount <= 0
+  ) {
+    throw new Error(
+      "Enter a valid USDC amount."
+    );
+  }
+
+  const sourceWallet =
+    window.trorActiveCircleWallet;
+
+  const gatewayEoa =
+    window.trorCircleGatewayEoa;
+
+  if (
+    !sourceWallet?.walletId ||
+    !sourceWallet?.address
+  ) {
+    throw new Error(
+      "Circle source wallet is not available."
+    );
+  }
+
+  if (
+    String(
+      sourceWallet.blockchain || ""
+    ).toUpperCase() !== "ARC-TESTNET"
+  ) {
+    throw new Error(
+      "Circle Unified Balance deposit test currently requires Arc Testnet."
+    );
+  }
+
+  if (!gatewayEoa?.address) {
+    throw new Error(
+      "Circle Gateway EOA is not available."
+    );
+  }
+
+  if (
+    Number(sourceWallet.balance || 0) <
+    numericAmount
+  ) {
+    throw new Error(
+      `Not enough USDC. Available: ${sourceWallet.balance || 0} USDC`
+    );
+  }
+
+  const {
+    userToken,
+    encryptionKey
+  } = await getCircleAuth();
+
+  const amountUnits =
+    parseUnits(
+      String(amount),
+      6
+    ).toString();
+
+  console.log(
+    "TROR Circle Unified deposit:",
+    {
+      sourceWallet:
+        sourceWallet.address,
+
+      sourceWalletId:
+        sourceWallet.walletId,
+
+      gatewayDepositor:
+        gatewayEoa.address,
+
+      amount,
+      amountUnits
+    }
+  );
+
+  /* =====================================================
+     STEP 1 — APPROVE USDC
+  ===================================================== */
+
+  setStatus(
+    `Approve ${amount} USDC for Unified Balance...`
+  );
+
+  const approveResponse =
+    await api(
+      "/api/circle/contract-execution",
+      {
+        method: "POST",
+
+        body: JSON.stringify({
+          userToken,
+
+          walletId:
+            sourceWallet.walletId,
+
+          contractAddress:
+            ARC_USDC,
+
+          abiFunctionSignature:
+            "approve(address,uint256)",
+
+          abiParameters: [
+            GATEWAY_WALLET,
+            amountUnits
+          ]
+        })
+      }
+    );
+
+  console.log(
+    "TROR Circle Gateway approve response:",
+    approveResponse
+  );
+
+  const approveChallengeId =
+    approveResponse?.data?.challengeId ||
+    approveResponse?.challengeId;
+
+  if (!approveChallengeId) {
+    throw new Error(
+      "Circle approve challengeId was not returned."
+    );
+  }
+
+  await executeCircleChallenge(
+    approveChallengeId,
+    userToken,
+    encryptionKey
+  );
+
+  console.log(
+    "TROR Circle Gateway USDC approve approved."
+  );
+
+  /* =====================================================
+     STEP 2 — DEPOSIT FOR GATEWAY EOA
+  ===================================================== */
+
+  setStatus(
+    `Depositing ${amount} USDC to Unified Balance...`
+  );
+
+  const depositResponse =
+    await api(
+      "/api/circle/contract-execution",
+      {
+        method: "POST",
+
+        body: JSON.stringify({
+          userToken,
+
+          walletId:
+            sourceWallet.walletId,
+
+          contractAddress:
+            GATEWAY_WALLET,
+
+          abiFunctionSignature:
+            "depositFor(address,address,uint256)",
+
+          abiParameters: [
+            ARC_USDC,
+            gatewayEoa.address,
+            amountUnits
+          ]
+        })
+      }
+    );
+
+  console.log(
+    "TROR Circle Gateway depositFor response:",
+    depositResponse
+  );
+
+  const depositChallengeId =
+    depositResponse?.data?.challengeId ||
+    depositResponse?.challengeId;
+
+  if (!depositChallengeId) {
+    throw new Error(
+      "Circle deposit challengeId was not returned."
+    );
+  }
+
+  const depositResult =
+    await executeCircleChallenge(
+      depositChallengeId,
+      userToken,
+      encryptionKey
+    );
+
+  console.log(
+    "TROR Circle Gateway deposit approved:",
+    depositResult
+  );
+
+  setStatus(
+    `Circle Unified Balance deposit submitted: ${amount} USDC.`,
+    "success"
+  );
+
+  return {
+    amount,
+    sourceWallet,
+    gatewayEoa,
+    depositResult
+  };
+}
+
+document
+  .getElementById(
+    "btnCircleUnifiedDeposit"
+  )
+  ?.addEventListener(
+    "click",
+    async () => {
+      try {
+        const amount =
+          window.prompt(
+            "Amount to deposit to Unified Balance (USDC):",
+            "0.10"
+          );
+
+        if (amount === null) {
+          return;
+        }
+
+        await depositCircleToUnifiedBalance(
+          amount
+        );
+
+      } catch (err) {
+        console.error(
+          "TROR Circle Unified deposit error:",
+          err
+        );
+
+        setStatus(
+          err?.message ||
+            "Circle Unified Balance deposit failed.",
+          "error"
+        );
+      }
+    }
+  );
+
+const TROR_GATEWAY_WALLET =
+  "0x0077777d7EBA4688BDeF3E311b846F25870A19B9";
+
+const TROR_GATEWAY_MINTER =
+  "0x0022222ABE238Cc2C7Bb1f21003F0a260052475B";
+
+const TROR_GATEWAY_TESTNETS = {
+  5042002: {
+    name: "Arc Testnet",
+    domain: 26,
+    usdc:
+      "0x3600000000000000000000000000000000000000"
+  },
+
+  11155111: {
+    name: "Ethereum Sepolia",
+    domain: 0,
+    usdc:
+      "0x1c7d4b196cb0c7b01d743fbc6116a902379c7238"
+  },
+
+  84532: {
+    name: "Base Sepolia",
+    domain: 6,
+    usdc:
+      "0x036cbd53842c5426634e7929541ec2318f3dcf7e"
+  },
+
+  421614: {
+    name: "Arbitrum Sepolia",
+    domain: 3,
+    usdc:
+      "0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d"
+  },
+
+  43113: {
+    name: "Avalanche Fuji",
+    domain: 1,
+    usdc:
+      "0x5425890298aed601595a70ab815c96711a31bc65"
+  },
+
+  11155420: {
+    name: "Optimism Sepolia",
+    domain: 2,
+    usdc:
+      "0x5fd84259d66cd46123540766be93dfe6d43130d7"
+  },
+
+  80002: {
+    name: "Polygon Amoy",
+    domain: 7,
+    usdc:
+      "0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582"
+  },
+
+  1301: {
+    name: "Unichain Sepolia",
+    domain: 10,
+    usdc:
+      "0x31d0220469e10c4e71834a79b1f276d740d3768f"
+  }
+};
+
+const TROR_GATEWAY_EIP712_DOMAIN = [
+  { name: "name", type: "string" },
+  { name: "version", type: "string" }
+];
+
+const TROR_GATEWAY_TRANSFER_SPEC = [
+  { name: "version", type: "uint32" },
+  { name: "sourceDomain", type: "uint32" },
+  { name: "destinationDomain", type: "uint32" },
+  { name: "sourceContract", type: "bytes32" },
+  { name: "destinationContract", type: "bytes32" },
+  { name: "sourceToken", type: "bytes32" },
+  { name: "destinationToken", type: "bytes32" },
+  { name: "sourceDepositor", type: "bytes32" },
+  { name: "destinationRecipient", type: "bytes32" },
+  { name: "sourceSigner", type: "bytes32" },
+  { name: "destinationCaller", type: "bytes32" },
+  { name: "value", type: "uint256" },
+  { name: "salt", type: "bytes32" },
+  { name: "hookData", type: "bytes" }
+];
+
+const TROR_GATEWAY_BURN_INTENT = [
+  { name: "maxBlockHeight", type: "uint256" },
+  { name: "maxFee", type: "uint256" },
+  { name: "spec", type: "TransferSpec" }
+];
+
+function gatewayAddressToBytes32(value) {
+  if (
+    typeof value === "string" &&
+    /^0x[0-9a-fA-F]{64}$/.test(value)
+  ) {
+    return value;
+  }
+
+  if (!ethers.isAddress(value)) {
+    throw new Error(
+      `Invalid Gateway address: ${value}`
+    );
+  }
+
+  return ethers.zeroPadValue(
+    value,
+    32
+  );
+}
+
+function buildCircleGatewayTransferSpec({
+  depositor,
+  recipientAddress,
+  amount,
+  destinationChainId
+}) {
+  const destination =
+    TROR_GATEWAY_TESTNETS[
+      Number(destinationChainId)
+    ];
+
+  if (!destination) {
+    throw new Error(
+      "Unsupported Gateway destination network."
+    );
+  }
+
+  if (!ethers.isAddress(depositor)) {
+    throw new Error(
+      "Invalid Gateway depositor."
+    );
+  }
+
+  if (!ethers.isAddress(recipientAddress)) {
+    throw new Error(
+      "Invalid recipient address."
+    );
+  }
+
+  const value =
+    parseUnits(
+      String(amount),
+      6
+    ).toString();
+
+  const salt =
+  ethers.hexlify(
+    ethers.randomBytes(32)
+  );
+
+  return {
+    version: 1,
+
+    sourceDomain: 26,
+
+    destinationDomain:
+      destination.domain,
+
+    sourceContract:
+      gatewayAddressToBytes32(
+        TROR_GATEWAY_WALLET
+      ),
+
+    destinationContract:
+      gatewayAddressToBytes32(
+        TROR_GATEWAY_MINTER
+      ),
+
+    sourceToken:
+      gatewayAddressToBytes32(
+        "0x3600000000000000000000000000000000000000"
+      ),
+
+    destinationToken:
+      gatewayAddressToBytes32(
+        destination.usdc
+      ),
+
+    sourceDepositor:
+      gatewayAddressToBytes32(
+        depositor
+      ),
+
+    destinationRecipient:
+      gatewayAddressToBytes32(
+        recipientAddress
+      ),
+
+    sourceSigner:
+      gatewayAddressToBytes32(
+        depositor
+      ),
+
+    destinationCaller:
+      "0x" + "00".repeat(32),
+
+    value,
+
+    salt,
+
+    hookData: "0x"
+  };
+}
+
+async function estimateCircleGatewaySend({
+  recipientAddress,
+  amount = "0.05",
+  destinationChainId = 5042002
+}) {
+  const gatewayEoa =
+    window.trorCircleGatewayEoa;
+
+  if (!gatewayEoa?.address) {
+    throw new Error(
+      "Circle Gateway EOA is not available."
+    );
+  }
+
+  if (!ethers.isAddress(recipientAddress)) {
+    throw new Error(
+      "Enter a valid recipient address."
+    );
+  }
+
+  const numericAmount = Number(amount);
+
+  if (
+    !Number.isFinite(numericAmount) ||
+    numericAmount <= 0
+  ) {
+    throw new Error(
+      "Enter a valid USDC amount."
+    );
+  }
+
+  const spec =
+    buildCircleGatewayTransferSpec({
+      depositor: gatewayEoa.address,
+      recipientAddress,
+      amount,
+      destinationChainId
+    });
+
+  console.log(
+    "TROR Circle Gateway transfer spec:",
+    spec
+  );
+
+  const response =
+    await api(
+      "/api/circle/gateway/estimate",
+      {
+        method: "POST",
+
+        body: JSON.stringify({
+          spec
+        })
+      }
+    );
+
+  console.log(
+    "TROR Circle Gateway estimate:",
+    response
+  );
+
+  const burnIntent =
+  response?.data?.[0]?.burnIntent ||
+  response?.data?.body?.[0]?.burnIntent ||
+  response?.body?.[0]?.burnIntent ||
+  null;
+
+  if (!burnIntent) {
+    throw new Error(
+      "Gateway burnIntent was not returned."
+    );
+  }
+
+  const feeInfo =
+    response?.data?.fees ||
+    response?.fees ||
+    null;
+
+  console.log(
+    "TROR Circle Gateway estimated burnIntent:",
+    burnIntent
+  );
+
+  console.log(
+    "TROR Circle Gateway estimated fees:",
+    feeInfo
+  );
+
+const typedData =
+  buildCircleGatewayBurnTypedData(
+    burnIntent
+  );
+
+const normalizedBurnIntent = {
+  maxBlockHeight:
+    String(burnIntent.maxBlockHeight),
+
+  maxFee:
+    String(burnIntent.maxFee),
+
+  spec: {
+    ...typedData.message.spec
+  }
+};
+
+console.log(
+  "TROR Circle Gateway normalized burnIntent:",
+  normalizedBurnIntent
+);
+
+console.log(
+  "TROR Circle Gateway EIP-712 typed data:",
+  typedData
+);
+
+  return {
+  spec,
+  burnIntent: normalizedBurnIntent,
+  typedData,
+  fees: feeInfo,
+  raw: response
+};
+}
+
+window.estimateCircleGatewaySend =
+  estimateCircleGatewaySend;
+
+function buildCircleGatewayBurnTypedData(
+  burnIntent
+) {
+  if (!burnIntent?.spec) {
+    throw new Error(
+      "Invalid Circle Gateway burnIntent."
+    );
+  }
+
+  return {
+    types: {
+      EIP712Domain:
+        TROR_GATEWAY_EIP712_DOMAIN,
+
+      TransferSpec:
+        TROR_GATEWAY_TRANSFER_SPEC,
+
+      BurnIntent:
+        TROR_GATEWAY_BURN_INTENT
+    },
+
+    domain: {
+      name: "GatewayWallet",
+      version: "1"
+    },
+
+    primaryType: "BurnIntent",
+
+    message: {
+      maxBlockHeight:
+        String(
+          burnIntent.maxBlockHeight
+        ),
+
+      maxFee:
+        String(
+          burnIntent.maxFee
+        ),
+
+      spec: {
+  ...burnIntent.spec,
+
+  sourceContract:
+    gatewayAddressToBytes32(
+      burnIntent.spec.sourceContract
+    ),
+
+  destinationContract:
+    gatewayAddressToBytes32(
+      burnIntent.spec.destinationContract
+    ),
+
+  sourceToken:
+    gatewayAddressToBytes32(
+      burnIntent.spec.sourceToken
+    ),
+
+  destinationToken:
+    gatewayAddressToBytes32(
+      burnIntent.spec.destinationToken
+    ),
+
+  sourceDepositor:
+    gatewayAddressToBytes32(
+      burnIntent.spec.sourceDepositor
+    ),
+
+  destinationRecipient:
+    gatewayAddressToBytes32(
+      burnIntent.spec.destinationRecipient
+    ),
+
+  sourceSigner:
+    gatewayAddressToBytes32(
+      burnIntent.spec.sourceSigner
+    ),
+
+  destinationCaller:
+    gatewayAddressToBytes32(
+      burnIntent.spec.destinationCaller
+    )
+}
+    }
+  };
+}
+
+async function signCircleGatewayBurnIntent(
+  burnIntent
+) {
+  const gatewayEoa =
+    window.trorCircleGatewayEoa;
+
+  if (!gatewayEoa?.id) {
+    throw new Error(
+      "Circle Gateway EOA walletId is not available."
+    );
+  }
+
+  const {
+    userToken,
+    encryptionKey
+  } = await getCircleAuth();
+
+  const typedData =
+    buildCircleGatewayBurnTypedData(
+      burnIntent
+    );
+
+  console.log(
+    "TROR Circle Gateway signing typed data:",
+    typedData
+  );
+
+  const challengeResponse =
+    await api(
+      "/api/circle/sign-typed-data",
+      {
+        method: "POST",
+
+        body: JSON.stringify({
+          userToken,
+
+          walletId:
+            gatewayEoa.id,
+
+          data:
+            typedData,
+
+          memo:
+            "TROR Unified Balance send"
+        })
+      }
+    );
+
+  console.log(
+    "TROR Circle Gateway sign challenge:",
+    challengeResponse
+  );
+
+  const challengeId =
+    challengeResponse?.data?.challengeId ||
+    challengeResponse?.challengeId;
+
+  if (!challengeId) {
+    throw new Error(
+      "Circle SIGN_TYPEDDATA challengeId was not returned."
+    );
+  }
+
+  const signResult =
+    await executeCircleChallenge(
+      challengeId,
+      userToken,
+      encryptionKey
+    );
+
+  console.log(
+    "TROR Circle Gateway BurnIntent signed:",
+    signResult
+  );
+
+  const signature =
+    signResult?.signature ||
+    signResult?.data?.signature ||
+    null;
+
+  if (!signature) {
+    throw new Error(
+      "Circle Gateway signature was not returned."
+    );
+  }
+
+  return {
+    typedData,
+    signature,
+    signResult
+  };
+}
+
+window.signCircleGatewayBurnIntent =
+  signCircleGatewayBurnIntent;
+
+async function submitCircleGatewayTransfer({
+  burnIntent,
+  signature
+}) {
+  if (!burnIntent?.spec) {
+    throw new Error(
+      "Gateway burnIntent is required."
+    );
+  }
+
+  if (
+    !signature ||
+    !String(signature).startsWith("0x")
+  ) {
+    throw new Error(
+      "Gateway signature is required."
+    );
+  }
+
+  console.log(
+    "TROR submitting Circle Gateway transfer:",
+    {
+      burnIntent,
+      signature:
+        `${signature.slice(0, 12)}...${signature.slice(-8)}`
+    }
+  );
+
+  const response =
+    await api(
+      "/api/circle/gateway/transfer",
+      {
+        method: "POST",
+
+        body: JSON.stringify({
+          burnIntent,
+          signature
+        })
+      }
+    );
+
+  console.log(
+    "TROR Circle Gateway transfer submitted:",
+    response
+  );
+
+  return response;
+}
+
+window.submitCircleGatewayTransfer =
+  submitCircleGatewayTransfer;
+
+async function mintCircleGatewayTransfer({
+  attestation,
+  operatorSignature,
+  destinationChainId = 5042002
+}) {
+  if (!attestation) {
+    throw new Error(
+      "Gateway attestation is required."
+    );
+  }
+
+  if (!operatorSignature) {
+    throw new Error(
+      "Gateway operator signature is required."
+    );
+  }
+
+  const destination =
+    TROR_GATEWAY_TESTNETS[
+      Number(destinationChainId)
+    ];
+
+  if (!destination) {
+    throw new Error(
+      "Unsupported Gateway destination network."
+    );
+  }
+
+  const destinationBlockchainMap = {
+    5042002: "ARC-TESTNET",
+    11155111: "ETH-SEPOLIA",
+    84532: "BASE-SEPOLIA",
+    421614: "ARB-SEPOLIA",
+    43113: "AVAX-FUJI",
+    11155420: "OP-SEPOLIA",
+    80002: "MATIC-AMOY",
+    1301: "UNI-SEPOLIA"
+  };
+
+  const destinationBlockchain =
+    destinationBlockchainMap[
+      Number(destinationChainId)
+    ];
+
+  const destinationWallet =
+    (
+      window.trorCircleMultiChainBalances ||
+      []
+    ).find(
+      (item) =>
+        String(
+          item?.blockchain || ""
+        ).toUpperCase() ===
+        destinationBlockchain
+    );
+
+  if (!destinationWallet?.walletId) {
+    throw new Error(
+      `Circle wallet for ${destination.name} is not available.`
+    );
+  }
+
+  const {
+    userToken,
+    encryptionKey
+  } = await getCircleAuth();
+
+  setStatus(
+    `Minting USDC on ${destination.name}...`
+  );
+
+  console.log(
+    "TROR Circle Gateway mint:",
+    {
+      destination:
+        destination.name,
+
+      walletId:
+        destinationWallet.walletId,
+
+      gatewayMinter:
+        TROR_GATEWAY_MINTER
+    }
+  );
+
+  const mintResponse =
+    await api(
+      "/api/circle/contract-execution",
+      {
+        method: "POST",
+
+        body: JSON.stringify({
+          userToken,
+
+          walletId:
+            destinationWallet.walletId,
+
+          contractAddress:
+            TROR_GATEWAY_MINTER,
+
+          abiFunctionSignature:
+            "gatewayMint(bytes,bytes)",
+
+          abiParameters: [
+            attestation,
+            operatorSignature
+          ]
+        })
+      }
+    );
+
+  console.log(
+    "TROR Circle Gateway mint challenge:",
+    mintResponse
+  );
+
+  const challengeId =
+    mintResponse?.data?.challengeId ||
+    mintResponse?.challengeId;
+
+  if (!challengeId) {
+    throw new Error(
+      "Circle Gateway mint challengeId was not returned."
+    );
+  }
+
+  const mintResult =
+    await executeCircleChallenge(
+      challengeId,
+      userToken,
+      encryptionKey
+    );
+
+  console.log(
+    "TROR Circle Gateway mint approved:",
+    mintResult
+  );
+
+  setStatus(
+    `Gateway mint submitted on ${destination.name}.`,
+    "success"
+  );
+
+  return mintResult;
+}
+
+window.mintCircleGatewayTransfer =
+  mintCircleGatewayTransfer;
+
 // Load and display Circle wallet address
 async function loadCircleWallet(userToken) {
   const listData = await listCircleWallets(userToken);
   console.log("List wallets response:", listData);
 
 const wallets = extractCircleWallets(listData);
+
+const circleGatewayEoa =
+  findExistingCircleGatewayEoa(listData);
+
+window.trorCircleGatewayEoa =
+  circleGatewayEoa;
+
+await loadCircleUnifiedBalance();
 
 console.log(
   "Circle multi-chain wallets:",
@@ -2962,7 +4218,28 @@ async function findUsdcTokenByBlockchain(userToken, walletId, blockchain) {
 async function loadCircleMultiChainBalances(userToken, wallets) {
   const results = [];
 
-  for (const wallet of wallets || []) {
+const primaryAddress =
+  getPrimaryCircleAddress(wallets);
+
+const primaryWallets =
+  (wallets || []).filter((wallet) => {
+    const address =
+      String(
+        wallet?.address ||
+        wallet?.walletAddress ||
+        wallet?.accounts?.[0]?.address ||
+        ""
+      ).toLowerCase();
+
+    return address === primaryAddress;
+  });
+
+console.log(
+  "TROR primary Circle wallets:",
+  primaryWallets
+);
+
+  for (const wallet of primaryWallets) {
     if (!wallet?.id || !wallet?.blockchain) continue;
 
     try {
