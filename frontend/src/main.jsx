@@ -2995,10 +2995,57 @@ async function depositCircleToUnifiedBalance(
   amount
 ) {
   const GATEWAY_WALLET =
-    "0x0077777d7EBA4688BDeF3E311b846F25870A19B9";
+  "0x0077777d7EBA4688BDeF3E311b846F25870A19B9";
 
-  const ARC_USDC =
-    "0x3600000000000000000000000000000000000000";
+const CIRCLE_GATEWAY_DEPOSIT_NETWORKS = {
+  "ARC-TESTNET": {
+    name: "Arc Testnet",
+    usdc:
+      "0x3600000000000000000000000000000000000000"
+  },
+
+  "ETH-SEPOLIA": {
+    name: "Ethereum Sepolia",
+    usdc:
+      "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
+  },
+
+  "BASE-SEPOLIA": {
+    name: "Base Sepolia",
+    usdc:
+      "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+  },
+
+  "ARB-SEPOLIA": {
+    name: "Arbitrum Sepolia",
+    usdc:
+      "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d"
+  },
+
+  "AVAX-FUJI": {
+    name: "Avalanche Fuji",
+    usdc:
+      "0x5425890298aed601595a70ab815c96711a31bc65"
+  },
+
+  "OP-SEPOLIA": {
+    name: "Optimism Sepolia",
+    usdc:
+      "0x5fd84259d66Cd46123540766Be93DFE6D43130D7"
+  },
+
+  "MATIC-AMOY": {
+    name: "Polygon Amoy",
+    usdc:
+      "0x41E94Eb019C0762f9bfcf9fb1E58725BfB0e7582"
+  },
+
+  "UNI-SEPOLIA": {
+    name: "Unichain Sepolia",
+    usdc:
+      "0x31d0220469e10c4E71834a79b1f276d740d3768F"
+  }
+};
 
   const numericAmount =
     Number(amount);
@@ -3015,6 +3062,16 @@ async function depositCircleToUnifiedBalance(
   const sourceWallet =
     window.trorActiveCircleWallet;
 
+const sourceBlockchain =
+  String(
+    sourceWallet?.blockchain || ""
+  ).toUpperCase();
+
+const sourceNetwork =
+  CIRCLE_GATEWAY_DEPOSIT_NETWORKS[
+    sourceBlockchain
+  ];
+
   const gatewayEoa =
     window.trorCircleGatewayEoa;
 
@@ -3027,15 +3084,13 @@ async function depositCircleToUnifiedBalance(
     );
   }
 
-  if (
-    String(
-      sourceWallet.blockchain || ""
-    ).toUpperCase() !== "ARC-TESTNET"
-  ) {
-    throw new Error(
-      "Circle Unified Balance deposit test currently requires Arc Testnet."
-    );
-  }
+  if (!sourceNetwork?.usdc) {
+  throw new Error(
+    `Unified Balance deposit is not configured for ${
+      sourceWallet?.blockchain || "this network"
+    }.`
+  );
+}
 
   if (!gatewayEoa?.address) {
     throw new Error(
@@ -3064,21 +3119,29 @@ async function depositCircleToUnifiedBalance(
     ).toString();
 
   console.log(
-    "TROR Circle Unified deposit:",
-    {
-      sourceWallet:
-        sourceWallet.address,
+  "TROR Circle Unified deposit:",
+  {
+    sourceNetwork:
+      sourceNetwork.name,
 
-      sourceWalletId:
-        sourceWallet.walletId,
+    sourceBlockchain,
 
-      gatewayDepositor:
-        gatewayEoa.address,
+    sourceWallet:
+      sourceWallet.address,
 
-      amount,
-      amountUnits
-    }
-  );
+    sourceWalletId:
+      sourceWallet.walletId,
+
+    sourceUsdc:
+      sourceNetwork.usdc,
+
+    gatewayDepositor:
+      gatewayEoa.address,
+
+    amount,
+    amountUnits
+  }
+);
 
   /* =====================================================
      STEP 1 — APPROVE USDC
@@ -3101,7 +3164,7 @@ async function depositCircleToUnifiedBalance(
             sourceWallet.walletId,
 
           contractAddress:
-            ARC_USDC,
+            sourceNetwork.usdc,
 
           abiFunctionSignature:
             "approve(address,uint256)",
@@ -3166,7 +3229,7 @@ async function depositCircleToUnifiedBalance(
             "depositFor(address,address,uint256)",
 
           abiParameters: [
-            ARC_USDC,
+            sourceNetwork.usdc,
             gatewayEoa.address,
             amountUnits
           ]
