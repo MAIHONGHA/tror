@@ -556,6 +556,398 @@ footer {
   border-top-color: rgba(215,179,90,.18) !important;
 }
 
+  
+    /* =========================================================
+       TROR LANDING — PRACTICAL ACTIONS + RESOURCES
+    ========================================================= */
+
+    .practical-section {
+      padding: 92px 24px;
+    }
+
+    .practical-inner {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+    }
+
+    .practical-kicker {
+      color: var(--tror-gold);
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 1.8px;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .practical-title {
+      font-size: clamp(32px, 4.6vw, 52px);
+      line-height: 1.04;
+      margin-bottom: 14px;
+    }
+
+    .practical-copy {
+      color: var(--tror-muted);
+      font-size: 18px;
+      line-height: 1.7;
+      max-width: 720px;
+    }
+
+    .use-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+      margin-top: 34px;
+    }
+
+    .use-card {
+      padding: 26px;
+      border-radius: 26px;
+      background:
+        linear-gradient(145deg, rgba(28,28,31,.96), rgba(10,10,12,.98));
+      border: 1px solid rgba(200,201,204,.15);
+      box-shadow: 0 18px 50px rgba(0,0,0,.22);
+    }
+
+    .use-card strong {
+      display: block;
+      color: var(--tror-platinum);
+      font-size: 21px;
+      margin: 14px 0 9px;
+    }
+
+    .use-card p {
+      color: var(--tror-muted);
+      line-height: 1.65;
+    }
+
+    .use-icon {
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+      color: #080808;
+      font-weight: 900;
+      background: linear-gradient(135deg, #f4d77f, #d7b35a, #a87f30);
+      box-shadow: 0 12px 26px rgba(215,179,90,.16);
+    }
+
+    .split-practical {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-top: 34px;
+    }
+
+    .practical-panel {
+      padding: 30px;
+      border-radius: 28px;
+      background: rgba(20,20,23,.86);
+      border: 1px solid rgba(200,201,204,.15);
+    }
+
+    .practical-panel h3 {
+      font-size: 26px;
+      margin-bottom: 10px;
+    }
+
+    .practical-panel p {
+      color: var(--tror-muted);
+      line-height: 1.7;
+      margin-bottom: 22px;
+    }
+
+    .quick-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .quick-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 46px;
+      padding: 0 18px;
+      border-radius: 14px;
+      font-weight: 900;
+      border: 1px solid rgba(215,179,90,.28);
+      background: rgba(215,179,90,.09);
+      color: var(--tror-gold-bright);
+      transition: .2s ease;
+    }
+
+    .quick-link:hover {
+      transform: translateY(-2px);
+      background: rgba(215,179,90,.15);
+      border-color: rgba(215,179,90,.48);
+    }
+
+    .ready-box {
+      margin-top: 22px;
+      padding: 36px;
+      border-radius: 30px;
+      text-align: center;
+      background:
+        radial-gradient(circle at 15% 0%, rgba(215,179,90,.18), transparent 38%),
+        linear-gradient(145deg, rgba(24,24,27,.98), rgba(7,7,8,.98));
+      border: 1px solid rgba(215,179,90,.22);
+      box-shadow: 0 24px 70px rgba(0,0,0,.28);
+    }
+
+    .ready-box h2 {
+      font-size: clamp(32px, 4vw, 48px);
+      margin-bottom: 12px;
+    }
+
+    .ready-box p {
+      color: var(--tror-muted);
+      font-size: 18px;
+      margin-bottom: 24px;
+    }
+
+    .ready-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px;
+    }
+
+    .resource-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-top: 26px;
+    }
+
+    .resource-card {
+      display: block;
+      padding: 22px;
+      border-radius: 20px;
+      background: rgba(255,255,255,.035);
+      border: 1px solid rgba(200,201,204,.14);
+      transition: .2s ease;
+    }
+
+    .resource-card:hover {
+      transform: translateY(-3px);
+      border-color: rgba(215,179,90,.42);
+      background: rgba(215,179,90,.06);
+    }
+
+    .resource-card b {
+      display: block;
+      color: var(--tror-platinum);
+      margin-bottom: 7px;
+      font-size: 17px;
+    }
+
+    .resource-card span {
+      color: var(--tror-muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .network-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 24px;
+    }
+
+    .network-chip {
+      padding: 9px 13px;
+      border-radius: 999px;
+      border: 1px solid rgba(200,201,204,.14);
+      background: rgba(255,255,255,.035);
+      color: #c8c9cc;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .network-chip .live-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      margin-right: 7px;
+      box-shadow: 0 0 14px rgba(34,197,94,.45);
+    }
+
+    .footer-pro {
+      padding: 52px 24px 30px;
+      border-top: 1px solid rgba(215,179,90,.18);
+      text-align: left;
+    }
+
+    .footer-grid {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1.45fr 1fr 1fr 1fr 1fr;
+      gap: 30px;
+    }
+
+    .footer-brand {
+      color: var(--tror-platinum);
+      font-size: 25px;
+      font-weight: 900;
+      margin-bottom: 8px;
+    }
+
+    .footer-tagline {
+      color: var(--tror-muted);
+      line-height: 1.6;
+      max-width: 300px;
+    }
+
+    .footer-col b {
+      display: block;
+      color: var(--tror-platinum);
+      margin-bottom: 13px;
+    }
+
+    .footer-col a {
+      display: block;
+      color: var(--tror-muted);
+      margin: 9px 0;
+      transition: .2s ease;
+    }
+
+    .footer-col a:hover {
+      color: var(--tror-gold-bright);
+    }
+
+    .footer-bottom {
+      width: min(1180px, 100%);
+      margin: 34px auto 0;
+      padding-top: 22px;
+      border-top: 1px solid rgba(200,201,204,.10);
+      color: #77797f;
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      flex-wrap: wrap;
+      font-size: 13px;
+    }
+
+    @media (max-width: 920px) {
+      .use-grid,
+      .resource-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .split-practical {
+        grid-template-columns: 1fr;
+      }
+
+      .footer-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .practical-section {
+        padding: 72px 18px;
+      }
+
+      .ready-box {
+        padding: 26px 18px;
+      }
+
+      .ready-actions,
+      .quick-actions {
+        flex-direction: column;
+      }
+
+      .quick-link,
+      .ready-actions .btn {
+        width: 100%;
+      }
+
+      .footer-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+  
+    /* TROR LANDING — FINAL PLATINUM + GOLD LIGHT THEME */
+    :root {
+      --tror-bg-light:#edf0f2; --tror-surface:#fbfbf8; --tror-surface-2:#f2f3f1;
+      --tror-ink:#171a20; --tror-text-soft:#50555d; --tror-muted-light:#737983;
+      --tror-line-light:rgba(62,67,74,.14); --tror-gold:#b98d35;
+      --tror-gold-bright:#dfbe62; --tror-gold-soft:#f2e6bf; --tror-navy:#111827;
+    }
+    body{background:radial-gradient(circle at 15% 0%,rgba(223,190,98,.15),transparent 32%),radial-gradient(circle at 88% 9%,rgba(255,255,255,.92),transparent 34%),linear-gradient(145deg,#f4f5f4 0%,#e7eaec 52%,#f5f4ef 100%)!important;color:var(--tror-ink)!important}
+    .nav{background:rgba(248,249,247,.88)!important;border-bottom:1px solid var(--tror-line-light)!important;box-shadow:0 8px 28px rgba(30,33,38,.06)}
+    .brand,.nav-links{color:var(--tror-ink)!important}.brand small{color:#916d26!important}.nav-links a:not(.launch){color:#474c54!important}
+    .launch,.btn-primary,.step-num,.use-icon{background:linear-gradient(135deg,#b98d35,#e8ca72)!important;color:#151515!important;box-shadow:0 12px 30px rgba(185,141,53,.18)!important}
+    .badge{border-color:rgba(185,141,53,.32)!important;background:rgba(185,141,53,.09)!important;color:#79591d!important}
+    h1,.section-head h2,.practical-title,.ready-box h2,.practical-panel h3,.feature h3,.step h3{color:var(--tror-ink)!important}
+    .gradient-text{background:linear-gradient(90deg,#1a1d22,#9b7427,#d3b45b)!important;-webkit-background-clip:text!important;-webkit-text-fill-color:transparent!important}
+    .subtitle,.section-head p,.feature p,.step p,.practical-copy,.practical-panel p,.ready-box p,.use-card p,.resource-card span,.footer-tagline{color:var(--tror-muted-light)!important}
+    .pill,.btn-secondary,.quick-link,.network-chip{background:rgba(255,255,255,.68)!important;border-color:rgba(89,94,101,.16)!important;color:#40454c!important}
+    .btn-secondary:hover,.quick-link:hover{border-color:rgba(185,141,53,.42)!important;background:#f3ead0!important;color:#624918!important}
+    .mockup{background:linear-gradient(145deg,rgba(255,255,255,.88),rgba(224,226,227,.86))!important;border-color:rgba(185,141,53,.22)!important;box-shadow:0 28px 74px rgba(32,35,40,.14)!important}
+    .mockup::before{background:conic-gradient(from 180deg,transparent,rgba(185,141,53,.18),transparent,rgba(115,121,131,.11),transparent)!important}
+    .screen{background:#f8f8f5!important;border-color:var(--tror-line-light)!important}
+    .screen-title{color:#8f6a23!important}
+    .stat,.feature,.step,.invoice-card,.flow-step,.use-card,.practical-panel,.resource-card{background:linear-gradient(145deg,#fdfdf9,#eceeed)!important;border-color:var(--tror-line-light)!important;color:var(--tror-ink)!important;box-shadow:0 14px 36px rgba(33,36,41,.07)}
+    .stat span{color:#747a83!important}.stat b{color:#9a7428!important}.flow-step{color:#34383e!important}
+    .feature:hover,.resource-card:hover{border-color:rgba(185,141,53,.38)!important;box-shadow:0 18px 45px rgba(33,36,41,.10)!important}
+    .icon{background:linear-gradient(145deg,#f4e8c5,#eef0ef)!important;border-color:rgba(185,141,53,.20)!important}
+    .use-card strong,.resource-card b{color:var(--tror-ink)!important}
+    .ready-box{background:radial-gradient(circle at 12% 0%,rgba(223,190,98,.16),transparent 38%),linear-gradient(145deg,#fffef9,#e9ebec)!important;border-color:rgba(185,141,53,.24)!important;box-shadow:0 20px 54px rgba(33,36,41,.10)!important}
+    .footer-pro{background:#15181d!important;border-top-color:rgba(223,190,98,.20)!important}
+    .footer-brand,.footer-col b{color:#f6f4ec!important}.footer-col a,.footer-tagline,.footer-bottom{color:#aeb2b8!important}.footer-col a:hover{color:#e3c76e!important}.footer-bottom{border-top-color:rgba(255,255,255,.08)!important}
+    .contract-address{display:block;margin-top:6px;color:#7d838c;font-size:12px;overflow-wrap:anywhere}
+    @media(max-width:920px){.footer-grid{grid-template-columns:1fr 1fr!important}.resource-grid{grid-template-columns:1fr 1fr!important}}
+    @media(max-width:560px){.footer-grid,.resource-grid{grid-template-columns:1fr!important}}
+
+/* TROR LANDING HEADER LOGO — match Dashboard */
+
+.brand-logo {
+  width: 48px !important;
+  height: 48px !important;
+  flex: 0 0 48px !important;
+
+  display: grid !important;
+  place-items: center !important;
+
+  padding: 6px !important;
+  box-sizing: border-box !important;
+
+  background: linear-gradient(
+    145deg,
+    #171a20 0%,
+    #0c0f14 100%
+  ) !important;
+
+  border: 1px solid rgba(185, 141, 53, 0.32) !important;
+  border-radius: 13px !important;
+
+  box-shadow:
+    0 5px 14px rgba(17, 24, 39, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+.brand-logo img {
+  width: 100% !important;
+  height: 100% !important;
+
+  display: block !important;
+  object-fit: contain !important;
+
+  opacity: 1 !important;
+  filter: none !important;
+
+  background: transparent !important;
+}
+
   </style>
 </head>
 
@@ -579,6 +971,9 @@ footer {
       <a href="#features">Features</a>
       <a href="#how">How it works</a>
       <a href="#status">Status</a>
+      <a href="#resources">Resources</a>
+      <a href="https://github.com/MAIHONGHA/tror" target="_blank" rel="noopener noreferrer">GitHub</a>
+      <a href="https://x.com/11141HA" target="_blank" rel="noopener noreferrer">X</a>
       <a class="launch" href="/app.html">Launch App</a>
     </nav>
   </header>
@@ -759,11 +1154,187 @@ USDC payments in one secure platform.
         </div>
       </div>
     </section>
+
+    <section class="practical-section" id="try">
+      <div class="practical-inner">
+        <div class="practical-kicker">TRY TROR</div>
+        <h2 class="practical-title">From test USDC to a real payment flow.</h2>
+        <p class="practical-copy">
+          Start with Arc Testnet USDC, create a payment request, then verify the
+          resulting transaction on-chain.
+        </p>
+
+        <div class="use-grid">
+          <div class="use-card">
+            <div class="use-icon">1</div>
+            <strong>Connect or sign in</strong>
+            <p>Use a Web3 wallet, or sign in with Google and continue with Circle Wallet.</p>
+          </div>
+
+          <div class="use-card">
+            <div class="use-icon">2</div>
+            <strong>Create & share</strong>
+            <p>Create an invoice or Gmail Claim, then share the payment link or QR code.</p>
+          </div>
+
+          <div class="use-card">
+            <div class="use-icon">3</div>
+            <strong>Receive & verify</strong>
+            <p>Receive USDC, follow payment status and open the transaction on ArcScan.</p>
+          </div>
+        </div>
+
+        <div class="split-practical">
+          <div class="practical-panel">
+            <div class="practical-kicker">NO WALLET?</div>
+            <h3>Use Gmail Claim.</h3>
+            <p>
+              Send a USDC claim to an email address. The recipient can sign in
+              with Google and continue through the Circle Wallet flow.
+            </p>
+            <div class="quick-actions">
+              <a class="quick-link" href="/app.html#gmail-claim">Send Gmail Claim →</a>
+              <a class="quick-link" href="/app.html#dashboard">Open Dashboard</a>
+            </div>
+          </div>
+
+          <div class="practical-panel">
+            <div class="practical-kicker">FOR BUSINESS</div>
+            <h3>Payroll in one workspace.</h3>
+            <p>
+              Manage employees, prepare payroll batches, review payouts and keep
+              payment history together in TROR.
+            </p>
+            <div class="quick-actions">
+              <a class="quick-link" href="/app.html#payroll">Open Payroll →</a>
+              <a class="quick-link" href="/app.html#business">Business Profile</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="ready-box">
+          <div class="practical-kicker">READY?</div>
+          <h2>Start testing TROR on Arc.</h2>
+          <p>Create an invoice or fund your test wallet with testnet USDC first.</p>
+
+          <div class="ready-actions">
+            <a class="btn btn-primary" href="/app.html#invoices">Create Invoice →</a>
+            <a
+              class="btn btn-secondary"
+              href="https://faucet.circle.com"
+              target="_blank"
+              rel="noopener noreferrer"
+            >Get Testnet USDC ↗</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="practical-section" id="resources">
+      <div class="practical-inner">
+        <div class="practical-kicker">TESTNET RESOURCES</div>
+        <h2 class="practical-title">Useful links while testing TROR.</h2>
+        <p class="practical-copy">
+          Open the official Circle faucet, inspect Arc transactions, or jump
+          directly into the product.
+        </p>
+
+        <div class="resource-grid">
+          <a
+            class="resource-card"
+            href="https://faucet.circle.com"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <b>Get Testnet USDC ↗</b>
+            <span>Official Circle Faucet for test USDC used in Arc test flows.</span>
+          </a>
+
+          <a
+            class="resource-card"
+            href="https://testnet.arcscan.app"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <b>Arc Testnet Explorer ↗</b>
+            <span>Inspect transactions, addresses and on-chain invoice activity.</span>
+          </a>
+
+          <a
+            class="resource-card"
+            href="https://testnet.arcscan.app/address/0xbb9b26e639d2613132bd964afe1be10931f123a0"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <b>TROR Invoice Contract ↗</b>
+            <span>Open the deployed invoice contract on Arc Testnet Explorer.</span>
+            <small class="contract-address">0xbb9b26e639d2613132bd964afe1be10931f123a0</small>
+          </a>
+
+          <a class="resource-card" href="/app.html">
+            <b>Open TROR Dashboard →</b>
+            <span>Create invoices, Gmail Claims, payrolls and test wallet flows.</span>
+          </a>
+        </div>
+
+        <div class="network-strip">
+          <div class="network-chip"><span class="live-dot"></span>Arc Testnet</div>
+          <div class="network-chip">USDC</div>
+          <div class="network-chip">Circle Wallet</div>
+          <div class="network-chip">AppKit</div>
+          <div class="network-chip">On-chain Invoice</div>
+        </div>
+      </div>
+    </section>
+
   </main>
 
-  <footer>
-  TROR · Built on Arc · USDC · Circle Wallet Infrastructure
-</footer>
+
+  <footer class="footer-pro">
+    <div class="footer-grid">
+      <div>
+        <div class="footer-brand">TROR</div>
+        <div class="footer-tagline">
+          Real-world USDC payments built on Arc.
+        </div>
+      </div>
+
+      <div class="footer-col">
+        <b>Product</b>
+        <a href="/app.html#invoices">Invoices</a>
+        <a href="/app.html#gmail-claim">Gmail Claim</a>
+        <a href="/app.html#payroll">Payroll</a>
+        <a href="/app.html#payouts">Payouts</a>
+      </div>
+
+      <div class="footer-col">
+        <b>Testnet</b>
+        <a href="https://faucet.circle.com" target="_blank" rel="noopener noreferrer">USDC Faucet ↗</a>
+        <a href="https://testnet.arcscan.app" target="_blank" rel="noopener noreferrer">Arc Explorer ↗</a>
+        <a href="/app.html#dashboard">Dashboard</a>
+      </div>
+
+      <div class="footer-col">
+        <b>Developers</b>
+        <a href="https://github.com/MAIHONGHA/tror" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+        <a href="https://testnet.arcscan.app/address/0xbb9b26e639d2613132bd964afe1be10931f123a0" target="_blank" rel="noopener noreferrer">Invoice Contract ↗</a>
+        <a href="https://testnet.arcscan.app" target="_blank" rel="noopener noreferrer">Arc Explorer ↗</a>
+      </div>
+
+      <div class="footer-col">
+        <b>Community</b>
+        <a href="https://x.com/11141HA" target="_blank" rel="noopener noreferrer">X / Twitter ↗</a>
+        <a href="https://faucet.circle.com" target="_blank" rel="noopener noreferrer">USDC Faucet ↗</a>
+        <a href="#how">How it works</a>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <span>© 2026 TROR · Built on Arc</span>
+      <span>Built with Arc · USDC · Circle · AppKit</span>
+    </div>
+  </footer>
+
 
 <script>
 async function loadLandingDashboard() {
