@@ -2865,15 +2865,30 @@ async function loadCircleUnifiedBalance() {
       eoa.address
     );
 
-    const response = await fetch(
-      `/api/circle/gateway/balance?depositor=${encodeURIComponent(
-        eoa.address
-      )}`
-    );
+    const [
+      balanceResponse,
+      depositsResponse
+    ] = await Promise.all([
+      fetch(
+        `/api/circle/gateway/balance?depositor=${encodeURIComponent(
+          eoa.address
+        )}`
+      ),
 
-    const result = await response.json();
+      fetch(
+        `/api/circle/gateway/deposits?depositor=${encodeURIComponent(
+          eoa.address
+        )}`
+      )
+    ]);
 
-    if (!response.ok) {
+    const result =
+      await balanceResponse.json();
+
+    const depositsResult =
+      await depositsResponse.json();
+
+    if (!balanceResponse.ok) {
       throw new Error(
         result?.error ||
         "Failed to load Circle Unified Balance"
@@ -2893,11 +2908,32 @@ async function loadCircleUnifiedBalance() {
         0
       );
 
+    const pendingDeposits =
+      depositsResponse.ok &&
+      Array.isArray(
+        depositsResult?.data?.deposits
+      )
+        ? depositsResult.data.deposits
+        : [];
+
     const pendingBalance =
-      balances.reduce(
-        (total, item) =>
-          total +
-          Number(item?.pendingBatch || 0),
+      pendingDeposits.reduce(
+        (total, item) => {
+          const status =
+            String(
+              item?.status || ""
+            ).toLowerCase();
+
+          if (status !== "pending") {
+            return total;
+          }
+
+          return (
+            total +
+            Number(item?.amount || 0) /
+              1_000_000
+          );
+        },
         0
       );
 
@@ -2917,6 +2953,7 @@ async function loadCircleUnifiedBalance() {
         eoa: eoa.address,
         unifiedBalance,
         pendingBalance,
+        pendingDeposits,
         balances
       }
     );
@@ -2924,6 +2961,7 @@ async function loadCircleUnifiedBalance() {
     return {
       unifiedBalance,
       pendingBalance,
+      pendingDeposits,
       balances
     };
 
