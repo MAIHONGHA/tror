@@ -6078,6 +6078,9 @@ function renderCustomerDropdown() {
 
   const customers = getWorkspaceCustomers();
 
+  const previousValue =
+    customerSelectEl.value || "";
+
   customerSelectEl.innerHTML =
     `<option value="">-- Choose customer --</option>`;
 
@@ -6095,6 +6098,245 @@ function renderCustomerDropdown() {
 
     customerSelectEl.appendChild(option);
   });
+
+  if (
+    previousValue &&
+    customers.some(
+      (customer) =>
+        customer.id === previousValue
+    )
+  ) {
+    customerSelectEl.value = previousValue;
+  }
+
+  customerSelectEl.classList.add(
+    "tror-native-select-hidden"
+  );
+
+  let root =
+    document.getElementById(
+      "customerSelectCustom"
+    );
+
+  if (!root) {
+    root = document.createElement("div");
+    root.id = "customerSelectCustom";
+    root.className = "tror-customer-select";
+
+    const button = document.createElement("button");
+    button.id = "customerSelectCustomButton";
+    button.type = "button";
+    button.className =
+      "tror-customer-select__button";
+    button.setAttribute(
+      "aria-haspopup",
+      "listbox"
+    );
+    button.setAttribute(
+      "aria-expanded",
+      "false"
+    );
+
+    const menu = document.createElement("div");
+    menu.id = "customerSelectCustomMenu";
+    menu.className =
+      "tror-customer-select__menu";
+    menu.setAttribute("role", "listbox");
+    menu.hidden = true;
+
+    root.appendChild(button);
+    root.appendChild(menu);
+
+    customerSelectEl.insertAdjacentElement(
+      "afterend",
+      root
+    );
+
+    button.addEventListener(
+      "click",
+      (event) => {
+        event.stopPropagation();
+
+        const willOpen = menu.hidden;
+        menu.hidden = !willOpen;
+        root.classList.toggle(
+          "is-open",
+          willOpen
+        );
+
+        button.setAttribute(
+          "aria-expanded",
+          String(willOpen)
+        );
+      }
+    );
+  }
+
+  const button =
+    document.getElementById(
+      "customerSelectCustomButton"
+    );
+
+  const menu =
+    document.getElementById(
+      "customerSelectCustomMenu"
+    );
+
+  if (!button || !menu) return;
+
+  const closeMenu = () => {
+    menu.hidden = true;
+    root.classList.remove("is-open");
+    button.setAttribute(
+      "aria-expanded",
+      "false"
+    );
+  };
+
+  const selectedCustomer =
+    customers.find(
+      (customer) =>
+        customer.id === customerSelectEl.value
+    ) || null;
+
+  button.textContent = selectedCustomer
+    ? selectedCustomer.name || "Customer"
+    : "-- Choose customer --";
+
+  menu.innerHTML = "";
+
+  const placeholder =
+    document.createElement("button");
+
+  placeholder.type = "button";
+  placeholder.className =
+    "tror-customer-select__option";
+
+  if (!selectedCustomer) {
+    placeholder.classList.add(
+      "is-selected"
+    );
+  }
+
+  placeholder.textContent =
+    "-- Choose customer --";
+
+  placeholder.addEventListener(
+    "click",
+    () => {
+      closeMenu();
+      customerSelectEl.value = "";
+      customerSelectEl.dispatchEvent(
+        new Event("change", {
+          bubbles: true
+        })
+      );
+      renderCustomerDropdown();
+    }
+  );
+
+  menu.appendChild(placeholder);
+
+  customers.forEach((customer) => {
+    const option =
+      document.createElement("button");
+
+    option.type = "button";
+    option.className =
+      "tror-customer-select__option";
+
+    const walletPreview = customer.wallet
+      ? `${customer.wallet.slice(0, 6)}...${customer.wallet.slice(-4)}`
+      : "no wallet";
+
+    const isSelected =
+      customer.id === customerSelectEl.value;
+
+    if (isSelected) {
+      option.classList.add(
+        "is-selected"
+      );
+    }
+
+    const label =
+      document.createElement("span");
+
+    label.textContent =
+      `${customer.name || "Customer"} (${walletPreview})`;
+
+    option.appendChild(label);
+
+    if (isSelected) {
+      const check =
+        document.createElement("span");
+      check.textContent = "✓";
+      check.style.fontWeight = "900";
+      check.style.color = "#9b762b";
+      option.appendChild(check);
+    }
+
+    option.addEventListener(
+      "click",
+      () => {
+        closeMenu();
+
+        customerSelectEl.value =
+          customer.id;
+
+        customerSelectEl.dispatchEvent(
+          new Event("change", {
+            bubbles: true
+          })
+        );
+
+        renderCustomerDropdown();
+      }
+    );
+
+    menu.appendChild(option);
+  });
+
+  if (!window.__trorCustomerOutsideClickBound) {
+    window.__trorCustomerOutsideClickBound = true;
+
+    document.addEventListener(
+      "click",
+      (event) => {
+        const currentRoot =
+          document.getElementById(
+            "customerSelectCustom"
+          );
+
+        if (
+          currentRoot &&
+          !currentRoot.contains(event.target)
+        ) {
+          const currentMenu =
+            document.getElementById(
+              "customerSelectCustomMenu"
+            );
+
+          const currentButton =
+            document.getElementById(
+              "customerSelectCustomButton"
+            );
+
+          if (currentMenu) {
+            currentMenu.hidden = true;
+          }
+
+          currentRoot.classList.remove(
+            "is-open"
+          );
+
+          currentButton?.setAttribute(
+            "aria-expanded",
+            "false"
+          );
+        }
+      }
+    );
+  }
 }
 
 async function loadInvoices() {
@@ -6555,111 +6797,123 @@ function renderWorkspaceSwitcher(
   workspaces,
   currentWorkspace
 ) {
-console.log(
+  console.log(
     "RENDER WORKSPACE SWITCHER:",
     workspaces,
     currentWorkspace
   );
 
-  let switcher = document.getElementById(
-    "workspaceSwitcher"
-  );
+  let switcher =
+    document.getElementById("workspaceSwitcher");
 
-let createBtn = document.getElementById("createBusinessWorkspaceBtn");
-
-if (!createBtn) {
-  createBtn = document.createElement("button");
-  createBtn.id = "createBusinessWorkspaceBtn";
-  createBtn.textContent = "+ Business";
-
-  createBtn.style.cssText = `
-    margin-left:8px;
-    padding:10px 14px;
-    border-radius:12px;
-    border:none;
-    cursor:pointer;
-    font-weight:700;
-    background:#facc15;
-    color:#111827;
-  `;
-
-  createBtn.onclick = createBusinessWorkspace;
-}
-
-  if (!switcher) {
-    switcher = document.createElement("select");
-    switcher.id = "workspaceSwitcher";
-
-    switcher.style.cssText = `
-  width:210px;
-  max-width:210px;
-  padding:10px 12px;
-  margin-right:10px;
-  border-radius:12px;
-  border:1px solid rgba(250,204,21,.45);
-  color:#f8fafc;
-  background:#0f172a;
-  font-weight:700;
-  cursor:pointer;
-  position:relative;
-  z-index:10000;
-  flex-shrink:0;
-`;
-
-    const walletChip =
-  document.getElementById("walletChip");
-
-const connectButton =
-  document.getElementById("btnConnectWallet");
-
-const targetElement =
-  walletChip || connectButton;
-
-if (targetElement?.parentElement) {
-  targetElement.parentElement.insertBefore(
-    switcher,
-    targetElement
-  );
-
-targetElement.parentElement.insertBefore(
-    createBtn,
-    targetElement.nextSibling
-);
-
-} else {
-  document.body.appendChild(switcher);
-
-  switcher.style.position = "fixed";
-  switcher.style.top = "18px";
-  switcher.style.right = "220px";
-  switcher.style.zIndex = "999999";
-}
-  }
-
-  switcher.innerHTML = "";
-
-  workspaces.forEach((workspace) => {
-    const option = document.createElement("option");
-
-    option.value = workspace.id;
-    option.textContent =
-      workspace.workspace_type === "BUSINESS"
-        ? `🏢 ${workspace.workspace_name}`
-        : `👤 ${workspace.workspace_name}`;
-
-    if (workspace.id === currentWorkspace?.id) {
-      option.selected = true;
-    }
-
-    switcher.appendChild(option);
-  });
-
-  switcher.onchange = () => {
-    const selectedWorkspace = workspaces.find(
-      (workspace) =>
-        workspace.id === switcher.value
+  const oldCreateBtn =
+    document.getElementById(
+      "createBusinessWorkspaceBtn"
     );
 
+  if (oldCreateBtn) {
+    oldCreateBtn.remove();
+  }
+
+  if (!switcher || switcher.tagName === "SELECT") {
+    if (switcher) switcher.remove();
+
+    switcher = document.createElement("div");
+    switcher.id = "workspaceSwitcher";
+    switcher.className = "tror-custom-select";
+
+    const button = document.createElement("button");
+    button.id = "workspaceSwitcherButton";
+    button.type = "button";
+    button.className = "tror-custom-select__button";
+    button.setAttribute("aria-haspopup", "listbox");
+    button.setAttribute("aria-expanded", "false");
+
+    const menu = document.createElement("div");
+    menu.id = "workspaceSwitcherMenu";
+    menu.className = "tror-custom-select__menu";
+    menu.setAttribute("role", "listbox");
+    menu.hidden = true;
+
+    switcher.appendChild(button);
+    switcher.appendChild(menu);
+
+    const walletChip =
+      document.getElementById("walletChip");
+
+    const connectButton =
+      document.getElementById("btnConnectWallet");
+
+    const targetElement =
+      walletChip || connectButton;
+
+    if (targetElement?.parentElement) {
+      targetElement.parentElement.insertBefore(
+        switcher,
+        targetElement
+      );
+    } else {
+      document.body.appendChild(switcher);
+      switcher.style.position = "fixed";
+      switcher.style.top = "18px";
+      switcher.style.right = "220px";
+      switcher.style.zIndex = "999999";
+    }
+
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+
+      const willOpen = menu.hidden;
+      menu.hidden = !willOpen;
+      switcher.classList.toggle("is-open", willOpen);
+      button.setAttribute(
+        "aria-expanded",
+        String(willOpen)
+      );
+    });
+  }
+
+  const button =
+    document.getElementById(
+      "workspaceSwitcherButton"
+    );
+
+  const menu =
+    document.getElementById(
+      "workspaceSwitcherMenu"
+    );
+
+  if (!button || !menu) return;
+
+  const closeWorkspaceMenu = () => {
+    menu.hidden = true;
+    switcher.classList.remove("is-open");
+    button.setAttribute("aria-expanded", "false");
+  };
+
+  const getWorkspaceLabel = (workspace) =>
+    workspace?.workspace_type === "BUSINESS"
+      ? `🏢 ${workspace.workspace_name}`
+      : `👤 ${workspace.workspace_name}`;
+
+  const activeWorkspace =
+    workspaces.find(
+      (workspace) =>
+        workspace.id === currentWorkspace?.id
+    ) ||
+    workspaces[0] ||
+    null;
+
+  button.textContent = activeWorkspace
+    ? getWorkspaceLabel(activeWorkspace)
+    : "Select workspace";
+
+  switcher.dataset.value =
+    activeWorkspace?.id || "";
+
+  menu.innerHTML = "";
+
+  const applyWorkspace = (selectedWorkspace) => {
     if (!selectedWorkspace) return;
 
     localStorage.setItem(
@@ -6667,33 +6921,31 @@ targetElement.parentElement.insertBefore(
       JSON.stringify(selectedWorkspace)
     );
 
-selectedInvoice = null;
+    selectedInvoice = null;
+    renderSelectedInvoice();
+    closeInvoiceSheet();
+    renderCustomerDropdown();
 
-// Clear the selected invoice and previous QR code
-renderSelectedInvoice();
+    loadWorkspaceClaims().catch((err) => {
+      console.error(
+        "Reload workspace claims error:",
+        err
+      );
+    });
 
-// Close the invoice popup if it is open
-closeInvoiceSheet();
+    loadInvoices().catch((err) => {
+      console.error(
+        "Reload workspace invoices error:",
+        err
+      );
+    });
 
-renderCustomerDropdown();
-
-loadWorkspaceClaims().catch((err) => {
-  console.error(
-    "Reload workspace claims error:",
-    err
-  );
-});
-
-loadInvoices().catch((err) => {
-  console.error("Reload workspace invoices error:", err);
-});
-
-loadEmployees().catch((err) => {
-  console.error(
-    "Reload workspace employees error:",
-    err
-  );
-});
+    loadEmployees().catch((err) => {
+      console.error(
+        "Reload workspace employees error:",
+        err
+      );
+    });
 
     setStatus(
       `Workspace switched to ${selectedWorkspace.workspace_name}.`,
@@ -6705,7 +6957,105 @@ loadEmployees().catch((err) => {
         detail: selectedWorkspace
       })
     );
+
+    renderWorkspaceSwitcher(
+      workspaces,
+      selectedWorkspace
+    );
   };
+
+  workspaces.forEach((workspace) => {
+    const option =
+      document.createElement("button");
+
+    option.type = "button";
+    option.className =
+      "tror-custom-select__option";
+
+    const isSelected =
+      workspace.id === activeWorkspace?.id;
+
+    if (isSelected) {
+      option.classList.add("is-selected");
+    }
+
+    option.setAttribute(
+      "aria-selected",
+      String(isSelected)
+    );
+
+    const label = document.createElement("span");
+    label.textContent = getWorkspaceLabel(workspace);
+    option.appendChild(label);
+
+    if (isSelected) {
+      const check = document.createElement("span");
+      check.className = "tror-custom-select__check";
+      check.textContent = "✓";
+      option.appendChild(check);
+    }
+
+    option.addEventListener("click", () => {
+      closeWorkspaceMenu();
+
+      if (workspace.id === activeWorkspace?.id) {
+        return;
+      }
+
+      applyWorkspace(workspace);
+    });
+
+    menu.appendChild(option);
+  });
+
+  const createBusinessOption =
+    document.createElement("button");
+
+  createBusinessOption.type = "button";
+  createBusinessOption.className =
+    "tror-custom-select__create";
+  createBusinessOption.textContent =
+    "+ Create business workspace";
+
+  createBusinessOption.addEventListener(
+    "click",
+    () => {
+      closeWorkspaceMenu();
+      createBusinessWorkspace();
+    }
+  );
+
+  menu.appendChild(createBusinessOption);
+
+  if (!window.__trorWorkspaceOutsideClickBound) {
+    window.__trorWorkspaceOutsideClickBound = true;
+
+    document.addEventListener("click", (event) => {
+      const root =
+        document.getElementById(
+          "workspaceSwitcher"
+        );
+
+      if (root && !root.contains(event.target)) {
+        const rootMenu =
+          document.getElementById(
+            "workspaceSwitcherMenu"
+          );
+
+        const rootButton =
+          document.getElementById(
+            "workspaceSwitcherButton"
+          );
+
+        if (rootMenu) rootMenu.hidden = true;
+        root.classList.remove("is-open");
+        rootButton?.setAttribute(
+          "aria-expanded",
+          "false"
+        );
+      }
+    });
+  }
 }
 
 async function connectMetaMask() {
