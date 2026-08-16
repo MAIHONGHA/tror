@@ -3603,6 +3603,98 @@ app.get("/api/circle/gateway/balance", async (req, res) => {
 });
 
 /* =========================================================
+   CIRCLE GATEWAY - PENDING DEPOSITS
+========================================================= */
+
+app.get(
+  "/api/circle/gateway/deposits",
+  async (req, res) => {
+    try {
+      const depositor = String(
+        req.query.depositor || ""
+      ).trim();
+
+      if (!depositor) {
+        return res.status(400).json({
+          error: "Missing depositor address"
+        });
+      }
+
+      if (!ethers.isAddress(depositor)) {
+        return res.status(400).json({
+          error: "Invalid depositor address"
+        });
+      }
+
+      const response = await fetch(
+        "https://gateway-api-testnet.circle.com/v1/deposits",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json"
+          },
+
+          body: JSON.stringify({
+            token: "USDC",
+
+            sources: [
+              {
+                depositor
+              }
+            ]
+          })
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error(
+          "TROR Circle Gateway deposits error:",
+          data
+        );
+
+        return res.status(response.status).json({
+          error:
+            data?.message ||
+            data?.error ||
+            "Failed to load pending Gateway deposits",
+
+          details: data
+        });
+      }
+
+      console.log(
+        "TROR Circle Gateway pending deposits:",
+        {
+          depositor,
+          data
+        }
+      );
+
+      return res.json({
+        success: true,
+        depositor,
+        data
+      });
+
+    } catch (err) {
+      console.error(
+        "TROR Circle Gateway deposits error:",
+        err
+      );
+
+      return res.status(500).json({
+        error:
+          err?.message ||
+          "Failed to load pending Gateway deposits"
+      });
+    }
+  }
+);
+
+/* =========================================================
    CIRCLE GATEWAY - ESTIMATE UNIFIED BALANCE TRANSFER
 ========================================================= */
 

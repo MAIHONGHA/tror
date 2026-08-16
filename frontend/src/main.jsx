@@ -3264,17 +3264,106 @@ const sourceNetwork =
     depositResult
   );
 
-  setStatus(
-    `Circle Unified Balance deposit submitted: ${amount} USDC.`,
-    "success"
+let depositTxHash = "";
+
+for (let i = 0; i < 20; i++) {
+  await new Promise((resolve) =>
+    setTimeout(resolve, 3000)
   );
 
+  const txData = await api(
+    "/api/circle/transactions",
+    {
+      method: "POST",
+      body: JSON.stringify({ userToken })
+    }
+  );
+
+  console.log(
+    `TROR Gateway transaction check ${i + 1}:`,
+    txData
+  );
+
+  const transactions =
+    txData?.data?.transactions || [];
+
+  const gatewayTx = transactions.find((item) => {
+    const operation =
+      String(item?.operation || "").toUpperCase();
+
+    const state =
+      String(
+        item?.state ||
+        item?.status ||
+        ""
+      ).toUpperCase();
+
+    const contractAddress =
+      String(
+        item?.contractAddress ||
+        item?.destinationAddress ||
+        ""
+      ).toLowerCase();
+
+    const walletId =
+      String(item?.walletId || "");
+
+    const hash =
+      item?.blockchainTxHash ||
+      item?.txHash ||
+      item?.transactionHash ||
+      "";
+
+    return (
+      operation === "CONTRACT_EXECUTION" &&
+      state === "COMPLETE" &&
+      walletId === String(sourceWallet.walletId) &&
+      contractAddress === GATEWAY_WALLET.toLowerCase() &&
+      hash.startsWith("0x")
+    );
+  });
+
+  depositTxHash =
+    gatewayTx?.blockchainTxHash ||
+    gatewayTx?.txHash ||
+    gatewayTx?.transactionHash ||
+    "";
+
+  if (depositTxHash) {
+    console.log(
+      "TROR Circle Gateway deposit transaction found:",
+      gatewayTx
+    );
+
+    console.log(
+      "TROR Circle Gateway deposit txHash:",
+      depositTxHash
+    );
+
+    break;
+  }
+}
+
+if (!depositTxHash) {
+  console.log(
+    "TROR Circle Gateway deposit challenge completed, but transaction hash is still pending."
+  );
+}
+
+  setStatus(
+  depositTxHash
+    ? `Circle Unified Balance deposit confirmed: ${amount} USDC. TX: ${depositTxHash}`
+    : `Circle Unified Balance deposit submitted: ${amount} USDC. Waiting for transaction confirmation...`,
+  "success"
+);
+
   return {
-    amount,
-    sourceWallet,
-    gatewayEoa,
-    depositResult
-  };
+  amount,
+  sourceWallet,
+  gatewayEoa,
+  depositResult,
+  depositTxHash
+};
 }
 
 document
