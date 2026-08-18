@@ -96,7 +96,7 @@ const CIRCLE_TESTNET_CHAINS = {
 
   80002: {
     type: "evm",
-    chain: "Polygon_Amoy",
+    chain: "Polygon_Amoy_Testnet",
     chainId: 80002,
     name: "Polygon Amoy",
     isTestnet: true

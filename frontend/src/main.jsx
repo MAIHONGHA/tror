@@ -32,6 +32,10 @@ import {
   spendFromTrorUnifiedBalance,
   estimateTrorUnifiedSpend
 } from "./gateway.js";
+import {
+  checkTrorWeb3Capabilities,
+  analyzeTrorWeb3GasCapabilities
+} from "./paymaster.js";
 
 window.getTrorUnifiedBalance = getTrorUnifiedBalance;
 
@@ -5410,6 +5414,16 @@ if (claimReturnPath) {
 }
 
 window.history.replaceState(null, "", "/app.html");
+if (!isInvoicePaymentMode()) {
+  showTab("dashboard");
+  updateTopbarTitle("dashboard");
+
+  window.history.replaceState(
+    null,
+    "",
+    "/app.html#dashboard"
+  );
+}
   setStatus("Google login success. Preparing Circle user...");
 
   try {
@@ -10080,6 +10094,77 @@ if (metamaskWalletEl) {
   }
 </div>
 
+<div
+  style="
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+    margin-top:12px;
+  "
+>
+  <div
+    style="
+      padding:10px 12px;
+      border-radius:10px;
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.08);
+    "
+  >
+    <div
+      style="
+        font-size:10px;
+        color:#9ca3af;
+        text-transform:uppercase;
+        letter-spacing:.08em;
+        margin-bottom:4px;
+      "
+    >
+      Account
+    </div>
+
+    <div
+      id="trorWeb3AccountMode"
+      style="
+        font-size:13px;
+        font-weight:800;
+      "
+    >
+      Standard EOA
+    </div>
+  </div>
+
+  <div
+    style="
+      padding:10px 12px;
+      border-radius:10px;
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.08);
+    "
+  >
+    <div
+      style="
+        font-size:10px;
+        color:#9ca3af;
+        text-transform:uppercase;
+        letter-spacing:.08em;
+        margin-bottom:4px;
+      "
+    >
+      Gas
+    </div>
+
+    <div
+      id="trorWeb3GasMode"
+      style="
+        font-size:13px;
+        font-weight:800;
+      "
+    >
+      Checking...
+    </div>
+  </div>
+</div>
+
 <div style="
   margin-top:14px;
   padding-top:12px;
@@ -10395,6 +10480,84 @@ if (metamaskWalletEl) {
 </div>
   `;
 
+try {
+  const gasInfo =
+    await analyzeTrorWeb3GasCapabilities();
+
+  const accountModeEl =
+    document.getElementById(
+      "trorWeb3AccountMode"
+    );
+
+  const gasModeEl =
+    document.getElementById(
+      "trorWeb3GasMode"
+    );
+
+  if (gasInfo.chainId === 5042002) {
+    // Arc uses USDC natively for gas.
+    if (accountModeEl) {
+      accountModeEl.textContent =
+        "Standard EOA";
+    }
+
+    if (gasModeEl) {
+      gasModeEl.textContent =
+        "USDC ✓";
+    }
+  } else {
+    // Do NOT claim USDC gas until
+    // the Paymaster path is actually available.
+    if (gasInfo.paymasterServiceAvailable) {
+      if (accountModeEl) {
+        accountModeEl.textContent =
+          "Smart enabled ✓";
+      }
+
+      if (gasModeEl) {
+        gasModeEl.textContent =
+          "USDC ✓";
+      }
+    } else {
+      if (accountModeEl) {
+        accountModeEl.textContent =
+          "Standard EOA";
+      }
+
+      const nativeGasSymbols = {
+        11155111: "ETH required",
+        84532: "ETH required",
+        421614: "ETH required",
+        43113: "AVAX required",
+        11155420: "ETH required",
+        80002: "POL required",
+        1301: "ETH required"
+      };
+
+      if (gasModeEl) {
+        gasModeEl.textContent =
+          nativeGasSymbols[gasInfo.chainId] ||
+          "Native gas required";
+      }
+    }
+  }
+} catch (error) {
+  console.warn(
+    "TROR gas status unavailable:",
+    error
+  );
+
+  const gasModeEl =
+    document.getElementById(
+      "trorWeb3GasMode"
+    );
+
+  if (gasModeEl) {
+    gasModeEl.textContent =
+      "Unavailable";
+  }
+}
+
 // Move Unified Balance Send modal outside
 // the Connected Wallet card.
 // This prevents fixed-position flickering.
@@ -10479,13 +10642,33 @@ document
         }
 
         setStatus(
-          `Depositing ${amount} USDC to Unified Balance...`
-        );
+  "Checking Web3 wallet capabilities..."
+);
 
-        const result =
-          await depositToTrorUnifiedBalance(
-            amount
-          );
+const capabilities =
+  await checkTrorWeb3Capabilities();
+
+console.log(
+  "TROR Web3 capabilities before Unified deposit:",
+  capabilities
+);
+
+const gasCapabilities =
+  await analyzeTrorWeb3GasCapabilities();
+
+console.log(
+  "TROR Web3 gas capabilities before Unified deposit:",
+  gasCapabilities
+);
+
+setStatus(
+  `Depositing ${amount} USDC to Unified Balance...`
+);
+
+const result =
+  await depositToTrorUnifiedBalance(
+    amount
+  );
 
         console.log(
           "TROR Unified deposit result:",
