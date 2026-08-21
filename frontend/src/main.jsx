@@ -34,10 +34,92 @@ import {
 } from "./gateway.js";
 import {
   checkTrorWeb3Capabilities,
-  analyzeTrorWeb3GasCapabilities
+  analyzeTrorWeb3GasCapabilities,
+  checkTror7702BrowserSupport,
+  createTror7702Account,
+  inspectTrorWalletProvider,
+  inspectTrorAtomicCapabilities,
+  inspectTror7702RpcSupport,
+  testTrorConnected7702Authorization,
+  testTrorBundlerConnection,
+  testTrorUsdcPermitMetadata,
+  signTrorUsdcPermitWithConnectedWallet,
+  buildTrorCirclePaymasterData
 } from "./paymaster.js";
+import {
+  testTrorMetaMask7702Account,
+  inspectTrorMetaMask7702Account,
+  testTror7702UserOpPrimitives,
+  testTror7702StubSignature,
+  testTror7702BundlerPrepare,
+  testTror7702DeploymentState,
+  testTrorValid7702Implementation,
+  testTror7702CodeViaPublicClient,
+  testTror7702CirclePaymasterPrepare,
+  testTror7702CirclePaymasterSend,
+  inspectTror7702SigningPath
+} from "./tror7702.js";
+import {
+  testTrorMetaMaskConnect
+} from "./tror-metamask-connect.js";
+import {
+  getTrorGasCapability,
+  testTrorGasCapability
+} from "./gas-capability.js";
+import {
+  executeTrorGasCalls,
+  getTrorCallStatus,
+  testTrorGasExecutor
+} from "./gas-executor.js";
 
 window.getTrorUnifiedBalance = getTrorUnifiedBalance;
+window.testTror7702Authorization =
+  testTrorConnected7702Authorization;
+window.testTrorBundlerConnection =
+  testTrorBundlerConnection;
+window.testTrorUsdcPermitMetadata =
+  testTrorUsdcPermitMetadata;
+window.signTrorUsdcPermitWithConnectedWallet =
+  signTrorUsdcPermitWithConnectedWallet;
+window.buildTrorCirclePaymasterData =
+  buildTrorCirclePaymasterData;
+window.testTrorMetaMask7702Account =
+  testTrorMetaMask7702Account;
+window.inspectTrorMetaMask7702Account =
+  inspectTrorMetaMask7702Account;
+window.testTror7702UserOpPrimitives =
+  testTror7702UserOpPrimitives;
+window.testTror7702StubSignature =
+  testTror7702StubSignature;
+window.testTror7702BundlerPrepare =
+  testTror7702BundlerPrepare;
+window.testTror7702DeploymentState =
+  testTror7702DeploymentState;
+window.testTrorMetaMaskConnect =
+  testTrorMetaMaskConnect;
+window.testTrorValid7702Implementation =
+  testTrorValid7702Implementation;
+window.testTror7702CodeViaPublicClient =
+  testTror7702CodeViaPublicClient;
+window.testTror7702CirclePaymasterPrepare =
+  testTror7702CirclePaymasterPrepare;
+window.testTror7702CirclePaymasterSend =
+  testTror7702CirclePaymasterSend;
+window.inspectTror7702SigningPath =
+  inspectTror7702SigningPath;
+window.getTrorGasCapability =
+  getTrorGasCapability;
+
+window.testTrorGasCapability =
+  testTrorGasCapability;
+window.executeTrorGasCalls =
+  executeTrorGasCalls;
+
+window.getTrorCallStatus =
+  getTrorCallStatus;
+
+window.testTrorGasExecutor =
+  testTrorGasExecutor;
 
 /* =========================
    WALLET CONNECT UI PATCH
@@ -1340,39 +1422,164 @@ console.log("TROR Web3 Send network:", {
         USDC_DECIMALS
       );
 
-      const hash = await writeContract(config, {
-        address: web3UsdcToken,
-        abi: ERC20_ABI,
-        functionName: "transfer",
-        args: [
-          recipient,
-          amountUnits
-        ],
-        account: account.address
+const tokenInterface =
+  new ethers.Interface(ERC20_ABI);
+
+const transferData =
+  tokenInterface.encodeFunctionData(
+    "transfer",
+    [
+      recipient,
+      amountUnits
+    ]
+  );
+
+setStatus(
+  "TROR is selecting the best gas mode...",
+  "success"
+);
+
+const gasResult =
+  await executeTrorGasCalls({
+    calls: [
+      {
+        to: web3UsdcToken,
+        value: 0n,
+        data: transferData
+      }
+    ]
+  });
+
+console.log(
+  "TROR Web3 USDC gas execution:",
+  gasResult
+);
+
+let hash = "";
+
+/*
+  Arc / normal native-gas path
+*/
+if (
+  gasResult.execution
+    ?.transactionHashes
+    ?.length
+) {
+  hash =
+    gasResult.execution
+      .transactionHashes[0];
+
+  if (sendButton) {
+    sendButton.textContent =
+      "Sending USDC...";
+  }
+
+  setStatus(
+    "Transaction submitted. Waiting for confirmation...",
+    "success"
+  );
+
+  const receipt =
+    await waitForTransactionReceipt(
+      config,
+      {
+        hash
+      }
+    );
+
+  if (
+    receipt.status !== "success"
+  ) {
+    throw new Error(
+      "USDC transfer failed."
+    );
+  }
+}
+
+/*
+  MetaMask wallet-sponsored path
+  EIP-7702 + wallet_sendCalls
+*/
+else if (
+  gasResult.execution
+    ?.callBundleId
+) {
+  const bundleId =
+    gasResult.execution
+      .callBundleId;
+
+  if (sendButton) {
+    sendButton.textContent =
+      "Waiting for wallet...";
+  }
+
+  setStatus(
+    "Wallet-sponsored transaction submitted...",
+    "success"
+  );
+
+  let callStatus = null;
+
+  for (
+    let i = 0;
+    i < 30;
+    i++
+  ) {
+    await new Promise(
+      (resolve) =>
+        setTimeout(resolve, 2000)
+    );
+
+    callStatus =
+      await getTrorCallStatus({
+        bundleId
       });
 
-      if (sendButton) {
-        sendButton.textContent = "Sending USDC...";
-      }
+    if (
+      Number(callStatus?.status) ===
+      200
+    ) {
+      break;
+    }
+  }
 
-      setStatus(
-        "Transaction submitted. Waiting for confirmation...",
-        "success"
-      );
+  if (
+    Number(callStatus?.status) !==
+    200
+  ) {
+    throw new Error(
+      "Wallet transaction is still pending."
+    );
+  }
 
-      const receipt =
-        await waitForTransactionReceipt(config, {
-          hash
-        });
+  hash =
+    callStatus
+      ?.receipts?.[0]
+      ?.transactionHash ||
+    "";
 
-      if (receipt.status !== "success") {
-        throw new Error("USDC transfer failed.");
-      }
+  console.log(
+    "TROR wallet-sponsored USDC completed:",
+    {
+      bundleId,
+      callStatus,
+      hash
+    }
+  );
+}
 
-      setStatus(
-        `Sent ${amount} USDC successfully. TX: ${hash}`,
-        "success"
-      );
+else {
+  throw new Error(
+    "TROR gas executor returned no transaction result."
+  );
+}
+
+setStatus(
+  hash
+    ? `Sent ${amount} USDC successfully. TX: ${hash}`
+    : `Sent ${amount} USDC successfully.`,
+  "success"
+);
 
 const refreshedAccount =
   getAccount(config);
@@ -10482,7 +10689,7 @@ if (metamaskWalletEl) {
 
 try {
   const gasInfo =
-    await analyzeTrorWeb3GasCapabilities();
+    await getTrorGasCapability();
 
   const accountModeEl =
     document.getElementById(
@@ -10494,8 +10701,14 @@ try {
       "trorWeb3GasMode"
     );
 
-  if (gasInfo.chainId === 5042002) {
-    // Arc uses USDC natively for gas.
+  /*
+    ARC
+    Native USDC gas.
+  */
+  if (
+    gasInfo.gasMode ===
+    "native-usdc"
+  ) {
     if (accountModeEl) {
       accountModeEl.textContent =
         "Standard EOA";
@@ -10505,52 +10718,108 @@ try {
       gasModeEl.textContent =
         "USDC ✓";
     }
-  } else {
-    // Do NOT claim USDC gas until
-    // the Paymaster path is actually available.
-    if (gasInfo.paymasterServiceAvailable) {
-      if (accountModeEl) {
-        accountModeEl.textContent =
-          "Smart enabled ✓";
-      }
+  }
 
-      if (gasModeEl) {
-        gasModeEl.textContent =
-          "USDC ✓";
-      }
-    } else {
-      if (accountModeEl) {
-        accountModeEl.textContent =
-          "Standard EOA";
-      }
+  /*
+    WALLET-NATIVE SMART ACCOUNT
+    Example verified:
+    MetaMask + Base Sepolia.
+  */
+  else if (
+    gasInfo.gasMode ===
+    "wallet-sponsored"
+  ) {
+    if (accountModeEl) {
+      accountModeEl.textContent =
+        "EIP-7702 ✓";
+    }
 
-      const nativeGasSymbols = {
-        11155111: "ETH required",
-        84532: "ETH required",
-        421614: "ETH required",
-        43113: "AVAX required",
-        11155420: "ETH required",
-        80002: "POL required",
-        1301: "ETH required"
-      };
-
-      if (gasModeEl) {
-        gasModeEl.textContent =
-          nativeGasSymbols[gasInfo.chainId] ||
-          "Native gas required";
-      }
+    if (gasModeEl) {
+      gasModeEl.textContent =
+        "Sponsored ✓";
     }
   }
+
+  /*
+    WALLET-EXPOSED PAYMASTER
+  */
+  else if (
+    gasInfo.gasMode ===
+    "circle-paymaster"
+  ) {
+    if (accountModeEl) {
+      accountModeEl.textContent =
+        "Smart enabled ✓";
+    }
+
+    if (gasModeEl) {
+      gasModeEl.textContent =
+        "USDC ✓";
+    }
+  }
+
+  /*
+    NORMAL NATIVE GAS FALLBACK
+  */
+  else {
+    if (accountModeEl) {
+      accountModeEl.textContent =
+        "Standard EOA";
+    }
+
+    const nativeGasSymbols = {
+      11155111: "ETH required",
+      84532: "ETH required",
+      421614: "ETH required",
+      43113: "AVAX required",
+      11155420: "ETH required",
+      80002: "POL required",
+      1301: "ETH required"
+    };
+
+    if (gasModeEl) {
+      gasModeEl.textContent =
+        nativeGasSymbols[
+          gasInfo.chainId
+        ] ||
+        "Native gas required";
+    }
+  }
+
+  console.log(
+    "TROR Connected Wallet gas UI:",
+    {
+      chainId:
+        gasInfo.chainId,
+
+      chainName:
+        gasInfo.chainName,
+
+      gasMode:
+        gasInfo.gasMode
+    }
+  );
+
 } catch (error) {
   console.warn(
     "TROR gas status unavailable:",
     error
   );
 
+  const accountModeEl =
+    document.getElementById(
+      "trorWeb3AccountMode"
+    );
+
   const gasModeEl =
     document.getElementById(
       "trorWeb3GasMode"
     );
+
+  if (accountModeEl) {
+    accountModeEl.textContent =
+      "Standard EOA";
+  }
 
   if (gasModeEl) {
     gasModeEl.textContent =
@@ -10653,12 +10922,85 @@ console.log(
   capabilities
 );
 
-const gasCapabilities =
-  await analyzeTrorWeb3GasCapabilities();
+let gasAnalysis = null;
+
+try {
+  gasAnalysis =
+    await analyzeTrorWeb3GasCapabilities();
+
+  console.log(
+    "TROR Web3 gas capabilities before Unified deposit:",
+    gasAnalysis
+  );
+} catch (error) {
+  console.warn(
+    "TROR Web3 gas capability check skipped:",
+    error
+  );
+}
+
+let support7702 = null;
+
+try {
+  support7702 =
+    await checkTror7702BrowserSupport();
+
+  console.log(
+    "TROR EIP-7702 browser test:",
+    support7702
+  );
+} catch (error) {
+  console.warn(
+    "TROR EIP-7702 browser test failed:",
+    error
+  );
+}
+
+const account7702 =
+  await createTror7702Account();
+
+const providerInspection =
+  await inspectTrorWalletProvider();
+
+const atomicInspection =
+  await inspectTrorAtomicCapabilities();
 
 console.log(
-  "TROR Web3 gas capabilities before Unified deposit:",
-  gasCapabilities
+  "TROR atomic capability test:",
+  atomicInspection
+);
+
+const rpc7702Inspection =
+  await inspectTror7702RpcSupport();
+
+console.log(
+  "TROR 7702 RPC test:",
+  rpc7702Inspection
+);
+
+console.log(
+  "TROR wallet provider test:",
+  providerInspection
+);
+
+console.log(
+  "TROR 7702 same-address test:",
+  {
+    ownerAddress:
+      account7702.ownerAddress,
+
+    smartAccountAddress:
+      account7702.smartAccountAddress,
+
+    sameAddress:
+      account7702.sameAddress,
+
+    chainId:
+      account7702.chainId,
+
+    chainName:
+      account7702.chainName
+  }
 );
 
 setStatus(
