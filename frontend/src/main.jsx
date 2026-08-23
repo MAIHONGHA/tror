@@ -664,6 +664,7 @@ const ERC20_ABI = [
 let selectedInvoice = null;
 let metamaskWallet = null;
 let activeWalletType = null; // "web3" | "circle"
+let pendingAIAction = null;
 
 function clearCircleWalletLocal() {
   // Clear Circle wallet from UI
@@ -8230,39 +8231,657 @@ async function markInvoicePaid(txHash, fromAddress) {
 ========================= */
 
 window.generateAIDraft = async function () {
-  const prompt = document.getElementById("aiPrompt").value;
+  const promptEl =
+    document.getElementById("aiPrompt");
+
+  const resultEl =
+    document.getElementById("aiResult");
+
+  const prompt =
+    String(promptEl?.value || "").trim();
 
   if (!prompt) {
-    alert("Please enter invoice prompt");
+    setStatus(
+      "Please describe the invoice you want to create.",
+      "error"
+    );
+
     return;
   }
 
-  const lower = prompt.toLowerCase();
-  let amount = "0";
-  let title = "General Service";
+  if (resultEl) {
+    resultEl.textContent =
+      "TROR AI is understanding your request...";
+  }
 
-  const amountMatch = lower.match(/(\d+(\.\d+)?)/);
-  if (amountMatch) amount = amountMatch[1];
+  try {
+    const response =
+      await fetch(
+        `${API_BASE}/api/ai/invoice-draft`,
+        {
+          method: "POST",
 
-  // Detect invoice title from keywords
-  if (lower.includes("coffee") || lower.includes("cà phê")) title = "Coffee";
-  if (lower.includes("design")) title = "Design Work";
-  if (lower.includes("salary") || lower.includes("lương")) title = "Salary";
-  if (lower.includes("game")) title = "Game Service";
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
 
-  document.getElementById("title").value = title;
-  document.getElementById("amount").value = amount;
+          body: JSON.stringify({
+            prompt
+          })
+        }
+      );
 
-  document.getElementById("aiResult").textContent = `
-🧠 AI UNDERSTOOD
+    const data =
+      await response.json();
 
-Intent: ${title}
+    if (!response.ok) {
+      throw new Error(
+        data?.error ||
+        "AI invoice draft failed."
+      );
+    }
 
-Title: ${document.getElementById("title").value}
+    const action =
+      data?.action;
 
-Amount: ${document.getElementById("amount").value} USDC
-`;
+    const draft =
+      action?.draft;
+
+      pendingAIAction = action;
+
+    if (!draft) {
+      throw new Error(
+        "TROR AI returned no invoice draft."
+      );
+    }
+
+    const missingFields =
+  Array.isArray(
+    action?.missingFields
+  )
+    ? action.missingFields
+    : [];
+
+const confidence =
+  Number(
+    action?.confidence || 0
+  );
+
+if (resultEl) {
+  const isClaim =
+  action?.intent === "claim.create";
+
+const isPayment =
+  action?.intent === "payment.send";
+
+let previewBody = "";
+
+if (isClaim) {
+  previewBody = `
+    <div>
+      <strong>Recipient Email:</strong>
+      ${draft.recipientEmail || "-"}
+    </div>
+
+    <div>
+      <strong>Amount:</strong>
+      ${
+        draft.amount !== null &&
+        draft.amount !== undefined
+          ? draft.amount
+          : "-"
+      }
+      ${draft.currency || "USDC"}
+    </div>
+
+    <div>
+      <strong>Message:</strong>
+      ${
+        draft.message ||
+        draft.note ||
+        draft.description ||
+        "-"
+      }
+    </div>
+  `;
+} else if (isPayment) {
+  previewBody = `
+    <div>
+      <strong>Recipient Wallet:</strong>
+      ${draft.recipientAddress || "-"}
+    </div>
+
+    <div>
+      <strong>Amount:</strong>
+      ${
+        draft.amount !== null &&
+        draft.amount !== undefined
+          ? draft.amount
+          : "-"
+      }
+      ${draft.currency || "USDC"}
+    </div>
+
+    <div>
+      <strong>Network:</strong>
+      ${draft.network || "-"}
+    </div>
+  `;
+} else {
+  previewBody = `
+    <div>
+      <strong>Title:</strong>
+      ${draft.title || "-"}
+    </div>
+
+    <div>
+      <strong>Amount:</strong>
+      ${
+        draft.amount !== null &&
+        draft.amount !== undefined
+          ? draft.amount
+          : "-"
+      }
+      ${draft.currency || "USDC"}
+    </div>
+
+    <div>
+      <strong>Customer:</strong>
+      ${draft.customer || "-"}
+    </div>
+
+    <div>
+      <strong>Email:</strong>
+      ${draft.recipientEmail || "-"}
+    </div>
+
+    <div>
+      <strong>Wallet:</strong>
+      ${draft.recipientAddress || "-"}
+    </div>
+
+    <div>
+      <strong>Due date:</strong>
+      ${draft.dueDate || "-"}
+    </div>
+
+    <div>
+      <strong>Note:</strong>
+      ${
+        draft.note ||
+        draft.description ||
+        "-"
+      }
+    </div>
+  `;
+}
+
+  resultEl.innerHTML = `
+    <div class="ai-action-preview">
+
+      <div class="ai-action-preview-title">
+        🧠 TROR AI Action Preview
+      </div>
+
+      <div>
+        <strong>Action:</strong>
+        ${action?.intent || "invoice.create"}
+      </div>
+
+      ${previewBody}
+
+      <div>
+        <strong>Confidence:</strong>
+        ${Math.round(confidence * 100)}%
+      </div>
+
+      <div>
+        <strong>Missing:</strong>
+        ${
+          missingFields.length
+            ? missingFields.join(", ")
+            : "None"
+        }
+      </div>
+
+      <div
+        style="
+          display:flex;
+          gap:10px;
+          margin-top:16px;
+          flex-wrap:wrap;
+        "
+      >
+        <button
+          type="button"
+          id="btnApplyAIDraft"
+          style="
+            width:auto;
+            min-width:120px;
+            padding:10px 18px;
+            border:0;
+            border-radius:10px;
+            cursor:pointer;
+            font-weight:700;
+            font-size:14px;
+          "
+        >
+          Apply Draft
+        </button>
+
+        <button
+          type="button"
+          id="btnCancelAIDraft"
+          style="
+            width:auto;
+            min-width:90px;
+            padding:10px 18px;
+            border:1px solid rgba(0,0,0,.12);
+            border-radius:10px;
+            cursor:pointer;
+            font-weight:700;
+            font-size:14px;
+            background:transparent;
+          "
+        >
+          Cancel
+        </button>
+      </div>
+
+    </div>
+  `;
+}
+
+document
+  .getElementById("btnApplyAIDraft")
+  ?.addEventListener(
+    "click",
+    applyPendingAIAction
+  );
+
+document
+  .getElementById("btnCancelAIDraft")
+  ?.addEventListener(
+    "click",
+    () => {
+      pendingAIAction = null;
+
+      if (resultEl) {
+        resultEl.textContent =
+          "AI draft cancelled.";
+      }
+
+      setStatus(
+        "AI draft cancelled."
+      );
+    }
+  );
+
+console.log(
+  "TROR AI action:",
+  action
+);
+
+setStatus(
+  "AI invoice draft prepared. Review and apply it before creating the invoice.",
+  "success"
+);
+
+  } catch (error) {
+    console.error(
+      "TROR AI draft error:",
+      error
+    );
+
+    if (resultEl) {
+      resultEl.textContent =
+        "TROR AI could not prepare the invoice draft.";
+    }
+
+    setStatus(
+      "AI draft failed: " +
+        (
+          error?.message ||
+          "Unknown error"
+        ),
+      "error"
+    );
+  }
 };
+
+function applyPendingAIAction() {
+  const action =
+    pendingAIAction;
+
+  if (!action?.intent) {
+    setStatus(
+      "No AI action is ready.",
+      "error"
+    );
+    return;
+  }
+
+  if (
+    action.intent ===
+    "invoice.create"
+  ) {
+    applyPendingAIInvoiceDraft();
+    return;
+  }
+
+  if (
+    action.intent ===
+    "claim.create"
+  ) {
+    applyPendingAIClaimDraft();
+    return;
+  }
+
+if (
+  action.intent ===
+  "payment.send"
+) {
+  applyPendingAIPaymentDraft();
+  return;
+}
+
+  setStatus(
+    `Unsupported AI action: ${action.intent}`,
+    "error"
+  );
+}
+
+function applyPendingAIInvoiceDraft() {
+  const action =
+    pendingAIAction;
+
+  const draft =
+    action?.draft;
+
+  if (!draft) {
+    setStatus(
+      "No AI draft is ready.",
+      "error"
+    );
+
+    return;
+  }
+
+  if (titleEl) {
+    titleEl.value =
+      draft.title || "";
+  }
+
+  if (amountEl) {
+    amountEl.value =
+      draft.amount ?? "";
+  }
+
+  if (noteEl) {
+    noteEl.value =
+      draft.note ||
+      draft.description ||
+      "";
+  }
+
+  const invoiceEmailEl =
+    document.getElementById(
+      "invoiceEmail"
+    );
+
+  if (invoiceEmailEl) {
+    invoiceEmailEl.value =
+      draft.recipientEmail || "";
+  }
+
+  const dueDateEl =
+    document.getElementById(
+      "invoiceDueDate"
+    );
+
+  if (dueDateEl) {
+    dueDateEl.value =
+      draft.dueDate || "";
+  }
+
+  if (recipientEl) {
+    recipientEl.value =
+      draft.recipientAddress || "";
+  }
+
+  pendingAIAction = null;
+
+  setStatus(
+    "AI draft applied. Review the invoice before creating it.",
+    "success"
+  );
+}
+
+function applyPendingAIClaimDraft() {
+  const action =
+    pendingAIAction;
+
+  const draft =
+    action?.draft;
+
+  if (!draft) {
+    setStatus(
+      "No AI claim draft is ready.",
+      "error"
+    );
+    return;
+  }
+
+  if (
+    action.intent !==
+    "claim.create"
+  ) {
+    setStatus(
+      "AI action is not a Gmail Claim.",
+      "error"
+    );
+    return;
+  }
+
+  if (claimEmailEl) {
+    claimEmailEl.value =
+      draft.recipientEmail || "";
+  }
+
+  if (claimAmountEl) {
+    claimAmountEl.value =
+      draft.amount ?? "";
+  }
+
+  if (claimMessageEl) {
+    claimMessageEl.value =
+      draft.message ||
+      draft.note ||
+      draft.description ||
+      "";
+  }
+
+  pendingAIAction = null;
+
+  /*
+    Move user to Gmail Claim tab.
+  */
+  window.location.hash =
+    "gmail-claim";
+
+  if (
+    typeof showTab ===
+    "function"
+  ) {
+    showTab("gmail-claim");
+  }
+
+  setStatus(
+    "AI claim draft applied. Review it before sending the claim.",
+    "success"
+  );
+}
+
+async function applyPendingAIPaymentDraft() {
+  const action =
+    pendingAIAction;
+
+  const draft =
+    action?.draft;
+
+  if (!draft) {
+    setStatus(
+      "No AI payment draft is ready.",
+      "error"
+    );
+    return;
+  }
+
+  if (
+    action.intent !==
+    "payment.send"
+  ) {
+    setStatus(
+      "AI action is not a payment.",
+      "error"
+    );
+    return;
+  }
+
+  if (
+    !draft.recipientAddress ||
+    !ethers.isAddress(
+      draft.recipientAddress
+    )
+  ) {
+    setStatus(
+      "AI payment draft needs a valid recipient wallet.",
+      "error"
+    );
+    return;
+  }
+
+  if (
+    draft.amount === null ||
+    Number(draft.amount) <= 0
+  ) {
+    setStatus(
+      "AI payment draft needs a valid amount.",
+      "error"
+    );
+    return;
+  }
+
+  let destinationChainId = null;
+
+  const requestedNetwork =
+    String(
+      draft.network || ""
+    )
+      .trim()
+      .toLowerCase();
+
+  if (requestedNetwork) {
+    for (
+      const [chainId, network]
+      of Object.entries(
+        TROR_GATEWAY_TESTNETS
+      )
+    ) {
+      if (
+        String(network?.name || "")
+          .trim()
+          .toLowerCase() ===
+        requestedNetwork
+      ) {
+        destinationChainId =
+          Number(chainId);
+
+        break;
+      }
+    }
+  }
+
+  if (
+    requestedNetwork &&
+    !destinationChainId
+  ) {
+    setStatus(
+      `Unsupported payment network: ${draft.network}`,
+      "error"
+    );
+    return;
+  }
+
+  const form =
+  document.getElementById(
+    "trorUnifiedSendForm"
+  );
+
+if (!form) {
+  setStatus(
+    "Connected Wallet Unified Send is not available.",
+    "error"
+  );
+  return;
+}
+
+const recipientInput =
+  document.getElementById(
+    "trorUnifiedRecipient"
+  );
+
+const amountInput =
+  document.getElementById(
+    "trorUnifiedAmount"
+  );
+
+const destinationSelect =
+  document.getElementById(
+    "trorUnifiedDestination"
+  );
+
+if (recipientInput) {
+  recipientInput.value =
+    draft.recipientAddress;
+}
+
+if (amountInput) {
+  amountInput.value =
+    String(draft.amount);
+}
+
+if (
+  destinationSelect &&
+  destinationChainId
+) {
+  destinationSelect.value =
+    String(destinationChainId);
+}
+
+form.style.display = "flex";
+
+/*
+  Trigger the existing Unified Balance
+  estimate flow after AI fills the form.
+*/
+if (destinationSelect) {
+  destinationSelect.dispatchEvent(
+    new Event(
+      "change",
+      { bubbles: true }
+    )
+  );
+}
+
+  pendingAIAction = null;
+
+  setStatus(
+    "AI payment draft applied. Review the payment before sending.",
+    "success"
+  );
+}
 
 /* =========================
    DASHBOARD
@@ -9522,58 +10141,153 @@ invoiceModalEl?.addEventListener("click", (e) => {
 ========================= */
 
 btnVoiceInvoice?.addEventListener("click", () => {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const SpeechRecognition =
+    window.SpeechRecognition ||
+    window.webkitSpeechRecognition;
 
   if (!SpeechRecognition) {
-    setStatus("Speech recognition not supported.", "error");
+    setStatus(
+      "Speech recognition not supported.",
+      "error"
+    );
     return;
   }
 
-  const recognition = new SpeechRecognition();
-  const selectedLang = voiceLangEl?.value || "en-US";
+  // Prevent duplicate recognition sessions
+  if (window.__voiceRunning) {
+    return;
+  }
 
-  recognition.lang = selectedLang === "auto" ? "en-US" : selectedLang;
+  window.__voiceRunning = true;
+
+  const recognition =
+    new SpeechRecognition();
+
+  const selectedLang =
+    voiceLangEl?.value || "en-US";
+
+  recognition.lang =
+    selectedLang === "auto"
+      ? "en-US"
+      : selectedLang;
+
   recognition.interimResults = false;
   recognition.maxAlternatives = 1;
   recognition.continuous = false;
 
-  setStatus("🎤 Listening... Speak naturally.");
+  setStatus(
+    "🎤 Listening... Speak naturally."
+  );
 
-  // Prevent duplicate recognition sessions
-  if (window.__voiceRunning) return;
-  window.__voiceRunning = true;
+  recognition.onresult =
+    async (event) => {
+      try {
+        const transcript =
+          event.results?.[0]?.[0]
+            ?.transcript?.trim();
 
-  setTimeout(() => { recognition.start(); }, 300);
+        if (!transcript) {
+          throw new Error(
+            "No speech was detected."
+          );
+        }
 
-  recognition.onresult = async (event) => {
-    const transcript = event.results[0][0].transcript;
-    console.log("VOICE TRANSCRIPT:", transcript);
+        console.log(
+          "TROR voice transcript:",
+          transcript
+        );
 
-    const aiPrompt = document.getElementById("aiPrompt");
-    if (aiPrompt) {
-      aiPrompt.value = transcript;
-      parseInvoicePrompt(transcript);
-      recognition.stop();
-    }
+        const aiPrompt =
+          document.getElementById(
+            "aiPrompt"
+          );
 
-    setStatus("Voice captured.", "success");
+        if (aiPrompt) {
+          aiPrompt.value =
+            transcript;
+        }
 
-    // Auto-generate AI draft from voice input
-    if (typeof window.generateAIDraft === "function") {
-      await window.generateAIDraft();
-    }
-  };
+        setStatus(
+          "Voice captured. TROR AI is preparing the invoice..."
+        );
+
+        /*
+          Important:
+          Voice only converts speech → text.
+
+          The same TROR AI pipeline handles
+          understanding and invoice drafting.
+        */
+        if (
+          typeof window.generateAIDraft ===
+          "function"
+        ) {
+          await window.generateAIDraft();
+        } else {
+          throw new Error(
+            "TROR AI draft function is unavailable."
+          );
+        }
+
+      } catch (error) {
+        console.error(
+          "TROR voice AI error:",
+          error
+        );
+
+        setStatus(
+          "Voice AI failed: " +
+            (
+              error?.message ||
+              "Unknown error"
+            ),
+          "error"
+        );
+      } finally {
+        try {
+          recognition.stop();
+        } catch {}
+      }
+    };
 
   recognition.onerror = (event) => {
-    console.error(event);
+    console.error(
+      "TROR voice recognition error:",
+      event
+    );
+
     window.__voiceRunning = false;
-    setStatus("Voice recognition failed: " + event.error, "error");
+
+    setStatus(
+      "Voice recognition failed: " +
+        event.error,
+      "error"
+    );
   };
 
   recognition.onend = () => {
     window.__voiceRunning = false;
-    console.log("Voice recognition ended.");
+
+    console.log(
+      "TROR voice recognition ended."
+    );
   };
+
+  try {
+    recognition.start();
+  } catch (error) {
+    window.__voiceRunning = false;
+
+    console.error(
+      "TROR voice start error:",
+      error
+    );
+
+    setStatus(
+      "Unable to start voice recognition.",
+      "error"
+    );
+  }
 });
 
 /* =========================
@@ -9650,21 +10364,36 @@ if (isClaimRoute) {
 ========================= */
 
 async function parseInvoicePrompt(prompt) {
-  try {
-    const res = await fetch("/api/ai/invoice-draft", {
+  const res = await fetch(
+    `${API_BASE}/api/ai/invoice-draft`,
+    {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt })
-    });
 
-    const data = await res.json();
-    console.log("AI RESULT:", data);
+      headers: {
+        "Content-Type": "application/json"
+      },
 
-    document.getElementById("title").value = data.draft?.title || "Invoice";
-    document.getElementById("amount").value = data.draft?.amount || "";
-  } catch (err) {
-    console.error(err);
+      body: JSON.stringify({
+        prompt
+      })
+    }
+  );
+
+  const data = await res.json();
+
+  console.log(
+    "TROR AI parse result:",
+    data
+  );
+
+  if (!res.ok) {
+    throw new Error(
+      data?.error ||
+      "AI invoice draft failed."
+    );
   }
+
+  return data?.action || null;
 }
 
 /* =========================

@@ -1244,7 +1244,8 @@ export async function testTrorConnected7702Authorization() {
       method: "eth_accounts"
     });
 
-  const address = accounts?.[0];
+  const address =
+    accounts?.[0];
 
   if (!address) {
     throw new Error(
@@ -1258,7 +1259,10 @@ export async function testTrorConnected7702Authorization() {
     });
 
   const chainId =
-    Number.parseInt(chainIdHex, 16);
+    Number.parseInt(
+      chainIdHex,
+      16
+    );
 
   const config =
     TROR_GAS_CHAINS[chainId];
@@ -1269,98 +1273,89 @@ export async function testTrorConnected7702Authorization() {
     );
   }
 
-  if (config.gasMode !== "circle-paymaster") {
-    throw new Error(
-      "This chain is not configured for Circle Paymaster."
-    );
-  }
-
-  /*
-    Important:
-    same connected MetaMask address.
-    No new wallet and no private key.
-  */
   const ownerClient =
     createWalletClient({
       account: address,
       chain: config.chain,
-      transport: custom(window.ethereum)
+      transport:
+        custom(window.ethereum)
     });
 
   const publicClient =
     createPublicClient({
       chain: config.chain,
       transport: http(
-        config.chain.rpcUrls.default.http[0]
+        config.chain.rpcUrls
+          .default.http[0]
       )
     });
 
   const account =
     await toSimple7702SmartAccount({
-      client: publicClient,
-      owner: ownerClient.account
+      client:
+        publicClient,
+
+      owner:
+        ownerClient.account
     });
 
+  const ownerType =
+    ownerClient.account?.type ||
+    null;
+
+  const hasLocalAuthorizationSigner =
+    typeof ownerClient.account
+      ?.signAuthorization ===
+      "function";
+
+  const result = {
+    address,
+
+    smartAccountAddress:
+      account.address,
+
+    sameAddress:
+      String(
+        account.address
+      ).toLowerCase() ===
+      String(
+        address
+      ).toLowerCase(),
+
+    authorizationAddress:
+      account.authorization
+        ?.address ||
+      null,
+
+    chainId,
+
+    chainName:
+      config.name,
+
+    ownerType,
+
+    hasLocalAuthorizationSigner,
+
+    canUseViemSignAuthorization:
+      ownerType !== "json-rpc" &&
+      hasLocalAuthorizationSigner,
+
+    reason:
+      ownerType === "json-rpc"
+        ? "Connected MetaMask account is a JSON-RPC account. Viem signAuthorization cannot sign EIP-7702 authorization for this account type."
+        : hasLocalAuthorizationSigner
+          ? "Account exposes signAuthorization."
+          : "Account does not expose signAuthorization."
+  };
+
   console.log(
-    "TROR connected 7702 authorization test:",
-    {
-      ownerAddress:
-        ownerClient.account?.address,
-
-      smartAccountAddress:
-        account.address,
-
-      sameAddress:
-        String(account.address).toLowerCase() ===
-        String(address).toLowerCase(),
-
-      authorizationAddress:
-        account.authorization?.address,
-
-      ownerType:
-        ownerClient.account?.type,
-
-      chainId,
-      chainName:
-        config.name
-    }
+    "TROR connected 7702 authorization capability:",
+    result
   );
 
-  try {
-    const authorization =
-      await ownerClient.signAuthorization({
-        account: ownerClient.account,
-        contractAddress:
-          account.authorization.address,
-        chainId
-      });
-
-    console.log(
-      "TROR connected-wallet 7702 authorization:",
-      authorization
-    );
-
-    return {
-      supported: true,
-      address,
-      authorization
-    };
-  } catch (error) {
-    console.warn(
-      "TROR connected-wallet 7702 authorization unavailable:",
-      error
-    );
-
-    return {
-      supported: false,
-
-      error:
-        error?.shortMessage ||
-        error?.message ||
-        String(error)
-    };
-  }
+  return result;
 }
+
 
 export async function testTrorWalletSendCalls() {
   if (!window.ethereum) {

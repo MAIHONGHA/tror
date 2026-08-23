@@ -221,13 +221,31 @@ export async function getTrorGasCapability({
     chainIdHex,
 
     chainName:
-      chainId === arcTestnet.id
-        ? "Arc Testnet"
-        : chainId === baseSepolia.id
-          ? "Base Sepolia"
-          : chainId === arbitrumSepolia.id
-            ? "Arbitrum Sepolia"
-            : "Unknown / Other EVM",
+  chainId === arcTestnet.id
+    ? "Arc Testnet"
+
+    : chainId === 11155111
+      ? "Ethereum Sepolia"
+
+    : chainId === baseSepolia.id
+      ? "Base Sepolia"
+
+    : chainId === arbitrumSepolia.id
+      ? "Arbitrum Sepolia"
+
+    : chainId === 43113
+      ? "Avalanche Fuji"
+
+    : chainId === 11155420
+      ? "Optimism Sepolia"
+
+    : chainId === 80002
+      ? "Polygon Amoy"
+
+    : chainId === 1301
+      ? "Unichain Sepolia"
+
+    : "Unknown / Other EVM",
 
     atomicStatus,
 

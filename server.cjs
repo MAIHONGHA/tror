@@ -2932,121 +2932,393 @@ app.get("/api/circle/config", (req, res) => {
   });
 });
 
-app.post("/api/ai/invoice-draft", async (req, res) => {
-  if (!openai) {
-    return res.status(500).json({ error: "OPENAI_API_KEY is missing" });
-  }
-
-  try {
-    const { prompt } = req.body;
-
-    if (!prompt) {
-      return res.status(400).json({ error: "Prompt is required" });
-    }
-
-    const response = await openai.responses.create({
-      model: "gpt-4.1-mini",
-      input: `
-Create an TROR invoice draft from this request:
-
-"${prompt}"
-
-Return ONLY JSON:
-{
-  "title": "",
-  "description": "",
-  "amount": 0,
-  "currency": "USDC",
-  "customer": ""
-}
-`
-    });
-
-    let text = response.output_text.trim();
-
-    text = text
-      .replace(/```json/g, "")
-      .replace(/```/g, "")
-      .trim();
-    console.log("GPT RAW:", text);
-    const draft = JSON.parse(text);
-
-    res.json({ success: true, draft });
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "AI draft failed" });
-  }
-});
-
 
 /* =========================
    INVOICES
 ========================= */
 
 app.post("/api/ai/invoice-draft", async (req, res) => {
+  if (!openai) {
+    return res.status(500).json({
+      success: false,
+      error: "OPENAI_API_KEY is missing"
+    });
+  }
 
   try {
+    const prompt = String(
+      req.body?.prompt || ""
+    ).trim();
 
-    const { prompt } = req.body;
-
-    if (!openai) {
-      return res.status(500).json({
-        error: "OpenAI not configured"
+    if (!prompt) {
+      return res.status(400).json({
+        success: false,
+        error: "Prompt is required"
       });
     }
 
-    const completion =
-      await openai.chat.completions.create({
-
+    const response =
+      await openai.responses.create({
         model: "gpt-4.1-mini",
 
-        messages: [
-
+        input: [
           {
             role: "system",
 
             content: `
-You are an AI commerce parser.
+You are TROR AI, a financial action parser.
 
-Extract:
-- intent
+Your job is to understand the user's request
+and prepare a structured financial action draft.
+
+Supported intents:
+
+1. invoice.create
+2. claim.create
+3. payment.send
+
+Never execute payments.
+Never send transactions.
+Never send emails.
+Never claim that an action was completed.
+
+Understand natural language in Vietnamese or English.
+
+Return ONLY valid JSON in this exact structure:
+
+{
+  "intent": "",
+  "confidence": 0,
+  "draft": {
+    "title": "",
+    "description": "",
+    "amount": null,
+    "currency": "USDC",
+    "customer": "",
+    "recipientEmail": "",
+    "recipientAddress": "",
+    "dueDate": "",
+    "note": "",
+    "message": "",
+    "network": ""
+  },
+  "missingFields": [],
+  "needsConfirmation": true
+}
+
+INTENT RULES:
+
+Use "invoice.create" when the user wants to:
+- create an invoice
+- bill a customer
+- prepare an invoice
+- request payment through an invoice
+
+Use "claim.create" when the user wants to:
+- send USDC through email
+- create a Gmail claim
+- send a claim to an email address
+- let someone receive or claim USDC through email
+
+Use "payment.send" when the user wants to:
+- send USDC to a wallet address
+- transfer USDC to a wallet
+- pay a wallet address directly
+
+For payment.send:
+- extract recipientAddress
+- extract amount
+- extract network when provided
+- currency defaults to USDC
+- do not invent a wallet address
+- do not invent a network
+
+INVOICE RULES:
+
+For invoice.create:
+- Generate a short professional title if no explicit title is provided.
+- The title may be reasonably inferred from the service, product, work or purpose.
+- Extract amount, customer, recipient email, recipient wallet, due date and note when provided.
+- Do not require recipientAddress when the request already provides a recipient email or when a wallet was not explicitly requested.
+- Do not mark recipientAddress as missing unless the user specifically asks for wallet-based invoicing and no address is supplied.
+
+CLAIM RULES:
+
+For claim.create:
+- Extract recipientEmail.
+- Extract amount.
+- Extract message when provided.
+- title may remain empty.
+- dueDate may remain empty.
+- recipientAddress may remain empty.
+- customer may remain empty.
+
+GENERAL RULES:
+
+- confidence must be between 0 and 1.
+- amount must be a number or null.
+- currency defaults to USDC.
+- dueDate must use YYYY-MM-DD only when it can be determined reliably.
+- Do not invent email addresses.
+- Do not invent wallet addresses.
+- Do not invent amounts.
+- Do not invent customers.
+- Do not invent dates.
+- Add truly required missing fields to missingFields.
+- needsConfirmation must always be true.
+
+Required fields:
+
+For invoice.create:
 - title
 - amount
-- category
 
-Return ONLY JSON.`
+For claim.create:
+- recipientEmail
+- amount
 
+For payment.send:
+- recipientAddress
+- amount
+`
           },
 
           {
             role: "user",
             content: prompt
           }
-
         ]
-
       });
 
-    const text =
-      completion.choices[0]
-        .message.content;
+    let text =
+      String(
+        response.output_text || ""
+      )
+        .replace(/```json/gi, "")
+        .replace(/```/g, "")
+        .trim();
+
+    console.log(
+      "TROR AI raw:",
+      text
+    );
 
     const parsed =
       JSON.parse(text);
 
-    res.json(parsed);
+    const allowedIntents = [
+      "invoice.create",
+      "claim.create",
+      "payment.send"
+    ];
 
-  } catch (err) {
+    if (
+      !allowedIntents.includes(
+        parsed?.intent
+      )
+    ) {
+      throw new Error(
+        "Unsupported TROR AI intent."
+      );
+    }
 
-    console.error(err);
+    const rawAmount =
+      parsed?.draft?.amount;
 
-    res.status(500).json({
-      error: err.message
-    });
+    const normalizedAmount =
+      rawAmount === null ||
+      rawAmount === undefined ||
+      rawAmount === ""
+        ? null
+        : Number(rawAmount);
 
+    const draft = {
+      title:
+        String(
+          parsed?.draft?.title ||
+          ""
+        ).trim(),
+
+      description:
+        String(
+          parsed?.draft?.description ||
+          ""
+        ).trim(),
+
+      amount:
+        Number.isFinite(
+          normalizedAmount
+        )
+          ? normalizedAmount
+          : null,
+
+      currency:
+        String(
+          parsed?.draft?.currency ||
+          "USDC"
+        ).trim(),
+
+      customer:
+        String(
+          parsed?.draft?.customer ||
+          ""
+        ).trim(),
+
+      recipientEmail:
+        String(
+          parsed?.draft?.recipientEmail ||
+          ""
+        )
+          .trim()
+          .toLowerCase(),
+
+      recipientAddress:
+        String(
+          parsed?.draft?.recipientAddress ||
+          ""
+        ).trim(),
+
+      dueDate:
+        String(
+          parsed?.draft?.dueDate ||
+          ""
+        ).trim(),
+
+      note:
+        String(
+          parsed?.draft?.note ||
+          ""
+        ).trim(),
+
+      message:
+        String(
+          parsed?.draft?.message ||
+          ""
+        ).trim(),
+
+      network:
+  String(
+    parsed?.draft?.network ||
+    ""
+  ).trim()
+
+    };
+
+    /*
+      Rebuild important missing fields
+      on the server instead of blindly
+      trusting the model.
+    */
+    const missingFields = [];
+
+    if (
+      parsed.intent ===
+      "invoice.create"
+    ) {
+      if (!draft.title) {
+        missingFields.push(
+          "title"
+        );
+      }
+
+      if (
+        draft.amount === null ||
+        draft.amount <= 0
+      ) {
+        missingFields.push(
+          "amount"
+        );
+      }
+    }
+
+    if (
+      parsed.intent ===
+      "claim.create"
+    ) {
+      if (!draft.recipientEmail) {
+        missingFields.push(
+          "recipientEmail"
+        );
+      }
+
+      if (
+        draft.amount === null ||
+        draft.amount <= 0
+      ) {
+        missingFields.push(
+          "amount"
+        );
+      }
+
+if (
+  parsed.intent ===
+  "payment.send"
+) {
+  if (!draft.recipientAddress) {
+    missingFields.push(
+      "recipientAddress"
+    );
   }
 
+  if (
+    draft.amount === null ||
+    draft.amount <= 0
+  ) {
+    missingFields.push(
+      "amount"
+    );
+  }
+}
+    }
+
+    const result = {
+      success: true,
+
+      action: {
+        intent:
+          parsed.intent,
+
+        confidence:
+          Math.max(
+            0,
+            Math.min(
+              1,
+              Number(
+                parsed?.confidence || 0
+              )
+            )
+          ),
+
+        draft,
+
+        missingFields,
+
+        needsConfirmation:
+          true
+      }
+    };
+
+    console.log(
+      "TROR AI action parse:",
+      result
+    );
+
+    return res.json(result);
+
+  } catch (err) {
+    console.error(
+      "TROR AI action error:",
+      err
+    );
+
+    return res.status(500).json({
+      success: false,
+
+      error:
+        err?.message ||
+        "TROR AI action parsing failed"
+    });
+  }
 });
 
 app.get("/api/invoices", (req, res) => {
