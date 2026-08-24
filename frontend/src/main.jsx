@@ -10540,6 +10540,21 @@ if (!list) return;
                   `
                   : ""
               }
+
+<button
+  type="button"
+  onclick="deleteEmployee(
+    '${employee.id}',
+    '${String(
+      employee.employee_name || ""
+    )
+      .replace(/'/g, "\\'")
+      .replace(/"/g, "&quot;")}'
+  )"
+>
+  Delete
+</button>
+
             </div>
           </div>
         `;
@@ -10568,6 +10583,68 @@ window.updateEmployeeStatus = async function (id, status) {
     alert(err.message);
   }
 };
+
+window.deleteEmployee =
+  async function (
+    id,
+    employeeName
+  ) {
+    try {
+      const currentWorkspace =
+        getCurrentWorkspace();
+
+      if (!currentWorkspace?.id) {
+        alert(
+          "Please select a workspace first."
+        );
+        return;
+      }
+
+      const confirmed =
+        window.confirm(
+          `Delete employee "${employeeName}"?\n\n` +
+          `This action cannot be undone.`
+        );
+
+      if (!confirmed) {
+        return;
+      }
+
+      await api(
+        `/api/employees/${encodeURIComponent(
+          id
+        )}?workspaceId=${encodeURIComponent(
+          currentWorkspace.id
+        )}`,
+        {
+          method: "DELETE"
+        }
+      );
+
+      await loadEmployees();
+
+      window.dispatchEvent(
+        new CustomEvent(
+          "workspaceChanged",
+          {
+            detail:
+              currentWorkspace
+          }
+        )
+      );
+
+      setStatus(
+        `Employee "${employeeName}" deleted.`,
+        "success"
+      );
+
+    } catch (err) {
+      alert(
+        err?.message ||
+        "Failed to delete employee."
+      );
+    }
+  };
 
 document
   .getElementById("btnToggleEmployeeForm")

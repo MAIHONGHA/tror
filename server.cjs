@@ -1378,6 +1378,90 @@ app.post("/api/employees/:id/status", (req, res) => {
   }
 });
 
+// Delete employee only when no payroll history exists
+app.delete("/api/employees/:id", (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const workspaceId =
+      String(
+        req.query.workspaceId || ""
+      ).trim();
+
+    if (!workspaceId) {
+      return res.status(400).json({
+        error: "Workspace is required"
+      });
+    }
+
+    const employee =
+      db.prepare(`
+        SELECT *
+        FROM employees
+        WHERE id = ?
+          AND workspace_id = ?
+      `).get(
+        id,
+        workspaceId
+      );
+
+    if (!employee) {
+      return res.status(404).json({
+        error:
+          "Employee not found in this workspace"
+      });
+    }
+
+    const payrollHistory =
+      db.prepare(`
+        SELECT COUNT(*) AS count
+        FROM payroll_items
+        WHERE employee_id = ?
+          AND workspace_id = ?
+      `).get(
+        id,
+        workspaceId
+      );
+
+    if (
+      Number(
+        payrollHistory?.count || 0
+      ) > 0
+    ) {
+      return res.status(409).json({
+        error:
+          "Employee has payroll history. Mark the employee as Inactive or Left instead."
+      });
+    }
+
+    db.prepare(`
+      DELETE FROM employees
+      WHERE id = ?
+        AND workspace_id = ?
+    `).run(
+      id,
+      workspaceId
+    );
+
+    return res.json({
+      success: true,
+      message:
+        "Employee deleted successfully"
+    });
+
+  } catch (err) {
+    console.error(
+      "Delete employee error:",
+      err
+    );
+
+    return res.status(500).json({
+      error:
+        "Failed to delete employee"
+    });
+  }
+});
+
 app.get("/api/payroll-batches", (req, res) => {
   try {
     const workspaceId = String(
@@ -1805,7 +1889,11 @@ app.post("/api/payroll-batches/:id/cancel", (req, res) => {
       `).get(payoutId);
     }
 
-    const payoutResult = await executePayoutById(payout.id);
+    const payoutResult =
+  await executePayoutById(
+    payout.id,
+    batch.workspace_id
+  );
 
     const txHash =
       payoutResult.txHash ||
