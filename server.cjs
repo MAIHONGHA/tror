@@ -5565,6 +5565,193 @@ return res.json({
   }
 });
 
+app.post(
+  "/api/claims/:id/confirm",
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const txHash = String(
+        req.body.txHash || ""
+      ).trim();
+
+      const walletAddress = String(
+        req.body.walletAddress || ""
+      ).trim();
+
+      if (!txHash.startsWith("0x")) {
+        return res.status(400).json({
+          success: false,
+          error: "Valid transaction hash is required"
+        });
+      }
+
+      if (
+        !walletAddress ||
+        !ethers.isAddress(walletAddress)
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "Valid wallet address is required"
+        });
+      }
+
+      const claim = db.prepare(`
+        SELECT *
+        FROM claims
+        WHERE id = ?
+      `).get(String(id));
+
+      if (!claim) {
+        return res.status(404).json({
+          success: false,
+          error: "Claim not found"
+        });
+      }
+
+      const receipt =
+        await provider.getTransactionReceipt(
+          txHash
+        );
+
+      if (!receipt) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Claim transaction is not confirmed yet"
+        });
+      }
+
+      if (Number(receipt.status) !== 1) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Claim transaction failed on-chain"
+        });
+      }
+
+      const transaction =
+        await provider.getTransaction(
+          txHash
+        );
+
+      if (!transaction) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Claim transaction could not be loaded"
+        });
+      }
+
+      if (
+        String(transaction.to || "")
+          .toLowerCase() !==
+        String(CLAIM_V2_CONTRACT_ADDRESS)
+          .toLowerCase()
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Transaction was not sent to TRORClaim V2"
+        });
+      }
+
+      const claimInterface =
+        new ethers.Interface([
+          "function claim(uint256 claimId,uint256 authorizationDeadline,bytes authorization)"
+        ]);
+
+      let parsed;
+
+      try {
+        parsed =
+          claimInterface.parseTransaction({
+            data: transaction.data,
+            value: transaction.value
+          });
+      } catch {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Transaction is not a TRORClaim V2 claim"
+        });
+      }
+
+      const txClaimId =
+        parsed.args[0].toString();
+
+      if (
+        txClaimId !==
+        String(id)
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Transaction claimId does not match"
+        });
+      }
+
+      const sender =
+        String(
+          transaction.from || ""
+        ).toLowerCase();
+
+      if (
+        sender !==
+        walletAddress.toLowerCase()
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Transaction sender does not match receiving wallet"
+        });
+      }
+
+      const now =
+        new Date().toISOString();
+
+      db.prepare(`
+        UPDATE claims
+        SET status = 'CLAIMED',
+            walletAddress = ?,
+            txHash = ?,
+            claimedAt = ?
+        WHERE id = ?
+      `).run(
+        walletAddress,
+        txHash,
+        now,
+        String(id)
+      );
+
+      const updatedClaim =
+        db.prepare(`
+          SELECT *
+          FROM claims
+          WHERE id = ?
+        `).get(String(id));
+
+      return res.json({
+        success: true,
+        claim: updatedClaim
+      });
+
+    } catch (err) {
+      console.error(
+        "CONFIRM CLAIM ERROR:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          err?.message ||
+          "Failed to confirm claim"
+      });
+    }
+  }
+);
+
 app.get("/api/claim/:id", (req, res) => {
   const { id } = req.params;
 

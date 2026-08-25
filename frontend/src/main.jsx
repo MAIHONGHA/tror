@@ -10346,6 +10346,25 @@ const tx =
     );
   }
 
+const confirmResult =
+  await api(
+    `/api/claims/${claimId}/confirm`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        txHash: tx.hash,
+        walletAddress
+      })
+    }
+  );
+
+if (!confirmResult?.success) {
+  throw new Error(
+    confirmResult?.error ||
+    "Failed to confirm claim."
+  );
+}
+
   console.log(
     "TRORClaim V2 claim transaction:",
     {
