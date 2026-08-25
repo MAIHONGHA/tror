@@ -11,10 +11,6 @@ const cron = require("node-cron");
 const { Resend } = require("resend");
 const { Web3 } = require("web3");
 const ARC_MEMO_ADDRESS = "0x5294E9927c3306DcBaDb03fe70b92e01cCede505";
-const CLAIM_CONTRACT_ADDRESS =
-  process.env.CLAIM_CONTRACT_ADDRESS ||
-  "0xc90F1016E868EAf0A4af3d741D9304420d189213";
-
   const CLAIM_V2_CONTRACT_ADDRESS = String(
   process.env.CLAIM_V2_CONTRACT_ADDRESS || ""
 ).trim();
@@ -33,9 +29,6 @@ const CLAIM_VERIFIER_ADDRESS = String(
   process.env.CLAIM_VERIFIER_ADDRESS || ""
 ).trim();
 
-const CLAIM_CONTRACT_ABI = [
-  "function claimToWallet(uint256 claimId, address receiver) external"
-];
 const fetch = (...args) =>
   import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
