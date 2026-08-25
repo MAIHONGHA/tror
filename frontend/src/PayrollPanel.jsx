@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
 
+import {
+  getAccount
+} from "@wagmi/core";
+
+import {
+  wagmiAdapter
+} from "./appkit.js";
+
 const API_BASE = window.location.origin;
 
 function getCurrentWorkspace() {
@@ -297,27 +305,140 @@ async function viewBatchItems(batchId) {
   }
 
   async function executePayroll(batchId) {
-    if (!confirm("Execute payroll now?")) return;
+  try {
+    /*
+      1. Get the real connected Web3 wallet.
+      Backend must never choose a payer wallet.
+    */
+    const account =
+      getAccount(
+        wagmiAdapter.wagmiConfig
+      );
 
-    const res = await fetch(
-      `${API_BASE}/api/payroll-batches/${batchId}/execute`,
-      {
-        method: "POST",
-      }
-    );
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      alert(data.error || "Execute payroll failed");
+    if (!account?.address) {
+      alert(
+        "Connect your Web3 wallet before executing payroll."
+      );
       return;
     }
 
-    alert("Payroll executed ✅");
+    /*
+      Payroll v1 runs on Arc Testnet.
+    */
+    if (
+      Number(account.chainId) !==
+      5042002
+    ) {
+      alert(
+        "Switch your connected wallet to Arc Testnet before executing payroll."
+      );
+      return;
+    }
 
-    loadPayroll();
-    loadPayrollBatches();
+    /*
+      2. Ask backend only to PREPARE payroll data.
+      Backend does not send USDC.
+    */
+    const res = await fetch(
+      `${API_BASE}/api/payroll-batches/${batchId}/execute`,
+      {
+        method: "POST"
+      }
+    );
+
+    const data =
+      await res.json();
+
+    if (!res.ok) {
+      throw new Error(
+        data?.error ||
+        "Failed to prepare payroll payment."
+      );
+    }
+
+    if (
+      data?.mode !==
+        "CONNECTED_WALLET" ||
+      data?.requiresWalletSignature !==
+        true
+    ) {
+      throw new Error(
+        "Invalid payroll payment plan."
+      );
+    }
+
+    if (
+      !Array.isArray(data?.items) ||
+      data.items.length === 0
+    ) {
+      throw new Error(
+        "No payroll payment items were returned."
+      );
+    }
+
+    /*
+      3. Store the payment plan.
+
+      This wallet is now explicitly
+      the payroll payer.
+    */
+    window.pendingPayrollPayment = {
+      ...data,
+
+      payerAddress:
+        account.address,
+
+      payerType:
+        "WEB3",
+
+      chainId:
+        account.chainId
+    };
+
+    console.log(
+      "TROR payroll payment plan:",
+      window.pendingPayrollPayment
+    );
+
+    /*
+      Contract execution comes next.
+      For now this proves that the backend
+      no longer selects a private-key wallet.
+    */
+    const confirmed =
+      confirm(
+        `TROR Payroll\n\n` +
+        `Payer:\n${account.address}\n\n` +
+        `Employees: ${data.employeeCount}\n` +
+        `Total: ${data.totalAmount} ${data.currency}\n\n` +
+        `Network: ${data.network?.chainName || "Arc Testnet"}\n\n` +
+        `Continue to wallet authorization?`
+      );
+
+    if (!confirmed) {
+      window.pendingPayrollPayment =
+        null;
+
+      return;
+    }
+
+    alert(
+      "Payroll is ready for wallet authorization.\n\n" +
+      "The next step is TRORPayroll contract execution."
+    );
+
+  } catch (err) {
+    console.error(
+      "Prepare payroll payment error:",
+      err
+    );
+
+    alert(
+      err?.message ||
+      "Failed to prepare payroll payment."
+    );
   }
+}
 
   async function unapprovePayroll(batchId) {
     if (!confirm("Move payroll back to DRAFT?")) return;
