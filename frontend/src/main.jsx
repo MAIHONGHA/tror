@@ -10243,31 +10243,135 @@ async function loadClaimPage() {
     }
 
     try {
-      const result = await api(
-        `/api/claims/${claimId}/claim`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            walletAddress,
-            googleAccessToken
-          })
-        }
-      );
-
-      document.getElementById(
-        "claimStatus"
-      ).innerText =
-        result.success
-          ? "Claimed successfully!"
-          : "Error: " + result.error;
-    } catch (err) {
-      document.getElementById(
-        "claimStatus"
-      ).innerText =
-        "Error: " + err.message;
+  const result = await api(
+    `/api/claims/${claimId}/claim`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        walletAddress,
+        googleAccessToken
+      })
     }
-  };
+  );
 
+  if (!result?.success) {
+    throw new Error(
+      result?.error ||
+      "Failed to prepare claim."
+    );
+  }
+
+  const claimContractAddress =
+    result?.network?.claimContract;
+
+  const contractArgs =
+    result?.contractCall?.args;
+
+  if (
+    !claimContractAddress ||
+    !ethers.isAddress(claimContractAddress)
+  ) {
+    throw new Error(
+      "TRORClaim V2 contract address is missing."
+    );
+  }
+
+  if (
+    !Array.isArray(contractArgs) ||
+    contractArgs.length < 2
+  ) {
+    throw new Error(
+      "Invalid claim contract parameters."
+    );
+  }
+
+  if (!window.ethereum) {
+    throw new Error(
+      "Please connect your Web3 wallet."
+    );
+  }
+
+  const provider =
+    new ethers.BrowserProvider(
+      window.ethereum
+    );
+
+  const signer =
+    await provider.getSigner();
+
+  const signerAddress =
+    await signer.getAddress();
+
+  if (
+    signerAddress.toLowerCase() !==
+    walletAddress.toLowerCase()
+  ) {
+    throw new Error(
+      "Connected wallet does not match the receiving wallet address."
+    );
+  }
+
+  document.getElementById(
+    "claimStatus"
+  ).innerText =
+    "Confirm claim in your Web3 wallet...";
+
+  const claimContract =
+    new ethers.Contract(
+      claimContractAddress,
+      [
+        "function claimToWallet(uint256 claimId,address receiver) external"
+      ],
+      signer
+    );
+
+  const tx =
+    await claimContract.claimToWallet(
+      BigInt(contractArgs[0]),
+      contractArgs[1]
+    );
+
+  document.getElementById(
+    "claimStatus"
+  ).innerText =
+    "Claim submitted. Waiting for confirmation...";
+
+  const receipt =
+    await tx.wait();
+
+  if (!receipt || receipt.status !== 1) {
+    throw new Error(
+      "Claim transaction failed."
+    );
+  }
+
+  console.log(
+    "TRORClaim V2 claim transaction:",
+    {
+      claimId,
+      receiver: walletAddress,
+      contract: claimContractAddress,
+      txHash: tx.hash
+    }
+  );
+
+  document.getElementById(
+    "claimStatus"
+  ).innerText =
+    "Claimed successfully!";
+
+} catch (err) {
+  document.getElementById(
+    "claimStatus"
+  ).innerText =
+    "Error: " +
+    (
+      err?.shortMessage ||
+      err?.message ||
+      String(err)
+    );
+}
+};
   document.getElementById(
     "btnRequestWithdraw"
   ).onclick = async () => {

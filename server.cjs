@@ -15,6 +15,16 @@ const CLAIM_CONTRACT_ADDRESS =
   process.env.CLAIM_CONTRACT_ADDRESS ||
   "0xc90F1016E868EAf0A4af3d741D9304420d189213";
 
+  const CLAIM_V2_CONTRACT_ADDRESS = String(
+  process.env.CLAIM_V2_CONTRACT_ADDRESS || ""
+).trim();
+
+if (!CLAIM_V2_CONTRACT_ADDRESS) {
+  console.warn(
+    "CLAIM_V2_CONTRACT_ADDRESS is not configured."
+  );
+}
+
 const CLAIM_CONTRACT_ABI = [
   "function claimToWallet(uint256 claimId, address receiver) external"
 ];
@@ -52,10 +62,6 @@ const ARC_RPC_URL = String(
   process.env.ARC_RPC_URL || "https://rpc.testnet.arc.network"
 );
 const provider = new ethers.JsonRpcProvider(ARC_RPC_URL);
-const PAYOUT_PRIVATE_KEY = process.env.PAYOUT_PRIVATE_KEY || "";
-const payoutWallet = PAYOUT_PRIVATE_KEY
-  ? new ethers.Wallet(PAYOUT_PRIVATE_KEY, provider)
-  : null;
 
 const ERC20_ABI = [
   "function transfer(address to, uint256 amount) returns (bool)",
@@ -1767,7 +1773,12 @@ app.post("/api/payroll-batches/:id/cancel", (req, res) => {
   });
 });
 
-    app.post("/api/payroll-batches/:id/execute", async (req, res) => {
+/* =========================
+   PREPARE PAYROLL EXECUTION
+   NON-CUSTODIAL
+========================= */
+
+app.post("/api/payroll-batches/:id/execute", async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -1779,13 +1790,16 @@ app.post("/api/payroll-batches/:id/cancel", (req, res) => {
 
     if (!batch) {
       return res.status(404).json({
+        success: false,
         error: "Payroll batch not found"
       });
     }
 
     if (!["APPROVED", "REVIEW"].includes(batch.status)) {
       return res.status(400).json({
-        error: "Only APPROVED or REVIEW payroll batch can be executed"
+        success: false,
+        error:
+          "Only APPROVED or REVIEW payroll batch can be prepared for payment"
       });
     }
 
@@ -1793,220 +1807,126 @@ app.post("/api/payroll-batches/:id/cancel", (req, res) => {
       SELECT *
       FROM payroll_items
       WHERE batch_id = ?
+        AND status != 'PAID'
+      ORDER BY created_at ASC
     `).all(id);
 
     if (!items.length) {
-      return res.status(404).json({
-        error: "No payroll items found"
+      return res.status(400).json({
+        success: false,
+        error: "No unpaid payroll items found"
       });
     }
 
-    const results = [];
+    const paymentItems = [];
 
     for (const item of items) {
-  if (item.status === "PAID") {
-    results.push({
-      employee: item.employee_name,
-      amount: item.final_amount,
-      status: "PAID",
-      skipped: true,
-      txHash: item.tx_hash || null
-    });
+      if (!ethers.isAddress(item.wallet)) {
+        return res.status(400).json({
+          success: false,
+          error:
+            `Invalid employee wallet for ${item.employee_name}`
+        });
+      }
 
-    continue;
-  }
+      const amount =
+        Number(item.final_amount);
 
-  if (!["APPROVED", "REVIEW", "FAILED"].includes(item.status)) {
-    results.push({
-      employee: item.employee_name,
-      amount: item.final_amount,
-      status: item.status,
-      skipped: true
-    });
+      if (
+        !Number.isFinite(amount) ||
+        amount <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            `Invalid payroll amount for ${item.employee_name}`
+        });
+      }
 
-    continue;
-  }
-
-  try {
-    if (!ethers.isAddress(item.wallet)) {
-      throw new Error(
-        `Invalid employee wallet for ${item.employee_name}`
-      );
+      paymentItems.push({
+        itemId: item.id,
+        employeeName:
+          item.employee_name,
+        employeeEmail:
+          item.employee_email || "",
+        recipient:
+          item.wallet,
+        amount: Number(
+          amount.toFixed(6)
+        ),
+        amountUnits:
+          ethers
+            .parseUnits(
+              amount.toFixed(6),
+              USDC_DECIMALS
+            )
+            .toString()
+      });
     }
 
-    if (
-      !Number.isFinite(Number(item.final_amount)) ||
-      Number(item.final_amount) <= 0
-    ) {
-      throw new Error(
-        `Invalid payroll amount for ${item.employee_name}`
+    const totalAmount =
+      paymentItems.reduce(
+        (sum, item) =>
+          sum + Number(item.amount),
+        0
       );
-    }
-
-    db.prepare(`
-      UPDATE payroll_items
-      SET status = 'PROCESSING'
-      WHERE id = ?
-    `).run(item.id);
-
-    let payout = db.prepare(`
-      SELECT *
-      FROM payouts
-      WHERE payroll_item_id = ?
-      LIMIT 1
-    `).get(item.id);
-
-    if (!payout) {
-      const payoutId = crypto.randomUUID();
-
-      db.prepare(`
-        INSERT INTO payouts (
-          id,
-          recipient,
-          amount,
-          status,
-          mode,
-          frequency,
-          payroll_item_id,
-          workspace_id
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        payoutId,
-        item.wallet,
-        item.final_amount,
-        "APPROVED",
-        "payroll",
-        "once",
-        item.id,
-        batch.workspace_id
-      );
-
-      payout = db.prepare(`
-        SELECT *
-        FROM payouts
-        WHERE id = ?
-      `).get(payoutId);
-    }
-
-    const payoutResult =
-  await executePayoutById(
-    payout.id,
-    batch.workspace_id
-  );
-
-    const txHash =
-      payoutResult.txHash ||
-      payoutResult.payout?.tx_hash ||
-      payout.tx_hash ||
-      null;
-
-    db.prepare(`
-      UPDATE payroll_items
-      SET status = 'PAID',
-          tx_hash = ?
-      WHERE id = ?
-    `).run(txHash, item.id);
-
-    results.push({
-      employee: item.employee_name,
-      amount: item.final_amount,
-      status: "PAID",
-      txHash
-    });
-  } catch (itemErr) {
-  const errorMessage =
-    itemErr?.error?.message ||
-    itemErr?.shortMessage ||
-    itemErr?.message ||
-    "Unknown payroll item error";
-
-  const isRpcRateLimit =
-    String(errorMessage)
-      .toLowerCase()
-      .includes("request limit reached") ||
-    itemErr?.error?.code === -32011 ||
-    itemErr?.code === -32011;
-
-  console.error(
-    isRpcRateLimit
-      ? "PAYROLL RPC RATE LIMITED:"
-      : "PAYROLL ITEM FAILED:",
-    item.employee_name,
-    itemErr
-  );
-
-  const nextItemStatus = isRpcRateLimit
-    ? "REVIEW"
-    : "FAILED";
-
-  db.prepare(`
-    UPDATE payroll_items
-    SET status = ?
-    WHERE id = ?
-      AND status != 'PAID'
-  `).run(
-    nextItemStatus,
-    item.id
-  );
-
-  results.push({
-    employee: item.employee_name,
-    amount: item.final_amount,
-    status: nextItemStatus,
-    retryable: isRpcRateLimit,
-    error: errorMessage
-  });
-
-  continue;
-}
-}
-
-    const summary = db.prepare(`
-  SELECT
-    COUNT(*) AS total_count,
-    SUM(CASE WHEN status = 'PAID' THEN 1 ELSE 0 END) AS paid_count,
-    SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS failed_count,
-    SUM(CASE WHEN status = 'PROCESSING' THEN 1 ELSE 0 END) AS processing_count
-  FROM payroll_items
-  WHERE batch_id = ?
-`).get(id);
-
-const nextBatchStatus =
-  summary.total_count > 0 &&
-  summary.paid_count === summary.total_count
-    ? "PAID"
-    : summary.failed_count > 0
-      ? "REVIEW"
-      : "APPROVED";
-
-db.prepare(`
-  UPDATE payroll_batches
-  SET status = ?
-  WHERE id = ?
-`).run(nextBatchStatus, id);
 
     return res.json({
-  success: true,
-  payrollBatch: id,
-  batchStatus: nextBatchStatus,
-  summary: {
-    total: Number(summary.total_count || 0),
-    paid: Number(summary.paid_count || 0),
-    failed: Number(summary.failed_count || 0),
-    processing: Number(summary.processing_count || 0)
-  },
-  results
-});
+      success: true,
+
+      mode:
+        "CONNECTED_WALLET",
+
+      requiresWalletSignature:
+        true,
+
+      payrollBatch: {
+        id: batch.id,
+        workspaceId:
+          batch.workspace_id,
+        title:
+          batch.title || "Payroll",
+        status:
+          batch.status,
+        frequency:
+          batch.frequency || "once"
+      },
+
+      currency:
+        "USDC",
+
+      network: {
+        chainId:
+          ARC_CHAIN_ID,
+        chainName:
+          ARC_CHAIN_NAME,
+        usdcAddress:
+          USDC_ADDRESS
+      },
+
+      employeeCount:
+        paymentItems.length,
+
+      totalAmount:
+        Number(
+          totalAmount.toFixed(6)
+        ),
+
+      items:
+        paymentItems
+    });
+
   } catch (err) {
-    console.error("PAYROLL EXECUTE ERROR:", err);
+    console.error(
+      "PREPARE PAYROLL EXECUTION ERROR:",
+      err
+    );
 
     return res.status(500).json({
       success: false,
-      error: "Payroll execution failed",
+      error:
+        "Failed to prepare payroll execution",
       details:
-        err?.error?.message ||
-        err?.shortMessage ||
         err?.message ||
         "Unknown error"
     });
@@ -2549,99 +2469,176 @@ app.get("/test-payroll", (req, res) => {
   });
 });
 
-async function executePayoutById(id, workspaceId) {
-  if (!payoutWallet) {
-    throw new Error("Missing PAYOUT_PRIVATE_KEY");
+async function preparePayoutById(id, workspaceId) {
+  const normalizedWorkspaceId =
+    String(workspaceId || "").trim();
+
+  if (!normalizedWorkspaceId) {
+    throw new Error("Workspace is required");
   }
 
   const payout = db.prepare(`
-  SELECT *
-  FROM payouts
-  WHERE id = ?
-    AND workspace_id = ?
-`).get(id, workspaceId);
+    SELECT *
+    FROM payouts
+    WHERE id = ?
+      AND workspace_id = ?
+  `).get(
+    id,
+    normalizedWorkspaceId
+  );
 
   if (!payout) {
-    throw new Error("Payout not found");
+    throw new Error(
+      "Payout not found in this workspace"
+    );
   }
 
   if (payout.status === "PAID") {
-    return { alreadyPaid: true, payout };
+    return {
+      alreadyPaid: true,
+      payout
+    };
   }
 
   const allowedStatuses = [
   "PENDING",
   "REVIEW",
   "APPROVED",
-  "PROCESSING"
+  "FAILED",
+  "READY_TO_SIGN"
 ];
 
-if (!allowedStatuses.includes(payout.status)) {
-  throw new Error(
-    `Payout cannot be executed from status ${payout.status}`
-  );
-}
+  if (
+    !allowedStatuses.includes(
+      payout.status
+    )
+  ) {
+    throw new Error(
+      `Payout cannot be prepared from status ${payout.status}`
+    );
+  }
 
-  const usdc = new ethers.Contract(
-    USDC_ADDRESS,
-    ERC20_ABI,
-    payoutWallet
-  );
+  if (
+    !ethers.isAddress(
+      String(payout.recipient || "")
+    )
+  ) {
+    throw new Error(
+      "Invalid payout recipient"
+    );
+  }
 
-  const numericAmount = Number(payout.amount);
+  const numericAmount =
+    Number(payout.amount);
 
-if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
-  throw new Error(`Invalid payout amount: ${payout.amount}`);
-}
+  if (
+    !Number.isFinite(numericAmount) ||
+    numericAmount <= 0
+  ) {
+    throw new Error(
+      `Invalid payout amount: ${payout.amount}`
+    );
+  }
 
-const normalizedAmount = numericAmount.toFixed(6);
-const amountUnits = ethers.parseUnits(normalizedAmount, 6);
+  const normalizedAmount =
+    numericAmount.toFixed(6);
 
-  const tx = await usdc.transfer(payout.recipient, amountUnits);
-  await tx.wait();
-
-  db.prepare(`
-  UPDATE payouts
-  SET status = 'PAID',
-      tx_hash = ?
-  WHERE id = ?
-    AND workspace_id = ?
-`).run(
-  tx.hash,
-  id,
-  workspaceId
-);
+  const amountUnits =
+    ethers
+      .parseUnits(
+        normalizedAmount,
+        USDC_DECIMALS
+      )
+      .toString();
 
   return {
-    id,
-    txHash: tx.hash,
-    status: "PAID"
+    success: true,
+
+    mode:
+      "CONNECTED_WALLET",
+
+    requiresWalletSignature:
+      true,
+
+    payout: {
+      id: payout.id,
+
+      workspaceId:
+        payout.workspace_id,
+
+      recipient:
+        payout.recipient,
+
+      amount:
+        Number(normalizedAmount),
+
+      amountUnits,
+
+      currency:
+        "USDC",
+
+      payoutMode:
+        payout.mode || "now",
+
+      frequency:
+        payout.frequency || "once",
+
+      status:
+        payout.status,
+
+      nextRunAt:
+        payout.next_run_at || null
+    },
+
+    network: {
+      chainId:
+        ARC_CHAIN_ID,
+
+      chainName:
+        ARC_CHAIN_NAME,
+
+      usdcAddress:
+        USDC_ADDRESS
+    }
   };
 }
 
 app.post("/api/payouts/:id/execute", async (req, res) => {
   try {
-    const workspaceId = String(
-  req.body.workspaceId || ""
-).trim();
+    const workspaceId =
+      String(
+        req.body.workspaceId || ""
+      ).trim();
 
-const result = await executePayoutById(
-  req.params.id,
-  workspaceId
-);
+    const result =
+      await preparePayoutById(
+        req.params.id,
+        workspaceId
+      );
 
-    res.json({
-      message: result.alreadyPaid ? "Already paid" : "Payout sent",
+    return res.json({
+      message:
+        result.alreadyPaid
+          ? "Already paid"
+          : "Payout ready for wallet authorization",
       ...result
     });
+
   } catch (err) {
-    console.error("PAYOUT ERROR:", err);
-    res.status(500).json({
-      error: "Payout failed",
-      details: err.message
+    console.error(
+      "PREPARE PAYOUT ERROR:",
+      err
+    );
+
+    return res.status(500).json({
+      error:
+        "Failed to prepare payout",
+      details:
+        err?.message ||
+        "Unknown error"
     });
   }
-});   
+});
 
 app.post("/api/payouts/:id/approve", (req, res) => {
   try {
@@ -2883,28 +2880,18 @@ function rowToInvoice(row) {
   };
 }
 
-async function recordPaymentMemo({ txHash, type, amount, from, to, note }) {
+function buildPaymentMemo({
+  txHash,
+  type,
+  amount,
+  from,
+  to,
+  note
+}) {
   try {
-    if (!PAYOUT_PRIVATE_KEY) {
-      console.warn("Memo skipped: missing PAYOUT_PRIVATE_KEY");
-      return null;
-    }
-
-    const wallet = new ethers.Wallet(PAYOUT_PRIVATE_KEY, provider);
-
-    const MEMO_ABI = [
-      "function memo(address target, bytes data, bytes32 memoId, bytes memoData)"
-    ];
-
-    const memoContract = new ethers.Contract(
-      ARC_MEMO_ADDRESS,
-      MEMO_ABI,
-      wallet
-    );
-
     const memoText = JSON.stringify({
       app: "TROR",
-      type,
+      type: type || "",
       amount: String(amount || ""),
       from: from || "",
       to: to || "",
@@ -2913,28 +2900,30 @@ async function recordPaymentMemo({ txHash, type, amount, from, to, note }) {
       timestamp: new Date().toISOString()
     });
 
-    const transferData = "0x";
-
     const memoId = ethers.keccak256(
-      ethers.toUtf8Bytes(`TROR-${type}-${txHash || Date.now()}`)
+      ethers.toUtf8Bytes(
+        `TROR-${type || "payment"}-${txHash || Date.now()}`
+      )
     );
 
-    const memoData = ethers.toUtf8Bytes(memoText);
+    const memoData =
+      ethers.hexlify(
+        ethers.toUtf8Bytes(memoText)
+      );
 
-    const memoTx = await memoContract.memo(
-      USDC_ADDRESS,
-      transferData,
+    return {
       memoId,
-      memoData
+      memoData,
+      memoText,
+      memoContract: ARC_MEMO_ADDRESS
+    };
+
+  } catch (err) {
+    console.warn(
+      "Failed to build payment memo:",
+      err.message
     );
 
-    await memoTx.wait();
-
-    console.log("TROR memo tx:", memoTx.hash);
-
-    return memoTx.hash;
-  } catch (err) {
-    console.warn("Memo failed, payment still OK:", err.message);
     return null;
   }
 }
@@ -5387,70 +5376,140 @@ app.get("/api/claims/:id", (req, res) => {
 app.post("/api/claims/:id/claim", async (req, res) => {
   try {
     const {
-  walletAddress,
-  googleAccessToken
-} = req.body;
+      walletAddress,
+      googleAccessToken
+    } = req.body;
 
-const { id } = req.params;
+    const { id } = req.params;
 
-await verifyClaimRecipient(id, googleAccessToken);
+    // Verify that the signed-in Google account
+    // is the intended claim recipient.
+    await verifyClaimRecipient(
+      id,
+      googleAccessToken
+    );
 
-    if (!walletAddress || !walletAddress.startsWith("0x")) {
-      return res.status(400).json({ error: "Valid wallet address is required" });
+    if (
+      !walletAddress ||
+      !ethers.isAddress(walletAddress)
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "Valid wallet address is required"
+      });
     }
 
-    const claim = db.prepare("SELECT * FROM claims WHERE id = ?").get(id);
+    const claim = db.prepare(`
+      SELECT *
+      FROM claims
+      WHERE id = ?
+    `).get(id);
 
     if (!claim) {
-      return res.status(404).json({ error: "Claim not found" });
+      return res.status(404).json({
+        success: false,
+        error: "Claim not found"
+      });
     }
 
     if (claim.status === "CLAIMED") {
-      return res.status(400).json({ error: "Claim already claimed" });
+      return res.status(400).json({
+        success: false,
+        error: "Claim already claimed"
+      });
     }
 
-    if (!PAYOUT_PRIVATE_KEY) {
-      return res.status(500).json({ error: "Missing PAYOUT_PRIVATE_KEY" });
+    const amount =
+      Number(claim.amount);
+
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid claim amount"
+      });
     }
 
-    const payoutWallet = new ethers.Wallet(PAYOUT_PRIVATE_KEY, provider);
+    /*
+     * NON-CUSTODIAL CLAIM
+     *
+     * Backend does NOT sign.
+     * Backend does NOT transfer USDC.
+     *
+     * The connected Web3/Circle wallet
+     * must authorize the on-chain action.
+     */
 
-    const claimContract = new ethers.Contract(
-  CLAIM_CONTRACT_ADDRESS,
-  CLAIM_CONTRACT_ABI,
-  payoutWallet
-);
+    return res.json({
+      success: true,
 
-const tx = await claimContract.claimToWallet(id, walletAddress);
-await tx.wait();
+      mode: "CONNECTED_WALLET",
 
-    db.prepare(`
-      UPDATE claims
-      SET status = ?,
-          walletAddress = ?,
-          claimedAt = ?,
-          txHash = ?
-      WHERE id = ?
-    `).run(
-      "CLAIMED",
-      walletAddress,
-      new Date().toISOString(),
-      tx.hash,
-      id
+      requiresWalletSignature: true,
+
+      claim: {
+        id: claim.id,
+
+        recipientEmail:
+          claim.recipientEmail,
+
+        receiver:
+          walletAddress,
+
+        amount:
+          Number(amount.toFixed(6)),
+
+        amountUnits:
+          ethers
+            .parseUnits(
+              amount.toFixed(6),
+              USDC_DECIMALS
+            )
+            .toString(),
+
+        status:
+          claim.status
+      },
+
+      network: {
+        chainId:
+          ARC_CHAIN_ID,
+
+        chainName:
+          ARC_CHAIN_NAME,
+
+        usdcAddress:
+          USDC_ADDRESS,
+
+        claimContract:
+  CLAIM_V2_CONTRACT_ADDRESS
+      },
+
+      contractCall: {
+        functionName:
+          "claimToWallet",
+
+        args: [
+          id,
+          walletAddress
+        ]
+      }
+    });
+
+  } catch (err) {
+    console.error(
+      "PREPARE CLAIM ERROR:",
+      err
     );
 
-console.log("CLAIM CREATED:", id);
-
-    res.json({
-      success: true,
-      message: "USDC claimed successfully",
-      walletAddress,
-      txHash: tx.hash,
-      claimedAt: new Date().toISOString()
+    return res.status(500).json({
+      success: false,
+      error:
+        err?.message ||
+        "Failed to prepare claim"
     });
-  } catch (err) {
-    console.error("claim transfer error:", err);
-    res.status(500).json({ error: err.message });
   }
 });
 
@@ -5674,15 +5733,16 @@ app.post("/api/payouts/:id/confirm", async (req, res) => {
 }
 
 
-    const result = await executePayoutById(
+    const result = await preparePayoutById(
   id,
   workspaceId
 );
 
-    return res.json({
-      message: "Payout paid now",
-      ...result
-    });
+return res.json({
+  message:
+    "Payout ready for wallet authorization",
+  ...result
+});
   } catch (err) {
     console.error("CONFIRM PAYOUT ERROR:", err);
 
@@ -5695,6 +5755,7 @@ app.post("/api/payouts/:id/confirm", async (req, res) => {
 
 // =======================
 // SCHEDULED PAYOUT CRON
+// NON-CUSTODIAL
 // =======================
 
 let payoutSchedulerRunning = false;
@@ -5719,7 +5780,7 @@ cron.schedule("* * * * *", async () => {
         AND next_run_at IS NOT NULL
         AND datetime(next_run_at) <= datetime('now')
       ORDER BY datetime(next_run_at) ASC
-      LIMIT 5
+      LIMIT 20
     `).all();
 
     if (duePayouts.length === 0) {
@@ -5727,18 +5788,25 @@ cron.schedule("* * * * *", async () => {
     }
 
     console.log(
-      `Found ${duePayouts.length} scheduled payout(s) due`
+      `Found ${duePayouts.length} scheduled payout(s) ready for wallet authorization`
     );
 
     for (const payout of duePayouts) {
       try {
         /*
-         * Atomically claim the payout.
-         * Only one scheduler run can change APPROVED → PROCESSING.
+         * NON-CUSTODIAL:
+         *
+         * The server NEVER signs or sends USDC.
+         *
+         * When the scheduled time arrives,
+         * the payout becomes READY_TO_SIGN.
+         *
+         * The connected Web3 or Circle wallet
+         * must authorize the actual transaction.
          */
-        const claimResult = db.prepare(`
+        const result = db.prepare(`
           UPDATE payouts
-          SET status = 'PROCESSING'
+          SET status = 'READY_TO_SIGN'
           WHERE id = ?
             AND workspace_id = ?
             AND status = 'APPROVED'
@@ -5747,9 +5815,9 @@ cron.schedule("* * * * *", async () => {
           payout.workspace_id
         );
 
-        if (claimResult.changes !== 1) {
+        if (result.changes !== 1) {
           console.log(
-            "Scheduled payout already claimed:",
+            "Scheduled payout was already updated:",
             payout.id
           );
 
@@ -5757,71 +5825,25 @@ cron.schedule("* * * * *", async () => {
         }
 
         console.log(
-          "Executing scheduled payout:",
+          "Scheduled payout ready for wallet authorization:",
           payout.id
         );
 
-        const result = await executePayoutById(
-          payout.id,
-          payout.workspace_id
-        );
-
-        console.log(
-          "Scheduled payout paid:",
-          payout.id,
-          result.txHash
-        );
       } catch (err) {
-        const errorMessage =
-          err?.error?.message ||
-          err?.shortMessage ||
-          err?.message ||
-          "Unknown scheduled payout error";
-
-        const normalizedError =
-          String(errorMessage).toLowerCase();
-
-        const isRpcRateLimit =
-          normalizedError.includes(
-            "request limit reached"
-          ) ||
-          normalizedError.includes(
-            "too many requests"
-          ) ||
-          normalizedError.includes("rate limit") ||
-          err?.error?.code === -32011 ||
-          err?.code === -32011;
-
-        const nextStatus = isRpcRateLimit
-          ? "APPROVED"
-          : "FAILED";
-
-        db.prepare(`
-          UPDATE payouts
-          SET status = ?
-          WHERE id = ?
-            AND workspace_id = ?
-            AND status = 'PROCESSING'
-        `).run(
-          nextStatus,
-          payout.id,
-          payout.workspace_id
-        );
-
         console.error(
-          isRpcRateLimit
-            ? "Scheduled payout RPC rate limited:"
-            : "Scheduled payout failed:",
+          "Failed to prepare scheduled payout:",
           payout.id,
-          errorMessage
+          err?.message || err
         );
       }
     }
+
   } catch (err) {
     console.error(
       "Scheduled payout cron error:",
       err
     );
+
   } finally {
     payoutSchedulerRunning = false;
   }
