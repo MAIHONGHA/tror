@@ -7926,6 +7926,14 @@ async function sendClaimWithCircleWallet() {
       );
     }
 
+const currentWorkspace = getCurrentWorkspace();
+
+if (!currentWorkspace?.id) {
+  throw new Error(
+    "Please select a workspace before sending the Gmail Claim."
+  );
+}
+
     const data = await api("/api/claims/send-email", {
       method: "POST",
       body: JSON.stringify({
