@@ -426,6 +426,20 @@ try {
 
 try {
   db.prepare(`
+    ALTER TABLE payroll_batches
+    ADD COLUMN tx_hash TEXT
+  `).run();
+} catch {}
+
+try {
+  db.prepare(`
+    ALTER TABLE payroll_batches
+    ADD COLUMN paid_at TEXT
+  `).run();
+} catch {}
+
+try {
+  db.prepare(`
     ALTER TABLE payroll_items
     ADD COLUMN workspace_id TEXT
   `).run();
@@ -1934,6 +1948,211 @@ app.post("/api/payroll-batches/:id/execute", async (req, res) => {
   }
 }); 
 
+app.post(
+  "/api/payroll-batches/:id/confirm",
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const txHash = String(
+        req.body.txHash || ""
+      ).trim();
+
+      const payerAddress = String(
+        req.body.payerAddress || ""
+      ).trim();
+
+      if (!txHash.startsWith("0x")) {
+        return res.status(400).json({
+          success: false,
+          error: "Valid transaction hash is required"
+        });
+      }
+
+      if (
+        !payerAddress ||
+        !ethers.isAddress(payerAddress)
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "Valid payer address is required"
+        });
+      }
+
+      const batch = db.prepare(`
+        SELECT *
+        FROM payroll_batches
+        WHERE id = ?
+      `).get(id);
+
+      if (!batch) {
+        return res.status(404).json({
+          success: false,
+          error: "Payroll batch not found"
+        });
+      }
+
+      const receipt =
+        await provider.getTransactionReceipt(
+          txHash
+        );
+
+      if (!receipt) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Payroll transaction is not confirmed yet"
+        });
+      }
+
+      if (Number(receipt.status) !== 1) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Payroll transaction failed on-chain"
+        });
+      }
+
+      const transaction =
+        await provider.getTransaction(
+          txHash
+        );
+
+      if (!transaction) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Payroll transaction could not be loaded"
+        });
+      }
+
+      const TROR_PAYROLL_CONTRACT_ADDRESS =
+        "0xE92413d559aCed050ef10c62DC79AAc568F377F0";
+
+      if (
+        String(transaction.to || "")
+          .toLowerCase() !==
+        TROR_PAYROLL_CONTRACT_ADDRESS
+          .toLowerCase()
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Transaction was not sent to TRORPayroll"
+        });
+      }
+
+      if (
+        String(transaction.from || "")
+          .toLowerCase() !==
+        payerAddress.toLowerCase()
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Payroll transaction payer does not match"
+        });
+      }
+
+      const payrollInterface =
+        new ethers.Interface([
+          "function executePayroll(bytes32 payrollId,address[] recipients,uint256[] amounts)"
+        ]);
+
+      let parsed;
+
+      try {
+        parsed =
+          payrollInterface.parseTransaction({
+            data:
+              transaction.data,
+            value:
+              transaction.value
+          });
+      } catch {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Transaction is not a TRORPayroll execution"
+        });
+      }
+
+      const expectedPayrollId =
+        ethers.keccak256(
+          ethers.toUtf8Bytes(
+            `tror-payroll-${id}`
+          )
+        );
+
+      if (
+        String(parsed.args[0]).toLowerCase() !==
+        expectedPayrollId.toLowerCase()
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Payroll ID does not match batch"
+        });
+      }
+
+      const now =
+        new Date().toISOString();
+
+      const updatePayroll =
+        db.transaction(() => {
+          db.prepare(`
+            UPDATE payroll_batches
+            SET status = 'PAID',
+                tx_hash = ?,
+                paid_at = ?
+            WHERE id = ?
+          `).run(
+            txHash,
+            now,
+            id
+          );
+
+          db.prepare(`
+            UPDATE payroll_items
+            SET status = 'PAID',
+                tx_hash = ?
+            WHERE batch_id = ?
+              AND status != 'PAID'
+          `).run(
+            txHash,
+            id
+          );
+        });
+
+      updatePayroll();
+
+      return res.json({
+        success: true,
+        batchId:
+          id,
+        status:
+          "PAID",
+        txHash,
+        paidAt:
+          now
+      });
+
+    } catch (err) {
+      console.error(
+        "CONFIRM PAYROLL ERROR:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          err?.message ||
+          "Failed to confirm payroll"
+      });
+    }
+  }
+);
+
 app.post("/api/payroll-items/:id/update", (req, res) => {
   const { id } = req.params;
 
@@ -1961,7 +2180,7 @@ app.post("/api/payroll-items/:id/update", (req, res) => {
 
   const finalAmount = Number(
   (
-    Number(baseSalary || 0) +
+    Number(base || 0) +
     Number(overtimeHours || 0) * Number(overtimeRate || 0) +
     Number(allowance || 0) +
     Number(bonus || 0) -

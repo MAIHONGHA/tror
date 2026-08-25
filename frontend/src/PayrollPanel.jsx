@@ -1,14 +1,73 @@
 import { useEffect, useState } from "react";
 
 import {
-  getAccount
+  getAccount,
+  writeContract,
+  waitForTransactionReceipt
 } from "@wagmi/core";
 
 import {
   wagmiAdapter
 } from "./appkit.js";
 
+import { ethers } from "ethers";
+
 const API_BASE = window.location.origin;
+
+const ARC_CHAIN_ID = 5042002;
+
+const USDC_ADDRESS =
+  "0x3600000000000000000000000000000000000000";
+
+const TROR_PAYROLL_CONTRACT_ADDRESS =
+  "0xE92413d559aCed050ef10c62DC79AAc568F377F0";
+
+const ERC20_APPROVE_ABI = [
+  {
+    type: "function",
+    name: "approve",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "spender",
+        type: "address"
+      },
+      {
+        name: "amount",
+        type: "uint256"
+      }
+    ],
+    outputs: [
+      {
+        name: "",
+        type: "bool"
+      }
+    ]
+  }
+];
+
+const TROR_PAYROLL_ABI = [
+  {
+    type: "function",
+    name: "executePayroll",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "payrollId",
+        type: "bytes32"
+      },
+      {
+        name: "recipients",
+        type: "address[]"
+      },
+      {
+        name: "amounts",
+        type: "uint256[]"
+      }
+    ],
+    outputs: []
+  }
+];
 
 function getCurrentWorkspace() {
   try {
@@ -422,10 +481,178 @@ async function viewBatchItems(batchId) {
       return;
     }
 
-    alert(
-      "Payroll is ready for wallet authorization.\n\n" +
-      "The next step is TRORPayroll contract execution."
-    );
+    const recipients =
+  data.items.map(
+    (item) => item.recipient
+  );
+
+const amounts =
+  data.items.map(
+    (item) =>
+      BigInt(item.amountUnits)
+  );
+
+const totalAmountUnits =
+  amounts.reduce(
+    (sum, amount) =>
+      sum + amount,
+    0n
+  );
+
+const payrollId =
+  ethers.keccak256(
+    ethers.toUtf8Bytes(
+      `tror-payroll-${batchId}`
+    )
+  );
+
+alert(
+  "Step 1/2: Approve USDC for TRORPayroll."
+);
+
+const approveHash =
+  await writeContract(
+    wagmiAdapter.wagmiConfig,
+    {
+      address:
+        USDC_ADDRESS,
+
+      abi:
+        ERC20_APPROVE_ABI,
+
+      functionName:
+        "approve",
+
+      args: [
+        TROR_PAYROLL_CONTRACT_ADDRESS,
+        totalAmountUnits
+      ],
+
+      account:
+        account.address,
+
+      chainId:
+        ARC_CHAIN_ID
+    }
+  );
+
+await waitForTransactionReceipt(
+  wagmiAdapter.wagmiConfig,
+  {
+    hash:
+      approveHash
+  }
+);
+
+alert(
+  "Step 2/2: Confirm payroll execution in your wallet."
+);
+
+const payrollHash =
+  await writeContract(
+    wagmiAdapter.wagmiConfig,
+    {
+      address:
+        TROR_PAYROLL_CONTRACT_ADDRESS,
+
+      abi:
+        TROR_PAYROLL_ABI,
+
+      functionName:
+        "executePayroll",
+
+      args: [
+        payrollId,
+        recipients,
+        amounts
+      ],
+
+      account:
+        account.address,
+
+      chainId:
+        ARC_CHAIN_ID
+    }
+  );
+
+const receipt =
+  await waitForTransactionReceipt(
+    wagmiAdapter.wagmiConfig,
+    {
+      hash:
+        payrollHash
+    }
+  );
+
+if (
+  !receipt ||
+  receipt.status !== "success"
+) {
+  throw new Error(
+    "Payroll transaction failed."
+  );
+}
+
+const confirmRes =
+  await fetch(
+    `${API_BASE}/api/payroll-batches/${batchId}/confirm`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        txHash:
+          payrollHash,
+        payerAddress:
+          account.address
+      })
+    }
+  );
+
+const confirmData =
+  await confirmRes.json();
+
+if (!confirmRes.ok) {
+  throw new Error(
+    confirmData?.error ||
+    "Failed to confirm payroll."
+  );
+}
+
+await loadPayroll();
+await loadPayrollBatches();
+
+console.log(
+  "TRORPayroll transaction:",
+  {
+    batchId,
+    payrollId,
+    payer:
+      account.address,
+    employeeCount:
+      recipients.length,
+    totalAmount:
+      data.totalAmount,
+    approveTxHash:
+      approveHash,
+    payrollTxHash:
+      payrollHash
+  }
+);
+
+alert(
+  "Payroll transaction confirmed on Arc."
+);
+
+window.pendingPayrollPayment = {
+  ...window.pendingPayrollPayment,
+  payrollId,
+  approveTxHash:
+    approveHash,
+  txHash:
+    payrollHash
+};
 
   } catch (err) {
     console.error(
