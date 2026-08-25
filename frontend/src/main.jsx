@@ -10507,14 +10507,14 @@ btnSendClaimEmail?.addEventListener("click", async () => {
     circleWalletEl?.textContent?.trim() || "";
 
   if (
-    circleAddress &&
-    circleAddress !== "-" &&
-    circleAddress.startsWith("0x")
-  ) {
-    await sendClaimWithCircleWallet();
-  } else {
-    await sendClaimEmail();
-  }
+  circleAddress &&
+  circleAddress !== "-" &&
+  circleAddress.startsWith("0x")
+) {
+  await testClaimV2WithCircleWallet();
+} else {
+  await sendClaimEmail();
+}
 });
 
 btnSaveBiz?.addEventListener("click", saveBusinessProfile);
