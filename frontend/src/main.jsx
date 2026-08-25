@@ -7985,7 +7985,7 @@ if (!currentWorkspace?.id) {
   }
 }
 
-async function testClaimV2WithCircleWallet() {
+async function sendClaimWithCircleWalletV2() {
   try {
     const recipientEmail =
       claimEmailEl.value.trim().toLowerCase();
@@ -8374,7 +8374,7 @@ console.log(
     }
 
     console.log(
-  "TROR CLAIM V2 TEST SUCCESS:",
+  "TROR CLAIM V2 SUCCESS:",
   {
     contract:
       CLAIM_V2_CONTRACT_ADDRESS,
@@ -8496,7 +8496,7 @@ return {
     );
 
     setStatus(
-      "TRORClaim V2 test failed: " +
+      "TRORClaim V2 failed: " +
         (
           err?.message ||
           String(err)
@@ -8508,8 +8508,8 @@ return {
   }
 }
 
-window.testClaimV2WithCircleWallet =
-  testClaimV2WithCircleWallet;
+window.sendClaimWithCircleWalletV2 =
+  sendClaimWithCircleWalletV2;
 
 async function payWithCircleWallet() {
   try {
@@ -10530,7 +10530,7 @@ btnSendClaimEmail?.addEventListener("click", async () => {
   circleAddress !== "-" &&
   circleAddress.startsWith("0x")
 ) {
-  await testClaimV2WithCircleWallet();
+  await sendClaimWithCircleWalletV2();
 } else {
   await sendClaimEmail();
 }
