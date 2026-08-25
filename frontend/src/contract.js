@@ -272,3 +272,225 @@ export const CLAIM_CONTRACT_ABI = [
 "event ClaimCreated(uint256 indexed claimId,address indexed sender,bytes32 indexed emailHash,uint256 amount,string memo,uint256 expiresAt)"
 
 ];
+
+export const CLAIM_V2_CONTRACT_ADDRESS =
+  "0x0b3d79Aa4f9e7b29B8ad5090d6A7Fc5FCB4CeaE4";
+
+export const CLAIM_V2_CONTRACT_ABI = [
+  {
+    inputs: [
+      {
+        internalType: "bytes32",
+        name: "emailHash",
+        type: "bytes32"
+      },
+      {
+        internalType: "uint256",
+        name: "amount",
+        type: "uint256"
+      },
+      {
+        internalType: "string",
+        name: "memo",
+        type: "string"
+      },
+      {
+        internalType: "uint256",
+        name: "expiresAt",
+        type: "uint256"
+      }
+    ],
+    name: "createClaim",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256"
+      }
+    ],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "claimId",
+        type: "uint256"
+      },
+      {
+        internalType: "uint256",
+        name: "authorizationDeadline",
+        type: "uint256"
+      },
+      {
+        internalType: "bytes",
+        name: "authorization",
+        type: "bytes"
+      }
+    ],
+    name: "claim",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "claimId",
+        type: "uint256"
+      }
+    ],
+    name: "refundExpired",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function"
+  },
+
+  {
+    inputs: [],
+    name: "nextClaimId",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "",
+        type: "uint256"
+      }
+    ],
+    stateMutability: "view",
+    type: "function"
+  },
+
+  {
+    inputs: [],
+    name: "usdc",
+    outputs: [
+      {
+        internalType: "address",
+        name: "",
+        type: "address"
+      }
+    ],
+    stateMutability: "view",
+    type: "function"
+  },
+
+  {
+    inputs: [],
+    name: "verifier",
+    outputs: [
+      {
+        internalType: "address",
+        name: "",
+        type: "address"
+      }
+    ],
+    stateMutability: "view",
+    type: "function"
+  },
+
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: "uint256",
+        name: "claimId",
+        type: "uint256"
+      },
+      {
+        indexed: true,
+        internalType: "address",
+        name: "sender",
+        type: "address"
+      },
+      {
+        indexed: true,
+        internalType: "bytes32",
+        name: "emailHash",
+        type: "bytes32"
+      },
+      {
+        indexed: false,
+        internalType: "uint256",
+        name: "amount",
+        type: "uint256"
+      },
+      {
+        indexed: false,
+        internalType: "string",
+        name: "memo",
+        type: "string"
+      },
+      {
+        indexed: false,
+        internalType: "uint256",
+        name: "expiresAt",
+        type: "uint256"
+      }
+    ],
+    name: "ClaimCreated",
+    type: "event"
+  },
+
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: "uint256",
+        name: "claimId",
+        type: "uint256"
+      },
+      {
+        indexed: true,
+        internalType: "address",
+        name: "receiver",
+        type: "address"
+      },
+      {
+        indexed: false,
+        internalType: "uint256",
+        name: "amount",
+        type: "uint256"
+      },
+      {
+        indexed: false,
+        internalType: "string",
+        name: "memo",
+        type: "string"
+      }
+    ],
+    name: "ClaimPaid",
+    type: "event"
+  },
+
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: "uint256",
+        name: "claimId",
+        type: "uint256"
+      },
+      {
+        indexed: true,
+        internalType: "address",
+        name: "sender",
+        type: "address"
+      },
+      {
+        indexed: false,
+        internalType: "uint256",
+        name: "amount",
+        type: "uint256"
+      }
+    ],
+    name: "ClaimRefunded",
+    type: "event"
+  }
+];
