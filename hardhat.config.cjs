@@ -7,7 +7,9 @@ module.exports = {
     arcTestnet: {
       url: "https://rpc.testnet.arc.network",
       chainId: 5042002,
-      accounts: [process.env.PAYOUT_PRIVATE_KEY],
+      accounts: process.env.DEPLOYER_PRIVATE_KEY
+  ? [process.env.DEPLOYER_PRIVATE_KEY]
+  : [],
     },
   },
 
