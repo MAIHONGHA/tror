@@ -2403,7 +2403,7 @@ if (!currentWorkspace?.id) {
       abi: ERC20_ABI,
       functionName: "approve",
       args: [
-        CLAIM_CONTRACT_ADDRESS,
+        CLAIM_V2_CONTRACT_ADDRESS,
         amountUnits
       ],
       account: account.address,
@@ -2434,18 +2434,18 @@ const CREATE_CLAIM_ABI = [
 ];
 
     const createHash = await writeContract(config, {
-      address: CLAIM_CONTRACT_ADDRESS,
-      abi: CREATE_CLAIM_ABI,
-      functionName: "createClaim",
-      args: [
-        emailHash,
-        amountUnits,
-        memo,
-        BigInt(expiresAt)
-      ],
-      account: account.address,
-      chainId: 5042002
-    });
+  address: CLAIM_V2_CONTRACT_ADDRESS,
+  abi: CREATE_CLAIM_ABI,
+  functionName: "createClaim",
+  args: [
+    emailHash,
+    amountUnits,
+    memo,
+    BigInt(expiresAt)
+  ],
+  account: account.address,
+  chainId: 5042002
+});
 
     const receipt = await waitForTransactionReceipt(config, {
       hash: createHash
