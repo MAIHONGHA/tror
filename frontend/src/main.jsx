@@ -14,7 +14,9 @@ import {
   MEMO_ADDRESS,
   MEMO_ABI,
   CLAIM_CONTRACT_ADDRESS,
-  CLAIM_CONTRACT_ABI
+  CLAIM_CONTRACT_ABI,
+  CLAIM_V2_CONTRACT_ADDRESS,
+  CLAIM_V2_CONTRACT_ABI
 } from "./contract";
 import {
   openAppKitWallet,
@@ -7982,6 +7984,532 @@ if (!currentWorkspace?.id) {
     );
   }
 }
+
+async function testClaimV2WithCircleWallet() {
+  try {
+    const recipientEmail =
+      claimEmailEl.value.trim().toLowerCase();
+
+    const amount =
+      claimAmountEl.value;
+
+    const memo =
+      claimMessageEl.value || "";
+
+    if (!recipientEmail || !amount) {
+      setStatus(
+        "Please enter recipient email and amount.",
+        "error"
+      );
+      return;
+    }
+
+    const cfg =
+      await api("/api/circle/config");
+
+    const appId =
+      cfg?.config?.circleAppId;
+
+    if (!appId) {
+      throw new Error(
+        "Missing CIRCLE_APP_ID."
+      );
+    }
+
+    const {
+      userToken,
+      encryptionKey
+    } = await getCircleAuth();
+
+    setStatus(
+      "Loading Circle Wallet for TRORClaim V2..."
+    );
+
+    const walletList =
+      await listCircleWallets(userToken);
+
+    const wallet =
+      extractWallet(walletList);
+
+    const walletAddress =
+      extractWalletAddress(walletList);
+
+    if (!wallet?.id || !walletAddress) {
+      throw new Error(
+        "No Circle wallet found."
+      );
+    }
+
+    const amountUnits =
+      ethers.parseUnits(
+        String(amount),
+        6
+      );
+
+    const emailHash =
+      ethers.keccak256(
+        ethers.toUtf8Bytes(
+          recipientEmail
+        )
+      );
+
+    const expiresAt =
+      Math.floor(Date.now() / 1000) +
+      30 * 24 * 60 * 60;
+
+    const usdc =
+      await findUsdcToken(
+        userToken,
+        wallet.id
+      );
+
+    if (
+      !Number.isFinite(usdc.balance) ||
+      usdc.balance < Number(amount)
+    ) {
+      throw new Error(
+        `Not enough USDC. Balance: ${usdc.balance} USDC`
+      );
+    }
+
+    const sdk =
+      new W3SSdk({
+        appSettings: {
+          appId
+        }
+      });
+
+    sdk.setAuthentication({
+      userToken,
+      encryptionKey
+    });
+
+    // =========================
+    // STEP 1
+    // APPROVE USDC → CLAIM V2
+    // =========================
+
+    setStatus(
+      "Circle: approving USDC for TRORClaim V2..."
+    );
+
+    const approveData =
+      await api(
+        "/api/circle/contract-execution",
+        {
+          method: "POST",
+
+          body: JSON.stringify({
+            userToken,
+
+            walletId:
+              wallet.id,
+
+            contractAddress:
+              USDC_TOKEN,
+
+            abiFunctionSignature:
+              "approve(address,uint256)",
+
+            abiParameters: [
+              CLAIM_V2_CONTRACT_ADDRESS,
+              amountUnits.toString()
+            ]
+          })
+        }
+      );
+
+    const approveChallengeId =
+      approveData?.data?.challengeId ||
+      approveData?.challengeId;
+
+    if (!approveChallengeId) {
+      throw new Error(
+        "No Circle V2 approve challengeId returned."
+      );
+    }
+
+    await new Promise(
+      (resolve, reject) => {
+        sdk.execute(
+          approveChallengeId,
+          (error, result) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+
+            resolve(result);
+          }
+        );
+      }
+    );
+
+    setStatus(
+      "Circle approved USDC. Waiting before createClaim V2..."
+    );
+
+    await new Promise(
+      (resolve) =>
+        setTimeout(resolve, 6000)
+    );
+
+    // =========================
+    // STEP 2
+    // CREATE CLAIM V2
+    // =========================
+
+    setStatus(
+      "Circle: creating TRORClaim V2 on-chain..."
+    );
+
+    const createData =
+      await api(
+        "/api/circle/contract-execution",
+        {
+          method: "POST",
+
+          body: JSON.stringify({
+            userToken,
+
+            walletId:
+              wallet.id,
+
+            contractAddress:
+              CLAIM_V2_CONTRACT_ADDRESS,
+
+            abiFunctionSignature:
+              "createClaim(bytes32,uint256,string,uint256)",
+
+            abiParameters: [
+              emailHash,
+              amountUnits.toString(),
+              memo,
+              String(expiresAt)
+            ]
+          })
+        }
+      );
+
+    const createChallengeId =
+      createData?.data?.challengeId ||
+      createData?.challengeId;
+
+    if (!createChallengeId) {
+      throw new Error(
+        "No Circle V2 createClaim challengeId returned."
+      );
+    }
+
+    await new Promise(
+      (resolve, reject) => {
+        sdk.execute(
+          createChallengeId,
+          (error, result) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+
+            resolve(result);
+          }
+        );
+      }
+    );
+
+    setStatus(
+      "TRORClaim V2 approved. Waiting for Arc transaction..."
+    );
+
+    let createTxHash = "";
+
+    for (let i = 0; i < 20; i++) {
+      await new Promise(
+        (resolve) =>
+          setTimeout(resolve, 3000)
+      );
+
+      const txData =
+        await api(
+          "/api/circle/transactions",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              userToken
+            })
+          }
+        );
+
+      const transactions =
+        txData?.data?.transactions ||
+        [];
+
+      const tx =
+  transactions.find((item) => {
+    const hash =
+      item?.blockchainTxHash ||
+      item?.txHash ||
+      item?.transactionHash ||
+      "";
+
+    const state =
+      String(
+        item?.state ||
+        item?.status ||
+        ""
+      ).toUpperCase();
+
+    const operation =
+      String(
+        item?.operation || ""
+      ).toUpperCase();
+
+    const transactionContract =
+      String(
+        item?.contractAddress ||
+        item?.destinationAddress ||
+        ""
+      ).toLowerCase();
+
+    const sameWallet =
+      String(item?.walletId || "") ===
+      String(wallet.id);
+
+    const sameContract =
+      transactionContract ===
+      String(
+        CLAIM_V2_CONTRACT_ADDRESS
+      ).toLowerCase();
+
+    return (
+      operation === "CONTRACT_EXECUTION" &&
+      state === "COMPLETE" &&
+      sameWallet &&
+      sameContract &&
+      hash.startsWith("0x")
+    );
+  });
+
+createTxHash =
+  tx?.blockchainTxHash ||
+  tx?.txHash ||
+  tx?.transactionHash ||
+  "";
+
+if (createTxHash) {
+  console.log(
+    "TRORClaim V2 createClaim transaction found:",
+    tx
+  );
+
+  break;
+}
+}
+
+    if (!createTxHash) {
+      throw new Error(
+        "TRORClaim V2 transaction hash is not ready."
+      );
+    }
+
+    // =========================
+    // READ CLAIMCREATED EVENT
+    // =========================
+
+    const rpcProvider =
+      new ethers.JsonRpcProvider(
+        import.meta.env.VITE_ARC_RPC_URL ||
+          "https://rpc.testnet.arc.network"
+      );
+
+console.log(
+  "TRORClaim V2 createTxHash:",
+  createTxHash
+);
+
+    const receipt =
+      await rpcProvider.waitForTransaction(
+        createTxHash
+      );
+
+    if (!receipt) {
+      throw new Error(
+        "TRORClaim V2 receipt not found."
+      );
+    }
+
+    const claimInterface =
+      new ethers.Interface([
+        "event ClaimCreated(uint256 indexed claimId,address indexed sender,bytes32 indexed emailHash,uint256 amount,string memo,uint256 expiresAt)"
+      ]);
+
+    let onchainClaimId = null;
+
+    for (
+      const log of receipt.logs || []
+    ) {
+      try {
+        const parsed =
+          claimInterface.parseLog({
+            topics: log.topics,
+            data: log.data
+          });
+
+        if (
+          parsed?.name ===
+          "ClaimCreated"
+        ) {
+          onchainClaimId =
+            parsed.args.claimId.toString();
+
+          break;
+        }
+      } catch {}
+    }
+
+    if (!onchainClaimId) {
+      throw new Error(
+        "Could not read TRORClaim V2 claimId."
+      );
+    }
+
+    console.log(
+  "TROR CLAIM V2 TEST SUCCESS:",
+  {
+    contract:
+      CLAIM_V2_CONTRACT_ADDRESS,
+
+    claimId:
+      onchainClaimId,
+
+    sender:
+      walletAddress,
+
+    recipientEmail,
+
+    emailHash,
+
+    amount,
+
+    txHash:
+      createTxHash
+  }
+);
+
+// =========================
+// SAVE CLAIM V2 TO BACKEND
+// =========================
+
+const currentWorkspace =
+  getCurrentWorkspace();
+
+if (!currentWorkspace?.id) {
+  throw new Error(
+    "Please select a workspace before sending the Gmail Claim."
+  );
+}
+
+setStatus(
+  "TRORClaim V2 created on-chain. Saving claim..."
+);
+
+const data =
+  await api(
+    "/api/claims/send-email",
+    {
+      method: "POST",
+
+      body: JSON.stringify({
+        claimId:
+          onchainClaimId,
+
+        recipientEmail,
+
+        amount,
+
+        message:
+          memo,
+
+        txHash:
+          createTxHash,
+
+        workspaceId:
+          currentWorkspace.id
+      })
+    }
+  );
+
+console.log(
+  "TRORClaim V2 backend saved:",
+  data
+);
+
+claimResultEl.innerHTML = `
+  <div style="margin-bottom:12px;">
+    Status:
+    <span id="claimStatus">
+      PENDING
+    </span>
+  </div>
+
+  <div style="margin-bottom:12px;">
+    <a
+      href="${data.claimLink}"
+      target="_blank"
+      style="color:#67e8f9;font-weight:bold;"
+    >
+      Open Claim Page
+    </a>
+  </div>
+
+  <div style="word-break:break-all;">
+    ${data.claimLink}
+  </div>
+
+  <div
+    id="claimInfo"
+    style="margin-top:12px;"
+  ></div>
+`;
+
+await loadWorkspaceClaims();
+
+setStatus(
+  `TRORClaim V2 created and saved successfully. Claim #${onchainClaimId}`,
+  "success"
+);
+
+return {
+  success: true,
+  claimId:
+    onchainClaimId,
+  txHash:
+    createTxHash,
+  claimLink:
+    data.claimLink
+};
+
+  } catch (err) {
+    console.error(
+      "TRORClaim V2 Circle test error:",
+      err
+    );
+
+    setStatus(
+      "TRORClaim V2 test failed: " +
+        (
+          err?.message ||
+          String(err)
+        ),
+      "error"
+    );
+
+    return null;
+  }
+}
+
+window.testClaimV2WithCircleWallet =
+  testClaimV2WithCircleWallet;
 
 async function payWithCircleWallet() {
   try {
