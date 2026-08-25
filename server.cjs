@@ -25,6 +25,14 @@ if (!CLAIM_V2_CONTRACT_ADDRESS) {
   );
 }
 
+const CLAIM_VERIFIER_PRIVATE_KEY = String(
+  process.env.CLAIM_VERIFIER_PRIVATE_KEY || ""
+).trim();
+
+const CLAIM_VERIFIER_ADDRESS = String(
+  process.env.CLAIM_VERIFIER_ADDRESS || ""
+).trim();
+
 const CLAIM_CONTRACT_ABI = [
   "function claimToWallet(uint256 claimId, address receiver) external"
 ];
@@ -5432,71 +5440,115 @@ app.post("/api/claims/:id/claim", async (req, res) => {
       });
     }
 
-    /*
-     * NON-CUSTODIAL CLAIM
-     *
-     * Backend does NOT sign.
-     * Backend does NOT transfer USDC.
-     *
-     * The connected Web3/Circle wallet
-     * must authorize the on-chain action.
-     */
+if (!CLAIM_VERIFIER_PRIVATE_KEY) {
+  throw new Error(
+    "CLAIM_VERIFIER_PRIVATE_KEY is not configured."
+  );
+}
 
-    return res.json({
-      success: true,
+if (!CLAIM_V2_CONTRACT_ADDRESS) {
+  throw new Error(
+    "CLAIM_V2_CONTRACT_ADDRESS is not configured."
+  );
+}
 
-      mode: "CONNECTED_WALLET",
+const authorizationDeadline =
+  Math.floor(Date.now() / 1000) +
+  10 * 60;
 
-      requiresWalletSignature: true,
+const verifierWallet =
+  new ethers.Wallet(
+    CLAIM_VERIFIER_PRIVATE_KEY
+  );
 
-      claim: {
-        id: claim.id,
+if (
+  CLAIM_VERIFIER_ADDRESS &&
+  verifierWallet.address.toLowerCase() !==
+    CLAIM_VERIFIER_ADDRESS.toLowerCase()
+) {
+  throw new Error(
+    "CLAIM_VERIFIER_PRIVATE_KEY does not match CLAIM_VERIFIER_ADDRESS."
+  );
+}
 
-        recipientEmail:
-          claim.recipientEmail,
-
-        receiver:
-          walletAddress,
-
-        amount:
-          Number(amount.toFixed(6)),
-
-        amountUnits:
-          ethers
-            .parseUnits(
-              amount.toFixed(6),
-              USDC_DECIMALS
+const messageHash =
+  ethers.keccak256(
+    ethers.AbiCoder.defaultAbiCoder().encode(
+      [
+        "uint256",
+        "address",
+        "uint256",
+        "address",
+        "bytes32",
+        "uint256"
+      ],
+      [
+        ARC_CHAIN_ID,
+        CLAIM_V2_CONTRACT_ADDRESS,
+        BigInt(id),
+        walletAddress,
+        ethers.keccak256(
+          ethers.toUtf8Bytes(
+            String(
+              claim.recipientEmail || ""
             )
-            .toString(),
+              .trim()
+              .toLowerCase()
+          )
+        ),
+        authorizationDeadline
+      ]
+    )
+  );
 
-        status:
-          claim.status
-      },
+const authorization =
+  await verifierWallet.signMessage(
+    ethers.getBytes(messageHash)
+  );
 
-      network: {
-        chainId:
-          ARC_CHAIN_ID,
+return res.json({
+  success: true,
 
-        chainName:
-          ARC_CHAIN_NAME,
+  mode: "CONNECTED_WALLET",
 
-        usdcAddress:
-          USDC_ADDRESS,
+  requiresWalletSignature: true,
 
-        claimContract:
-  CLAIM_V2_CONTRACT_ADDRESS
-      },
+  claim: {
+    id: claim.id,
+    recipientEmail:
+      claim.recipientEmail,
+    receiver:
+      walletAddress,
+    amount:
+      Number(amount.toFixed(6)),
+    status:
+      claim.status
+  },
 
-      contractCall: {
-        functionName:
-          "claimToWallet",
+  network: {
+    chainId:
+      ARC_CHAIN_ID,
+    chainName:
+      ARC_CHAIN_NAME,
+    usdcAddress:
+      USDC_ADDRESS,
+    claimContract:
+      CLAIM_V2_CONTRACT_ADDRESS
+  },
 
-        args: [
-          id,
-          walletAddress
-        ]
-      }
-    });
+  contractCall: {
+    functionName:
+      "claim",
+
+    args: [
+      id,
+      String(
+        authorizationDeadline
+      ),
+      authorization
+    ]
+  }
+});
 
   } catch (err) {
     console.error(

@@ -10278,7 +10278,7 @@ async function loadClaimPage() {
 
   if (
     !Array.isArray(contractArgs) ||
-    contractArgs.length < 2
+    contractArgs.length < 3
   ) {
     throw new Error(
       "Invalid claim contract parameters."
@@ -10317,19 +10317,20 @@ async function loadClaimPage() {
     "Confirm claim in your Web3 wallet...";
 
   const claimContract =
-    new ethers.Contract(
-      claimContractAddress,
-      [
-        "function claimToWallet(uint256 claimId,address receiver) external"
-      ],
-      signer
-    );
+  new ethers.Contract(
+    claimContractAddress,
+    [
+      "function claim(uint256 claimId,uint256 authorizationDeadline,bytes authorization) external"
+    ],
+    signer
+  );
 
-  const tx =
-    await claimContract.claimToWallet(
-      BigInt(contractArgs[0]),
-      contractArgs[1]
-    );
+const tx =
+  await claimContract.claim(
+    BigInt(contractArgs[0]),
+    BigInt(contractArgs[1]),
+    contractArgs[2]
+  );
 
   document.getElementById(
     "claimStatus"
