@@ -1,6 +1,73 @@
 import { useEffect, useState } from "react";
 
+import {
+  getAccount,
+  writeContract,
+  waitForTransactionReceipt
+} from "@wagmi/core";
+
+import { ethers } from "ethers";
+
+import {
+  wagmiAdapter
+} from "./appkit.js";
+
 const API_BASE = window.location.origin;
+
+const ARC_CHAIN_ID = 5042002;
+
+const USDC_ADDRESS =
+  "0x3600000000000000000000000000000000000000";
+
+const TROR_PAYOUT_CONTRACT_ADDRESS =
+  "0xaD91ad41D59cACA639D3Da3123d14DA009b8f3f5";
+
+const ERC20_APPROVE_ABI = [
+  {
+    type: "function",
+    name: "approve",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "spender",
+        type: "address"
+      },
+      {
+        name: "amount",
+        type: "uint256"
+      }
+    ],
+    outputs: [
+      {
+        name: "",
+        type: "bool"
+      }
+    ]
+  }
+];
+
+const TROR_PAYOUT_ABI = [
+  {
+    type: "function",
+    name: "executePayout",
+    stateMutability: "nonpayable",
+    inputs: [
+      {
+        name: "payoutId",
+        type: "bytes32"
+      },
+      {
+        name: "recipient",
+        type: "address"
+      },
+      {
+        name: "amount",
+        type: "uint256"
+      }
+    ],
+    outputs: []
+  }
+];
 
 function getCurrentWorkspace() {
   try {
@@ -200,52 +267,314 @@ if (mode === "scheduled") {
   }
 
   async function confirmPayout(id) {
-    const shouldConfirm = window.confirm(
+  const shouldConfirm =
+    window.confirm(
       "Confirm and send payout now?"
     );
 
-    if (!shouldConfirm) {
+  if (!shouldConfirm) {
+    return;
+  }
+
+  const currentWorkspace =
+    getCurrentWorkspace();
+
+  if (!currentWorkspace?.id) {
+    alert(
+      "Please select a workspace first."
+    );
+    return;
+  }
+
+  try {
+    /*
+      Connected wallet is the payer.
+      Backend never selects a private-key wallet.
+    */
+    const account =
+      getAccount(
+        wagmiAdapter.wagmiConfig
+      );
+
+    if (!account?.address) {
+      alert(
+        "Connect your Web3 wallet before sending payout."
+      );
       return;
     }
 
-    const currentWorkspace = getCurrentWorkspace();
-
-    if (!currentWorkspace?.id) {
-      alert("Please select a workspace first.");
+    if (
+      Number(account.chainId) !==
+      ARC_CHAIN_ID
+    ) {
+      alert(
+        "Switch your connected wallet to Arc Testnet."
+      );
       return;
     }
 
-    try {
-      const res = await fetch(
+    /*
+      Backend only PREPARES payout data.
+    */
+    const res =
+      await fetch(
         `${API_BASE}/api/payouts/${id}/confirm`,
         {
           method: "POST",
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type":
+              "application/json"
           },
           body: JSON.stringify({
-            workspaceId: currentWorkspace.id,
-          }),
+            workspaceId:
+              currentWorkspace.id
+          })
         }
       );
 
-      const data = await res.json();
+    const data =
+      await res.json();
 
-      if (!res.ok) {
-        throw new Error(
-          data.error || "Confirm payout failed"
-        );
-      }
-
-      await loadPayouts();
-    } catch (err) {
-      console.error("Confirm payout error:", err);
-
-      alert(
-        err.message || "Confirm payout failed"
+    if (!res.ok) {
+      throw new Error(
+        data.error ||
+        "Prepare payout failed"
       );
     }
+
+    if (
+      data?.mode !==
+        "CONNECTED_WALLET" ||
+      data?.requiresWalletSignature !==
+        true
+    ) {
+      throw new Error(
+        "Invalid payout payment plan."
+      );
+    }
+
+    const payout =
+      data?.payout;
+
+    if (!payout) {
+      throw new Error(
+        "Payout payment data is missing."
+      );
+    }
+
+    if (
+      !ethers.isAddress(
+        payout.recipient
+      )
+    ) {
+      throw new Error(
+        "Invalid payout recipient."
+      );
+    }
+
+    const amountUnits =
+      BigInt(
+        payout.amountUnits
+      );
+
+    if (amountUnits <= 0n) {
+      throw new Error(
+        "Invalid payout amount."
+      );
+    }
+
+    const payoutId =
+      ethers.keccak256(
+        ethers.toUtf8Bytes(
+          `tror-payout-${id}`
+        )
+      );
+
+    const confirmed =
+      window.confirm(
+        `TROR Payout\n\n` +
+        `Payer:\n${account.address}\n\n` +
+        `Recipient:\n${payout.recipient}\n\n` +
+        `Amount: ${payout.amount} USDC\n\n` +
+        `Network: ${data.network?.chainName || "Arc Testnet"}\n\n` +
+        `Continue to wallet authorization?`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    /*
+      Step 1:
+      Approve only this payout amount.
+    */
+    alert(
+      "Step 1/2: Approve USDC for TRORPayout."
+    );
+
+    const approveHash =
+      await writeContract(
+        wagmiAdapter.wagmiConfig,
+        {
+          address:
+            USDC_ADDRESS,
+
+          abi:
+            ERC20_APPROVE_ABI,
+
+          functionName:
+            "approve",
+
+          args: [
+            TROR_PAYOUT_CONTRACT_ADDRESS,
+            amountUnits
+          ],
+
+          account:
+            account.address,
+
+          chainId:
+            ARC_CHAIN_ID
+        }
+      );
+
+    await waitForTransactionReceipt(
+      wagmiAdapter.wagmiConfig,
+      {
+        hash:
+          approveHash
+      }
+    );
+
+    /*
+      Step 2:
+      Execute the real payout.
+    */
+    alert(
+      "Step 2/2: Confirm payout execution in your wallet."
+    );
+
+    const payoutHash =
+      await writeContract(
+        wagmiAdapter.wagmiConfig,
+        {
+          address:
+            TROR_PAYOUT_CONTRACT_ADDRESS,
+
+          abi:
+            TROR_PAYOUT_ABI,
+
+          functionName:
+            "executePayout",
+
+          args: [
+            payoutId,
+            payout.recipient,
+            amountUnits
+          ],
+
+          account:
+            account.address,
+
+          chainId:
+            ARC_CHAIN_ID
+        }
+      );
+
+    const receipt =
+      await waitForTransactionReceipt(
+        wagmiAdapter.wagmiConfig,
+        {
+          hash:
+            payoutHash
+        }
+      );
+
+    if (
+      !receipt ||
+      receipt.status !== "success"
+    ) {
+      throw new Error(
+        "Payout transaction failed."
+      );
+    }
+
+const verifyRes =
+  await fetch(
+    `${API_BASE}/api/payouts/${id}/verify`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/json"
+      },
+      body: JSON.stringify({
+        workspaceId:
+          currentWorkspace.id,
+        txHash:
+          payoutHash,
+        payerAddress:
+          account.address
+      })
+    }
+  );
+
+const verifyData =
+  await verifyRes.json();
+
+if (!verifyRes.ok) {
+  throw new Error(
+    verifyData?.error ||
+    "Failed to verify payout."
+  );
+}
+
+await loadPayouts();
+
+    /*
+      Keep result temporarily.
+      Backend on-chain confirmation is next.
+    */
+    window.pendingPayoutPayment = {
+      id,
+      payoutId,
+      workspaceId:
+        currentWorkspace.id,
+      payerAddress:
+        account.address,
+      recipient:
+        payout.recipient,
+      amount:
+        payout.amount,
+      amountUnits:
+        payout.amountUnits,
+      approveTxHash:
+        approveHash,
+      txHash:
+        payoutHash
+    };
+
+    console.log(
+      "TRORPayout transaction:",
+      window.pendingPayoutPayment
+    );
+
+    alert(
+      "Payout transaction confirmed on Arc."
+    );
+
+  } catch (err) {
+    console.error(
+      "Payout execution error:",
+      err
+    );
+
+    alert(
+      err?.message ||
+      "Payout execution failed."
+    );
   }
+}
 
   useEffect(() => {
     function reloadWorkspacePayouts() {

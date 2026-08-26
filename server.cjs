@@ -6204,6 +6204,270 @@ return res.json({
   }
 });
 
+app.post("/api/payouts/:id/verify", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const workspaceId = String(
+      req.body.workspaceId || ""
+    ).trim();
+
+    const txHash = String(
+      req.body.txHash || ""
+    ).trim();
+
+    const payerAddress = String(
+      req.body.payerAddress || ""
+    ).trim();
+
+    if (!workspaceId) {
+      return res.status(400).json({
+        error: "Workspace is required"
+      });
+    }
+
+    if (!txHash.startsWith("0x")) {
+      return res.status(400).json({
+        error: "Valid transaction hash is required"
+      });
+    }
+
+    if (
+      !payerAddress ||
+      !ethers.isAddress(payerAddress)
+    ) {
+      return res.status(400).json({
+        error: "Valid payer address is required"
+      });
+    }
+
+    const payout = db.prepare(`
+      SELECT *
+      FROM payouts
+      WHERE id = ?
+        AND workspace_id = ?
+    `).get(
+      id,
+      workspaceId
+    );
+
+    if (!payout) {
+      return res.status(404).json({
+        error: "Payout not found in this workspace"
+      });
+    }
+
+    if (payout.status === "PAID") {
+      return res.json({
+        success: true,
+        id,
+        status: "PAID",
+        txHash: payout.tx_hash
+      });
+    }
+
+    const receipt =
+      await provider.getTransactionReceipt(
+        txHash
+      );
+
+    if (!receipt) {
+      return res.status(400).json({
+        error:
+          "Payout transaction is not confirmed yet"
+      });
+    }
+
+    if (Number(receipt.status) !== 1) {
+      return res.status(400).json({
+        error:
+          "Payout transaction failed on-chain"
+      });
+    }
+
+    const transaction =
+      await provider.getTransaction(
+        txHash
+      );
+
+    if (!transaction) {
+      return res.status(400).json({
+        error:
+          "Payout transaction could not be loaded"
+      });
+    }
+
+    const TROR_PAYOUT_CONTRACT_ADDRESS =
+      "0xaD91ad41D59cACA639D3Da3123d14DA009b8f3f5";
+
+    if (
+      String(transaction.to || "")
+        .toLowerCase() !==
+      TROR_PAYOUT_CONTRACT_ADDRESS
+        .toLowerCase()
+    ) {
+      return res.status(400).json({
+        error:
+          "Transaction was not sent to TRORPayout"
+      });
+    }
+
+    if (
+      String(transaction.from || "")
+        .toLowerCase() !==
+      payerAddress.toLowerCase()
+    ) {
+      return res.status(400).json({
+        error:
+          "Payout transaction payer does not match"
+      });
+    }
+
+    const payoutInterface =
+      new ethers.Interface([
+        "function executePayout(bytes32 payoutId,address recipient,uint256 amount)"
+      ]);
+
+    let parsed;
+
+    try {
+      parsed =
+        payoutInterface.parseTransaction({
+          data: transaction.data,
+          value: transaction.value
+        });
+    } catch {
+      return res.status(400).json({
+        error:
+          "Transaction is not a TRORPayout execution"
+      });
+    }
+
+    if (
+      parsed?.name !==
+      "executePayout"
+    ) {
+      return res.status(400).json({
+        error:
+          "Invalid TRORPayout function"
+      });
+    }
+
+    /*
+      Must match frontend:
+      keccak256("tror-payout-" + id)
+    */
+    const expectedPayoutId =
+      ethers.keccak256(
+        ethers.toUtf8Bytes(
+          `tror-payout-${id}`
+        )
+      );
+
+    if (
+      String(parsed.args[0])
+        .toLowerCase() !==
+      expectedPayoutId.toLowerCase()
+    ) {
+      return res.status(400).json({
+        error:
+          "Payout ID does not match"
+      });
+    }
+
+    const txRecipient =
+      String(parsed.args[1]);
+
+    if (
+      !ethers.isAddress(payout.recipient) ||
+      txRecipient.toLowerCase() !==
+        String(payout.recipient)
+          .toLowerCase()
+    ) {
+      return res.status(400).json({
+        error:
+          "Payout recipient does not match"
+      });
+    }
+
+    /*
+      DB amount is USDC decimal.
+      Contract amount uses 6 decimals.
+    */
+    const expectedAmount =
+      ethers.parseUnits(
+        Number(payout.amount)
+          .toFixed(6),
+        6
+      );
+
+    const txAmount =
+      BigInt(parsed.args[2]);
+
+    if (
+      txAmount !== expectedAmount
+    ) {
+      return res.status(400).json({
+        error:
+          "Payout amount does not match"
+      });
+    }
+
+    const result =
+      db.prepare(`
+        UPDATE payouts
+        SET status = 'PAID',
+            tx_hash = ?
+        WHERE id = ?
+          AND workspace_id = ?
+          AND status != 'PAID'
+      `).run(
+        txHash,
+        id,
+        workspaceId
+      );
+
+    if (result.changes !== 1) {
+      const current =
+        db.prepare(`
+          SELECT status, tx_hash
+          FROM payouts
+          WHERE id = ?
+            AND workspace_id = ?
+        `).get(
+          id,
+          workspaceId
+        );
+
+      if (current?.status !== "PAID") {
+        return res.status(409).json({
+          error:
+            "Payout status changed. Please refresh."
+        });
+      }
+    }
+
+    return res.json({
+      success: true,
+      id,
+      status: "PAID",
+      txHash
+    });
+
+  } catch (err) {
+    console.error(
+      "VERIFY PAYOUT ERROR:",
+      err
+    );
+
+    return res.status(500).json({
+      error:
+        err?.message ||
+        "Failed to verify payout"
+    });
+  }
+});
+
 // =======================
 // SCHEDULED PAYOUT CRON
 // NON-CUSTODIAL
