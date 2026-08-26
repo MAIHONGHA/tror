@@ -6138,16 +6138,20 @@ app.post("/api/payouts/:id/confirm", async (req, res) => {
     }
 
     if (
-      payout.status !== "PENDING" &&
-      payout.status !== "REVIEW"
-    ) {
-      return res.status(400).json({
-        error:
-          "Only PENDING or REVIEW payouts can be confirmed"
-      });
-    }
+  payout.status !== "PENDING" &&
+  payout.status !== "REVIEW" &&
+  payout.status !== "READY_TO_SIGN"
+) {
+  return res.status(400).json({
+    error:
+      "Only PENDING, REVIEW or READY_TO_SIGN payouts can be confirmed"
+  });
+}
 
-    if (payout.mode === "scheduled") {
+    if (
+  payout.mode === "scheduled" &&
+  payout.status !== "READY_TO_SIGN"
+) {
   if (!payout.next_run_at) {
     return res.status(400).json({
       error: "Scheduled payout is missing next_run_at"

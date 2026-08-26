@@ -795,10 +795,19 @@ await loadPayouts();
                 ✅ Confirm & Pay
               </button>
             ) : payout.status === "APPROVED" ? (
-              <p>
-                Waiting schedule ⏳
-              </p>
-            ) : payout.status === "PAID" ? (
+  <p>
+    Waiting schedule ⏳
+  </p>
+) : payout.status === "READY_TO_SIGN" ? (
+  <button
+    type="button"
+    onClick={() =>
+      confirmPayout(payout.id)
+    }
+  >
+    ⚡ Pay Scheduled Payout
+  </button>
+) : payout.status === "PAID" ? (
               <p>
                 Paid ✅
               </p>
