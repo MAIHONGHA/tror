@@ -577,25 +577,104 @@ await loadPayouts();
 }
 
   useEffect(() => {
-    function reloadWorkspacePayouts() {
-      setPayouts([]);
-      loadPayouts();
+  function reloadWorkspacePayouts() {
+    setPayouts([]);
+    loadPayouts();
+  }
+
+  function applyAIPayoutDraft(event) {
+    let draft =
+      event?.detail ||
+      null;
+
+    if (!draft) {
+      try {
+        draft =
+          JSON.parse(
+            localStorage.getItem(
+              "pendingAIPayoutDraft"
+            ) || "null"
+          );
+      } catch {
+        draft = null;
+      }
     }
 
-    reloadWorkspacePayouts();
+    if (!draft) {
+      return;
+    }
 
-    window.addEventListener(
+    setRecipient(
+      draft.recipient || ""
+    );
+
+    setAmount(
+      draft.amount !== null &&
+      draft.amount !== undefined
+        ? String(draft.amount)
+        : ""
+    );
+
+    setMode(
+      draft.mode === "scheduled"
+        ? "scheduled"
+        : "now"
+    );
+
+    setFrequency(
+      draft.frequency ||
+      "once"
+    );
+
+    if (
+      draft.mode ===
+      "scheduled"
+    ) {
+      const value =
+        String(
+          draft.scheduledAt || ""
+        );
+
+      setScheduledAt(
+        value
+          ? value.slice(0, 16)
+          : ""
+      );
+    } else {
+      setScheduledAt("");
+    }
+
+    localStorage.removeItem(
+      "pendingAIPayoutDraft"
+    );
+  }
+
+  reloadWorkspacePayouts();
+
+  window.addEventListener(
+    "workspaceChanged",
+    reloadWorkspacePayouts
+  );
+
+  window.addEventListener(
+    "aiPayoutDraftReady",
+    applyAIPayoutDraft
+  );
+
+  applyAIPayoutDraft();
+
+  return () => {
+    window.removeEventListener(
       "workspaceChanged",
       reloadWorkspacePayouts
     );
 
-    return () => {
-      window.removeEventListener(
-        "workspaceChanged",
-        reloadWorkspacePayouts
-      );
-    };
-  }, []);
+    window.removeEventListener(
+      "aiPayoutDraftReady",
+      applyAIPayoutDraft
+    );
+  };
+}, []);
 
   return (
     <section className="card">

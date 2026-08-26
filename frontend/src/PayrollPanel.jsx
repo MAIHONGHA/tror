@@ -805,6 +805,47 @@ window.pendingPayrollPayment = {
     loadActiveEmployees();
   };
 
+  function applyAIPayrollDraft(event) {
+    let draft =
+      event?.detail ||
+      null;
+
+    if (!draft) {
+      try {
+        draft =
+          JSON.parse(
+            localStorage.getItem(
+              "pendingAIPayrollDraft"
+            ) || "null"
+          );
+      } catch {
+        draft = null;
+      }
+    }
+
+    if (!draft) {
+      return;
+    }
+
+    setNewPayroll((current) => ({
+      ...current,
+
+      title:
+        draft.title ||
+        "Monthly Payroll",
+
+      frequency:
+        draft.frequency ||
+        "once"
+    }));
+
+    localStorage.removeItem(
+      "pendingAIPayrollDraft"
+    );
+
+    loadActiveEmployees();
+  }
+
   reloadWorkspacePayroll();
 
   window.addEventListener(
@@ -812,10 +853,22 @@ window.pendingPayrollPayment = {
     reloadWorkspacePayroll
   );
 
+  window.addEventListener(
+    "aiPayrollDraftReady",
+    applyAIPayrollDraft
+  );
+
+  applyAIPayrollDraft();
+
   return () => {
     window.removeEventListener(
       "workspaceChanged",
       reloadWorkspacePayroll
+    );
+
+    window.removeEventListener(
+      "aiPayrollDraftReady",
+      applyAIPayrollDraft
     );
   };
 }, []);

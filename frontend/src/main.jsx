@@ -8467,7 +8467,7 @@ async function markInvoicePaid(txHash, fromAddress) {
 }
 
 /* =========================
-   AI INVOICE DRAFT
+   TROR AI FINANCIAL ASSISTANT
 ========================= */
 
 window.generateAIDraft = async function () {
@@ -8482,7 +8482,7 @@ window.generateAIDraft = async function () {
 
   if (!prompt) {
     setStatus(
-      "Please describe the invoice you want to create.",
+      "Describe the financial action you want TROR AI to prepare.",
       "error"
     );
 
@@ -8518,7 +8518,7 @@ window.generateAIDraft = async function () {
     if (!response.ok) {
       throw new Error(
         data?.error ||
-        "AI invoice draft failed."
+        "TROR AI action draft failed."
       );
     }
 
@@ -8532,7 +8532,7 @@ window.generateAIDraft = async function () {
 
     if (!draft) {
       throw new Error(
-        "TROR AI returned no invoice draft."
+        "TROR AI returned no action draft."
       );
     }
 
@@ -8554,6 +8554,15 @@ if (resultEl) {
 
 const isPayment =
   action?.intent === "payment.send";
+
+const isPayout =
+  action?.intent === "payout.create";
+
+const isScheduledPayout =
+  action?.intent === "payout.schedule";
+
+const isPayroll =
+  action?.intent === "payroll.prepare";
 
 let previewBody = "";
 
@@ -8608,6 +8617,66 @@ if (isClaim) {
       ${draft.network || "-"}
     </div>
   `;
+
+} else if (
+  isPayout ||
+  isScheduledPayout
+) {
+  previewBody = `
+    <div>
+      <strong>Recipient Wallet:</strong>
+      ${draft.recipientAddress || "-"}
+    </div>
+
+    <div>
+      <strong>Amount:</strong>
+      ${
+        draft.amount !== null &&
+        draft.amount !== undefined
+          ? draft.amount
+          : "-"
+      }
+      ${draft.currency || "USDC"}
+    </div>
+
+    <div>
+      <strong>Mode:</strong>
+      ${
+        isScheduledPayout
+          ? "Scheduled"
+          : "Pay Now"
+      }
+    </div>
+
+    ${
+      isScheduledPayout
+        ? `
+          <div>
+            <strong>Scheduled:</strong>
+            ${draft.scheduledAt || "-"}
+          </div>
+        `
+        : ""
+    }
+  `;
+} else if (isPayroll) {
+  previewBody = `
+    <div>
+      <strong>Payroll:</strong>
+      ${draft.payrollTitle || "Monthly Payroll"}
+    </div>
+
+    <div>
+      <strong>Frequency:</strong>
+      ${draft.frequency || "once"}
+    </div>
+
+    <div>
+      <strong>Employees:</strong>
+      Active employees from the current workspace
+    </div>
+  `;
+
 } else {
   previewBody = `
     <div>
@@ -8657,80 +8726,170 @@ if (isClaim) {
   `;
 }
 
-  resultEl.innerHTML = `
-    <div class="ai-action-preview">
+resultEl.innerHTML = `
+  <div
+    class="ai-action-preview"
+    style="
+      border:1px solid rgba(15,23,42,.10);
+      border-radius:22px;
+      padding:22px;
+      background:#ffffff;
+      box-shadow:0 12px 36px rgba(15,23,42,.06);
+    "
+  >
 
-      <div class="ai-action-preview-title">
-        🧠 TROR AI Action Preview
-      </div>
+    <div
+      style="
+        display:flex;
+        align-items:center;
+        gap:8px;
+        color:#16a34a;
+        font-weight:700;
+        font-size:14px;
+        margin-bottom:18px;
+      "
+    >
+      ◉ Ready to Prepare
+    </div>
 
-      <div>
-        <strong>Action:</strong>
-        ${action?.intent || "invoice.create"}
-      </div>
+    <div
+      style="
+        font-size:24px;
+        font-weight:800;
+        color:#171717;
+        margin-bottom:16px;
+      "
+    >
+      ${
+        isClaim
+          ? "Send USDC by Gmail Claim"
+          : isPayment
+          ? "Send USDC"
+          : isPayout
+          ? "Send USDC (Payout)"
+          : isScheduledPayout
+          ? "Schedule USDC Payout"
+          : isPayroll
+          ? "Prepare Payroll"
+          : "Create Invoice"
+      }
+    </div>
 
+    <div
+      style="
+        background:#f7f7f7;
+        border-radius:16px;
+        padding:16px 14px;
+      "
+    >
       ${previewBody}
-
-      <div>
-        <strong>Confidence:</strong>
-        ${Math.round(confidence * 100)}%
-      </div>
-
-      <div>
-        <strong>Missing:</strong>
-        ${
-          missingFields.length
-            ? missingFields.join(", ")
-            : "None"
-        }
-      </div>
 
       <div
         style="
           display:flex;
-          gap:10px;
-          margin-top:16px;
-          flex-wrap:wrap;
+          justify-content:space-between;
+          gap:14px;
+          padding-top:14px;
+          margin-top:14px;
+          border-top:1px solid rgba(15,23,42,.08);
         "
       >
-        <button
-          type="button"
-          id="btnApplyAIDraft"
-          style="
-            width:auto;
-            min-width:120px;
-            padding:10px 18px;
-            border:0;
-            border-radius:10px;
-            cursor:pointer;
-            font-weight:700;
-            font-size:14px;
-          "
-        >
-          Apply Draft
-        </button>
+        <span style="color:#6b7280;">
+          Confidence
+        </span>
 
-        <button
-          type="button"
-          id="btnCancelAIDraft"
+        <span
           style="
-            width:auto;
-            min-width:90px;
-            padding:10px 18px;
-            border:1px solid rgba(0,0,0,.12);
-            border-radius:10px;
-            cursor:pointer;
+            background:#dcfce7;
+            color:#15803d;
+            border-radius:999px;
+            padding:3px 9px;
             font-weight:700;
-            font-size:14px;
-            background:transparent;
           "
         >
-          Cancel
-        </button>
+          ${Math.round(confidence * 100)}%
+        </span>
       </div>
 
+      ${
+        missingFields.length
+          ? `
+            <div
+              style="
+                display:flex;
+                justify-content:space-between;
+                gap:14px;
+                padding-top:12px;
+              "
+            >
+              <span style="color:#6b7280;">
+                Missing
+              </span>
+
+              <span
+                style="
+                  color:#b45309;
+                  font-weight:700;
+                  text-align:right;
+                "
+              >
+                ${missingFields.join(", ")}
+              </span>
+            </div>
+          `
+          : ""
+      }
     </div>
-  `;
+
+    <div
+      style="
+        display:grid;
+        grid-template-columns:1fr 1fr;
+        gap:12px;
+        margin-top:12px;
+      "
+    >
+      <button
+        type="button"
+        id="btnApplyAIDraft"
+        style="
+          min-height:52px;
+          border:0;
+          border-radius:12px;
+          cursor:pointer;
+          font-weight:800;
+          font-size:15px;
+          background:linear-gradient(
+            135deg,
+            #c99a2e,
+            #f2d660
+          );
+          color:#171717;
+        "
+      >
+        ◉ Apply Draft
+      </button>
+
+      <button
+        type="button"
+        id="btnCancelAIDraft"
+        style="
+          min-height:52px;
+          border:1px solid rgba(15,23,42,.12);
+          border-radius:12px;
+          cursor:pointer;
+          font-weight:700;
+          font-size:15px;
+          background:#ffffff;
+          color:#171717;
+        "
+      >
+        ⊗ Cancel
+      </button>
+    </div>
+
+  </div>
+`;
 }
 
 document
@@ -8764,7 +8923,7 @@ console.log(
 );
 
 setStatus(
-  "AI invoice draft prepared. Review and apply it before creating the invoice.",
+  "TROR AI action prepared. Review and apply it before continuing.",
   "success"
 );
 
@@ -8776,7 +8935,7 @@ setStatus(
 
     if (resultEl) {
       resultEl.textContent =
-        "TROR AI could not prepare the invoice draft.";
+        "TROR AI could not prepare the requested action.";
     }
 
     setStatus(
@@ -8823,6 +8982,30 @@ if (
   "payment.send"
 ) {
   applyPendingAIPaymentDraft();
+  return;
+}
+
+if (
+  action.intent ===
+  "payout.create"
+) {
+  applyPendingAIPayoutDraft();
+  return;
+}
+
+if (
+  action.intent ===
+  "payout.schedule"
+) {
+  applyPendingAIPayoutDraft();
+  return;
+}
+
+if (
+  action.intent ===
+  "payroll.prepare"
+) {
+  applyPendingAIPayrollDraft();
   return;
 }
 
@@ -9119,6 +9302,189 @@ if (destinationSelect) {
 
   setStatus(
     "AI payment draft applied. Review the payment before sending.",
+    "success"
+  );
+}
+
+function applyPendingAIPayoutDraft() {
+  const action =
+    pendingAIAction;
+
+  const draft =
+    action?.draft;
+
+  if (!draft) {
+    setStatus(
+      "No AI payout draft is ready.",
+      "error"
+    );
+    return;
+  }
+
+  if (
+    action.intent !== "payout.create" &&
+    action.intent !== "payout.schedule"
+  ) {
+    setStatus(
+      "AI action is not a payout.",
+      "error"
+    );
+    return;
+  }
+
+  if (
+    !draft.recipientAddress ||
+    !ethers.isAddress(
+      draft.recipientAddress
+    )
+  ) {
+    setStatus(
+      "AI payout draft needs a valid recipient wallet.",
+      "error"
+    );
+    return;
+  }
+
+  if (
+    draft.amount === null ||
+    Number(draft.amount) <= 0
+  ) {
+    setStatus(
+      "AI payout draft needs a valid amount.",
+      "error"
+    );
+    return;
+  }
+
+  const payoutDraft = {
+    recipient:
+      draft.recipientAddress,
+
+    amount:
+      Number(draft.amount),
+
+    mode:
+      action.intent ===
+      "payout.schedule"
+        ? "scheduled"
+        : "now",
+
+    frequency:
+      draft.frequency ||
+      "once",
+
+    scheduledAt:
+      action.intent ===
+      "payout.schedule"
+        ? draft.scheduledAt || ""
+        : ""
+  };
+
+  localStorage.setItem(
+    "pendingAIPayoutDraft",
+    JSON.stringify(
+      payoutDraft
+    )
+  );
+
+  pendingAIAction = null;
+
+  window.location.hash =
+    "payouts";
+
+  if (
+    typeof showTab ===
+    "function"
+  ) {
+    showTab("payouts");
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(
+      "aiPayoutDraftReady",
+      {
+        detail:
+          payoutDraft
+      }
+    )
+  );
+
+  setStatus(
+    action.intent ===
+      "payout.schedule"
+      ? "AI scheduled payout draft applied. Review it before creating the payout."
+      : "AI payout draft applied. Review it before creating the payout.",
+    "success"
+  );
+}
+
+function applyPendingAIPayrollDraft() {
+  const action =
+    pendingAIAction;
+
+  const draft =
+    action?.draft;
+
+  if (!draft) {
+    setStatus(
+      "No AI payroll draft is ready.",
+      "error"
+    );
+    return;
+  }
+
+  if (
+    action.intent !==
+    "payroll.prepare"
+  ) {
+    setStatus(
+      "AI action is not payroll.",
+      "error"
+    );
+    return;
+  }
+
+  const payrollDraft = {
+    title:
+      draft.payrollTitle ||
+      "Monthly Payroll",
+
+    frequency:
+      draft.frequency ||
+      "once"
+  };
+
+  localStorage.setItem(
+    "pendingAIPayrollDraft",
+    JSON.stringify(
+      payrollDraft
+    )
+  );
+
+  pendingAIAction = null;
+
+  window.location.hash =
+    "payroll";
+
+  if (
+    typeof showTab ===
+    "function"
+  ) {
+    showTab("payroll");
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(
+      "aiPayrollDraftReady",
+      {
+        detail:
+          payrollDraft
+      }
+    )
+  );
+
+  setStatus(
+    "AI payroll draft applied. Review it before creating payroll.",
     "success"
   );
 }
@@ -10753,7 +11119,7 @@ async function parseInvoicePrompt(prompt) {
   if (!res.ok) {
     throw new Error(
       data?.error ||
-      "AI invoice draft failed."
+      "TROR AI action draft failed."
     );
   }
 

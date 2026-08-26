@@ -3254,6 +3254,15 @@ app.post("/api/ai/invoice-draft", async (req, res) => {
       });
     }
 
+const now =
+  new Date();
+
+const currentDateTime =
+  now.toISOString();
+
+const currentDate =
+  currentDateTime.slice(0, 10);
+
     const response =
       await openai.responses.create({
         model: "gpt-4.1-mini",
@@ -3265,6 +3274,21 @@ app.post("/api/ai/invoice-draft", async (req, res) => {
             content: `
 You are TROR AI, a financial action parser.
 
+Current server date: ${currentDate}
+Current server datetime: ${currentDateTime}
+
+Use this current date and datetime to resolve
+relative expressions such as:
+- today
+- tomorrow
+- tonight
+- next week
+- next Monday
+- this Friday
+
+Never invent a different current year.
+Never return a scheduledAt earlier than the current datetime.
+
 Your job is to understand the user's request
 and prepare a structured financial action draft.
 
@@ -3273,6 +3297,9 @@ Supported intents:
 1. invoice.create
 2. claim.create
 3. payment.send
+4. payout.create
+5. payout.schedule
+6. payroll.prepare
 
 Never execute payments.
 Never send transactions.
@@ -3287,18 +3314,21 @@ Return ONLY valid JSON in this exact structure:
   "intent": "",
   "confidence": 0,
   "draft": {
-    "title": "",
-    "description": "",
-    "amount": null,
-    "currency": "USDC",
-    "customer": "",
-    "recipientEmail": "",
-    "recipientAddress": "",
-    "dueDate": "",
-    "note": "",
-    "message": "",
-    "network": ""
-  },
+  "title": "",
+  "description": "",
+  "amount": null,
+  "currency": "USDC",
+  "customer": "",
+  "recipientEmail": "",
+  "recipientAddress": "",
+  "dueDate": "",
+  "note": "",
+  "message": "",
+  "network": "",
+  "scheduledAt": "",
+  "frequency": "",
+  "payrollTitle": ""
+},
   "missingFields": [],
   "needsConfirmation": true
 }
@@ -3330,6 +3360,23 @@ For payment.send:
 - do not invent a wallet address
 - do not invent a network
 
+Use "payout.create" when the user wants to:
+- create a payout to a wallet
+- prepare a one-time payout
+- pay a wallet through the Payout module
+- create a payout that should be executed now
+
+Use "payout.schedule" when the user wants to:
+- schedule a payout for a future date or time
+- send USDC to a wallet later
+- create a one-time scheduled payout
+
+Use "payroll.prepare" when the user wants to:
+- prepare payroll
+- create a payroll batch
+- prepare salary payments
+- pay active employees as payroll
+
 INVOICE RULES:
 
 For invoice.create:
@@ -3349,6 +3396,34 @@ For claim.create:
 - dueDate may remain empty.
 - recipientAddress may remain empty.
 - customer may remain empty.
+
+PAYOUT RULES:
+
+For payout.create:
+- Extract recipientAddress.
+- Extract amount.
+- payout is immediate unless the user explicitly asks for a future time.
+- scheduledAt may remain empty.
+- frequency defaults to "once".
+
+For payout.schedule:
+- Extract recipientAddress.
+- Extract amount.
+- Extract scheduledAt when the user provides a future date/time.
+- frequency defaults to "once".
+- Do not invent a date or time.
+- Resolve relative dates using the actual current date supplied in the prompt context.
+- Never return a past scheduledAt.
+- If the exact future date cannot be determined reliably, leave scheduledAt empty.
+- scheduledAt should use ISO local datetime format YYYY-MM-DDTHH:mm:ss when known.
+
+PAYROLL RULES:
+
+For payroll.prepare:
+- Extract payrollTitle when explicitly provided.
+- If no title is provided, "Monthly Payroll" is acceptable.
+- Do not invent employees or wallet addresses.
+- amount may remain null because payroll total is calculated from active employees.
 
 GENERAL RULES:
 
@@ -3377,6 +3452,20 @@ For claim.create:
 For payment.send:
 - recipientAddress
 - amount
+
+For payout.create:
+- recipientAddress
+- amount
+
+For payout.schedule:
+- recipientAddress
+- amount
+- scheduledAt
+
+For payroll.prepare:
+- no fixed amount is required
+- payrollTitle may default to "Monthly Payroll"
+
 `
           },
 
@@ -3404,10 +3493,13 @@ For payment.send:
       JSON.parse(text);
 
     const allowedIntents = [
-      "invoice.create",
-      "claim.create",
-      "payment.send"
-    ];
+  "invoice.create",
+  "claim.create",
+  "payment.send",
+  "payout.create",
+  "payout.schedule",
+  "payroll.prepare"
+];
 
     if (
       !allowedIntents.includes(
@@ -3497,9 +3589,26 @@ For payment.send:
   String(
     parsed?.draft?.network ||
     ""
-  ).trim()
+  ).trim(),
 
-    };
+scheduledAt:
+  String(
+    parsed?.draft?.scheduledAt ||
+    ""
+  ).trim(),
+
+frequency:
+  String(
+    parsed?.draft?.frequency ||
+    ""
+  ).trim(),
+
+payrollTitle:
+  String(
+    parsed?.draft?.payrollTitle ||
+    ""
+  ).trim()
+};
 
     /*
       Rebuild important missing fields
@@ -3508,44 +3617,45 @@ For payment.send:
     */
     const missingFields = [];
 
-    if (
-      parsed.intent ===
-      "invoice.create"
-    ) {
-      if (!draft.title) {
-        missingFields.push(
-          "title"
-        );
-      }
+if (
+  parsed.intent ===
+  "invoice.create"
+) {
+  if (!draft.title) {
+    missingFields.push(
+      "title"
+    );
+  }
 
-      if (
-        draft.amount === null ||
-        draft.amount <= 0
-      ) {
-        missingFields.push(
-          "amount"
-        );
-      }
-    }
+  if (
+    draft.amount === null ||
+    draft.amount <= 0
+  ) {
+    missingFields.push(
+      "amount"
+    );
+  }
+}
 
-    if (
-      parsed.intent ===
-      "claim.create"
-    ) {
-      if (!draft.recipientEmail) {
-        missingFields.push(
-          "recipientEmail"
-        );
-      }
+if (
+  parsed.intent ===
+  "claim.create"
+) {
+  if (!draft.recipientEmail) {
+    missingFields.push(
+      "recipientEmail"
+    );
+  }
 
-      if (
-        draft.amount === null ||
-        draft.amount <= 0
-      ) {
-        missingFields.push(
-          "amount"
-        );
-      }
+  if (
+    draft.amount === null ||
+    draft.amount <= 0
+  ) {
+    missingFields.push(
+      "amount"
+    );
+  }
+}
 
 if (
   parsed.intent ===
@@ -3566,7 +3676,85 @@ if (
     );
   }
 }
-    }
+
+if (
+  parsed.intent ===
+  "payout.create"
+) {
+  if (!draft.recipientAddress) {
+    missingFields.push(
+      "recipientAddress"
+    );
+  }
+
+  if (
+    draft.amount === null ||
+    draft.amount <= 0
+  ) {
+    missingFields.push(
+      "amount"
+    );
+  }
+}
+
+if (
+  parsed.intent ===
+  "payout.schedule"
+) {
+  if (!draft.recipientAddress) {
+    missingFields.push(
+      "recipientAddress"
+    );
+  }
+
+  if (
+    draft.amount === null ||
+    draft.amount <= 0
+  ) {
+    missingFields.push(
+      "amount"
+    );
+  }
+
+  if (!draft.scheduledAt) {
+  missingFields.push(
+    "scheduledAt"
+  );
+} else {
+  const scheduledTime =
+    new Date(
+      draft.scheduledAt
+    ).getTime();
+
+  if (
+    Number.isNaN(
+      scheduledTime
+    ) ||
+    scheduledTime <= Date.now()
+  ) {
+    draft.scheduledAt = "";
+
+    missingFields.push(
+      "scheduledAt"
+    );
+  }
+}
+}
+
+if (
+  parsed.intent ===
+  "payroll.prepare"
+) {
+  if (!draft.payrollTitle) {
+    draft.payrollTitle =
+      "Monthly Payroll";
+  }
+
+  if (!draft.frequency) {
+    draft.frequency =
+      "once";
+  }
+}
 
     const result = {
       success: true,
