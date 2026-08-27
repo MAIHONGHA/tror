@@ -1868,6 +1868,10 @@ function openCreateProfileModal(walletAddress) {
 
   const googleUser = getGoogleUser();
 
+const isGoogleCircleProfile =
+  activeWalletType === "circle" &&
+  Boolean(googleUser?.email);
+
   modal.innerHTML = `
     <div style="
       width:100%;
@@ -1934,32 +1938,76 @@ function openCreateProfileModal(walletAddress) {
         "
       />
 
-      <label style="
-        display:block;
-        margin-bottom:6px;
-        font-size:13px;
-        color:#cbd5e1;
-      ">
-        Email
-      </label>
-
-      <input
-        id="profileEmail"
-        type="email"
-        value="${escapeHtml(googleUser.email || "")}"
-        placeholder="name@example.com"
+${
+  isGoogleCircleProfile
+    ? `
+      <div
         style="
-          width:100%;
-          box-sizing:border-box;
-          padding:13px 14px;
           margin-bottom:15px;
+          padding:13px 14px;
           border-radius:12px;
-          border:1px solid rgba(148,163,184,.28);
-          background:rgba(15,23,42,.82);
-          color:#f8fafc;
-          outline:none;
+          border:1px solid rgba(34,197,94,.28);
+          background:rgba(34,197,94,.08);
         "
-      />
+      >
+        <div
+          style="
+            font-size:11px;
+            font-weight:800;
+            letter-spacing:.08em;
+            color:#86efac;
+            margin-bottom:5px;
+          "
+        >
+          VERIFIED GOOGLE
+        </div>
+
+        <div
+          style="
+            color:#f8fafc;
+            font-size:13px;
+            word-break:break-all;
+          "
+        >
+          ${escapeHtml(googleUser.email)}
+          ✓
+        </div>
+      </div>
+
+      <div
+        style="
+          margin-bottom:15px;
+          padding:13px 14px;
+          border-radius:12px;
+          border:1px solid rgba(250,204,21,.22);
+          background:rgba(250,204,21,.07);
+        "
+      >
+        <div
+          style="
+            font-size:11px;
+            font-weight:800;
+            letter-spacing:.08em;
+            color:#fde68a;
+            margin-bottom:5px;
+          "
+        >
+          CIRCLE WALLET
+        </div>
+
+        <div
+          style="
+            color:#f8fafc;
+            font-size:13px;
+            word-break:break-all;
+          "
+        >
+          ${escapeHtml(walletAddress)}
+        </div>
+      </div>
+    `
+    : ""
+}
 
       <label style="
         display:block;
@@ -2076,12 +2124,6 @@ function openCreateProfileModal(walletAddress) {
         document.getElementById("profileFullName")?.value || ""
       ).trim();
 
-      const email = String(
-        document.getElementById("profileEmail")?.value || ""
-      )
-        .trim()
-        .toLowerCase();
-
       const accountType = String(
         document.getElementById("profileAccountType")?.value ||
           "PERSONAL"
@@ -2105,11 +2147,19 @@ function openCreateProfileModal(walletAddress) {
         const data = await api("/api/users", {
           method: "POST",
           body: JSON.stringify({
-            fullName,
-            email,
-            accountType,
-            walletAddress
-          })
+  fullName,
+  accountType,
+  walletAddress,
+  ...(isGoogleCircleProfile
+    ? {
+        email: String(
+          googleUser.email || ""
+        )
+          .trim()
+          .toLowerCase()
+      }
+    : {})
+})
         });
 
         localStorage.setItem(
@@ -5321,15 +5371,85 @@ if (networkSelect) {
 
   circleWalletEl.textContent = address;
 
-clearWeb3WalletLocal();
-
+/*
+  Keep Web3 wallet connected.
+  Circle and Web3 can coexist
+  under the same TROR profile.
+*/
 activeWalletType = "circle";
 updateWalletChip(address, null);
 
-const hasProfile = await checkUserProfile(address);
+let currentUser = null;
 
-if (!hasProfile) {
-  return null;
+try {
+  currentUser = JSON.parse(
+    localStorage.getItem("currentUser") || "null"
+  );
+} catch {
+  currentUser = null;
+}
+
+const googleUser = getGoogleUser();
+
+const activeCircleWallet =
+  window.trorActiveCircleWallet;
+
+if (
+  currentUser?.id &&
+  activeCircleWallet?.walletId &&
+  activeCircleWallet?.address
+) {
+  await api(
+    `/api/users/${encodeURIComponent(
+      currentUser.id
+    )}/link-circle-wallet`,
+    {
+      method: "POST",
+
+      body: JSON.stringify({
+        email:
+          googleUser?.email || "",
+
+        walletAddress:
+          activeCircleWallet.address,
+
+        circleWalletId:
+          activeCircleWallet.walletId,
+
+        chainId:
+          ARC_CHAIN_ID
+      })
+    }
+  );
+
+  console.log(
+    "TROR Circle wallet linked to current profile:",
+    {
+      userId:
+        currentUser.id,
+
+      address:
+        activeCircleWallet.address,
+
+      walletId:
+        activeCircleWallet.walletId
+    }
+  );
+} else {
+  /*
+    No existing TROR profile yet.
+
+    For first-time Circle-only users,
+    keep the current onboarding flow
+    temporarily until unified identity
+    creation is completed.
+  */
+  const hasProfile =
+    await checkUserProfile(address);
+
+  if (!hasProfile) {
+    return null;
+  }
 }
 
 setStatus("Circle wallet and workspace loaded.", "success");
@@ -5878,15 +5998,63 @@ const address = extractWalletAddress(walletData);
 if (address) {
   circleWalletEl.textContent = address;
 
-  clearWeb3WalletLocal();
-
+  /*
+    Circle and Web3 can coexist under one TROR identity.
+    Do not disconnect or clear the Web3 wallet here.
+  */
   activeWalletType = "circle";
   updateWalletChip(address, null);
 
-  const hasProfile = await checkUserProfile(address);
+  const currentUser = (() => {
+    try {
+      return JSON.parse(
+        localStorage.getItem("currentUser") || "null"
+      );
+    } catch {
+      return null;
+    }
+  })();
 
-  if (!hasProfile) {
-    return;
+  const googleUser = getGoogleUser();
+
+  const activeCircleWallet =
+    window.trorActiveCircleWallet;
+
+  if (currentUser?.id) {
+    await api(
+      `/api/users/${encodeURIComponent(
+        currentUser.id
+      )}/link-circle-wallet`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          email: googleUser?.email || "",
+          walletAddress: address,
+          circleWalletId:
+            activeCircleWallet?.walletId || "",
+          chainId: ARC_CHAIN_ID
+        })
+      }
+    );
+
+    console.log(
+      "TROR Circle wallet linked to existing profile:",
+      {
+        userId: currentUser.id,
+        address
+      }
+    );
+  } else {
+    /*
+      Only use Circle address for profile discovery
+      when there is genuinely no active TROR identity.
+    */
+    const hasProfile =
+      await checkUserProfile(address);
+
+    if (!hasProfile) {
+      return;
+    }
   }
 
   setStatus(
@@ -7015,6 +7183,407 @@ async function createBusinessWorkspace() {
   }
 }
 
+function openWalletConnectionsModal() {
+  let modal =
+    document.getElementById(
+      "walletConnectionsModal"
+    );
+
+  if (!modal) {
+    modal =
+      document.createElement("div");
+
+    modal.id =
+      "walletConnectionsModal";
+
+    modal.style.cssText = `
+      position:fixed;
+      inset:0;
+      z-index:1000000;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:20px;
+      background:rgba(15,23,42,.68);
+      backdrop-filter:blur(10px);
+    `;
+
+    document.body.appendChild(modal);
+  }
+
+  let currentUser = null;
+
+  try {
+    currentUser = JSON.parse(
+      localStorage.getItem(
+        "currentUser"
+      ) || "null"
+    );
+  } catch {
+    currentUser = null;
+  }
+
+  const googleUser =
+    getGoogleUser();
+
+  const web3Address =
+    metamaskWallet || null;
+
+  const activeCircleWallet =
+    window.trorActiveCircleWallet;
+
+  const circleAddress =
+    activeCircleWallet?.address ||
+    (
+      circleWalletEl?.textContent
+        ?.trim()
+        ?.startsWith("0x")
+        ? circleWalletEl.textContent.trim()
+        : null
+    );
+
+  const shortAddress = (address) => {
+    if (!address) return "Not connected";
+
+    return (
+      address.slice(0, 6) +
+      "..." +
+      address.slice(-4)
+    );
+  };
+
+  modal.innerHTML = `
+    <div
+      style="
+        width:100%;
+        max-width:520px;
+        border-radius:24px;
+        padding:26px;
+        background:#ffffff;
+        color:#18181b;
+        box-shadow:
+          0 28px 80px rgba(0,0,0,.28);
+      "
+    >
+
+      <div
+        style="
+          font-size:12px;
+          font-weight:800;
+          letter-spacing:.14em;
+          color:#9a741e;
+          margin-bottom:6px;
+        "
+      >
+        TROR IDENTITY
+      </div>
+
+      <h2
+        style="
+          margin:0 0 6px;
+          font-size:26px;
+        "
+      >
+        Wallets & Connections
+      </h2>
+
+      <p
+        style="
+          margin:0 0 22px;
+          color:#6b7280;
+        "
+      >
+        Manage the wallets connected
+        to your TROR profile.
+      </p>
+
+      <div
+        style="
+          padding:16px;
+          border:1px solid #e5e7eb;
+          border-radius:16px;
+          margin-bottom:12px;
+        "
+      >
+        <div
+          style="
+            display:flex;
+            justify-content:space-between;
+            gap:16px;
+            align-items:center;
+          "
+        >
+          <div>
+            <div
+              style="
+                font-weight:800;
+                margin-bottom:4px;
+              "
+            >
+              Web3 Wallet
+            </div>
+
+            <div
+              style="
+                color:#6b7280;
+                font-size:13px;
+              "
+            >
+              ${shortAddress(
+                web3Address
+              )}
+            </div>
+          </div>
+
+          <div
+            style="
+              color:${
+                web3Address
+                  ? "#16a34a"
+                  : "#6b7280"
+              };
+              font-weight:700;
+              font-size:13px;
+            "
+          >
+            ${
+              web3Address
+                ? "Connected"
+                : "Not connected"
+            }
+          </div>
+
+${
+  web3Address
+    ? ""
+    : `
+      <button
+        id="btnConnectWeb3FromSettings"
+        type="button"
+        style="
+          width:100%;
+          margin-top:12px;
+          border:0;
+          border-radius:12px;
+          padding:12px 14px;
+          background:
+            linear-gradient(
+              135deg,
+              #c99b32,
+              #f0d166
+            );
+          font-weight:800;
+          cursor:pointer;
+        "
+      >
+        Connect Web3 Wallet
+      </button>
+    `
+}
+
+        </div>
+      </div>
+
+      <div
+        style="
+          padding:16px;
+          border:1px solid #e5e7eb;
+          border-radius:16px;
+          margin-bottom:12px;
+        "
+      >
+        <div
+          style="
+            display:flex;
+            justify-content:space-between;
+            gap:16px;
+            align-items:center;
+          "
+        >
+          <div>
+            <div
+              style="
+                font-weight:800;
+                margin-bottom:4px;
+              "
+            >
+              Circle Wallet
+            </div>
+
+            <div
+              style="
+                color:#6b7280;
+                font-size:13px;
+              "
+            >
+              ${shortAddress(
+                circleAddress
+              )}
+            </div>
+          </div>
+
+          <div
+            style="
+              color:${
+                circleAddress
+                  ? "#16a34a"
+                  : "#6b7280"
+              };
+              font-weight:700;
+              font-size:13px;
+            "
+          >
+            ${
+              circleAddress
+                ? "Connected"
+                : "Not connected"
+            }
+          </div>
+        </div>
+
+        <div
+          style="
+            margin-top:10px;
+            color:#6b7280;
+            font-size:13px;
+          "
+        >
+          Google:
+          ${
+            googleUser?.email ||
+            "Not connected"
+          }
+        </div>
+      </div>
+
+      <div
+        style="
+          padding:16px;
+          border:1px solid #e5e7eb;
+          border-radius:16px;
+          margin-bottom:18px;
+        "
+      >
+        <div
+          style="
+            font-weight:800;
+            margin-bottom:4px;
+          "
+        >
+          TROR Profile
+        </div>
+
+        <div
+          style="
+            color:#6b7280;
+            font-size:13px;
+          "
+        >
+          ${
+            currentUser?.full_name ||
+            "Current user"
+          }
+        </div>
+      </div>
+
+      <div
+        style="
+          display:grid;
+          grid-template-columns:1fr 1fr;
+          gap:10px;
+        "
+      >
+        <button
+          id="btnConnectCircleFromSettings"
+          type="button"
+          style="
+            border:0;
+            border-radius:12px;
+            padding:13px 16px;
+            background:
+              linear-gradient(
+                135deg,
+                #c99b32,
+                #f0d166
+              );
+            font-weight:800;
+            cursor:pointer;
+          "
+        >
+          ${
+            circleAddress
+              ? "Circle Connected"
+              : "Connect Google / Circle"
+          }
+        </button>
+
+        <button
+          id="btnCloseWalletConnections"
+          type="button"
+          style="
+            border:1px solid #e5e7eb;
+            border-radius:12px;
+            padding:13px 16px;
+            background:#fff;
+            font-weight:800;
+            cursor:pointer;
+          "
+        >
+          Close
+        </button>
+      </div>
+
+    </div>
+  `;
+
+  modal.style.display =
+    "flex";
+
+  document
+    .getElementById(
+      "btnCloseWalletConnections"
+    )
+    ?.addEventListener(
+      "click",
+      () => {
+        modal.style.display =
+          "none";
+      }
+    );
+
+document
+  .getElementById(
+    "btnConnectWeb3FromSettings"
+  )
+  ?.addEventListener(
+    "click",
+    async () => {
+      modal.style.display =
+        "none";
+
+      await openAppKitWallet();
+    }
+  );
+
+  document
+    .getElementById(
+      "btnConnectCircleFromSettings"
+    )
+    ?.addEventListener(
+      "click",
+      async () => {
+        if (circleAddress) {
+          return;
+        }
+
+        modal.style.display =
+          "none";
+
+        await connectGoogleCircle();
+      }
+    );
+}
+
 function renderWorkspaceSwitcher(
   workspaces,
   currentWorkspace
@@ -7249,6 +7818,28 @@ function renderWorkspaceSwitcher(
 
   menu.appendChild(createBusinessOption);
 
+  const walletConnectionsOption =
+  document.createElement("button");
+
+walletConnectionsOption.type = "button";
+walletConnectionsOption.className =
+  "tror-custom-select__create";
+
+walletConnectionsOption.textContent =
+  "Wallets & Connections";
+
+walletConnectionsOption.addEventListener(
+  "click",
+  () => {
+    closeWorkspaceMenu();
+    openWalletConnectionsModal();
+  }
+);
+
+menu.appendChild(
+  walletConnectionsOption
+);
+
   if (!window.__trorWorkspaceOutsideClickBound) {
     window.__trorWorkspaceOutsideClickBound = true;
 
@@ -7293,7 +7884,7 @@ async function connectMetaMask() {
 
     // Update topbar wallet chip
     updateWalletChip(metamaskWallet, null);
-    clearCircleWalletLocal();
+
     activeWalletType = "web3";
     const hasProfile =
   await checkUserProfile(metamaskWallet);
@@ -10642,7 +11233,7 @@ async function connectOKX() {
     metamaskWallet = accounts[0] || null;
     if (metamaskWalletEl) metamaskWalletEl.textContent = metamaskWallet || "Disconnected";
     updateWalletChip(metamaskWallet, null);
-    clearCircleWalletLocal();
+
 activeWalletType = "web3";
     setStatus("OKX Wallet connected.", "success");
   } catch (err) {
@@ -10663,7 +11254,7 @@ async function connectCoinbase() {
     metamaskWallet = accounts[0] || null;
     if (metamaskWalletEl) metamaskWalletEl.textContent = metamaskWallet || "Disconnected";
     updateWalletChip(metamaskWallet, null);
-    clearCircleWalletLocal();
+    
 activeWalletType = "web3";
     setStatus("Coinbase Wallet connected.", "success");
   } catch (err) {
@@ -12866,7 +13457,7 @@ updateWalletChip(
 
 loadTrorUnifiedBalance(account.address);
 
-clearCircleWalletLocal();
+
 activeWalletType = "web3";
 
       const normalizedWallet =
@@ -12913,9 +13504,6 @@ if (!isInvoicePaymentMode()) {
       lastProfileCheckedWallet = null;
 
       updateWalletChip(null, null);
-
-      localStorage.removeItem("currentUser");
-      localStorage.removeItem("currentWorkspace");
 
       if (activeWalletType === "web3") {
         activeWalletType = null;

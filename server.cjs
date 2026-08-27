@@ -112,6 +112,146 @@ db.prepare(`
 `).run();
 
 db.prepare(`
+  CREATE TABLE IF NOT EXISTS user_identities (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    identity_type TEXT NOT NULL,
+    identity_value TEXT NOT NULL,
+    provider TEXT,
+    verified_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(identity_type, identity_value)
+  )
+`).run();
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_user_identities_user_id
+  ON user_identities(user_id)
+`).run();
+
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS user_wallets (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    workspace_id TEXT,
+    wallet_type TEXT NOT NULL,
+    provider TEXT,
+    address TEXT NOT NULL,
+    chain_id INTEGER,
+    circle_wallet_id TEXT,
+    is_primary INTEGER NOT NULL DEFAULT 0,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(wallet_type, address, chain_id)
+  )
+`).run();
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_user_wallets_user_id
+  ON user_wallets(user_id)
+`).run();
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_user_wallets_workspace_id
+  ON user_wallets(workspace_id)
+`).run();
+
+/* =========================
+   IDENTITY / WALLET BACKFILL
+========================= */
+
+const legacyUsers = db.prepare(`
+  SELECT
+    id,
+    primary_wallet_address
+  FROM users
+  WHERE primary_wallet_address IS NOT NULL
+    AND trim(primary_wallet_address) != ''
+`).all();
+
+const insertWeb3Identity = db.prepare(`
+  INSERT OR IGNORE INTO user_identities (
+    id,
+    user_id,
+    identity_type,
+    identity_value,
+    provider,
+    verified_at,
+    created_at,
+    updated_at
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+const insertWeb3Wallet = db.prepare(`
+  INSERT OR IGNORE INTO user_wallets (
+    id,
+    user_id,
+    workspace_id,
+    wallet_type,
+    provider,
+    address,
+    chain_id,
+    circle_wallet_id,
+    is_primary,
+    is_active,
+    created_at,
+    updated_at
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+const backfillLegacyWallets = db.transaction(() => {
+  for (const user of legacyUsers) {
+    const address = String(
+      user.primary_wallet_address || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    if (
+      !address ||
+      !ethers.isAddress(address)
+    ) {
+      continue;
+    }
+
+    const now =
+      new Date().toISOString();
+
+    insertWeb3Identity.run(
+      crypto.randomUUID(),
+      user.id,
+      "WEB3",
+      address,
+      "legacy",
+      now,
+      now,
+      now
+    );
+
+    insertWeb3Wallet.run(
+      crypto.randomUUID(),
+      user.id,
+      null,
+      "WEB3",
+      "legacy",
+      address,
+      5042002,
+      null,
+      1,
+      1,
+      now,
+      now
+    );
+  }
+});
+
+backfillLegacyWallets();
+
+db.prepare(`
   CREATE TABLE IF NOT EXISTS workspaces (
     id TEXT PRIMARY KEY,
     workspace_type TEXT NOT NULL,
@@ -772,6 +912,248 @@ app.post("/api/users", (req, res) => {
     });
   }
 });
+
+app.post(
+  "/api/users/:userId/link-circle-wallet",
+  (req, res) => {
+    try {
+      const userId = String(
+        req.params.userId || ""
+      ).trim();
+
+      const email = String(
+        req.body.email || ""
+      )
+        .trim()
+        .toLowerCase();
+
+      const walletAddress = String(
+        req.body.walletAddress || ""
+      )
+        .trim()
+        .toLowerCase();
+
+      const circleWalletId = String(
+        req.body.circleWalletId || ""
+      ).trim();
+
+      const chainId = Number(
+        req.body.chainId || 5042002
+      );
+
+      if (!userId) {
+        return res.status(400).json({
+          success: false,
+          error: "User ID is required"
+        });
+      }
+
+      const user = db.prepare(`
+        SELECT *
+        FROM users
+        WHERE id = ?
+      `).get(userId);
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          error: "TROR user not found"
+        });
+      }
+
+      if (
+        !walletAddress ||
+        !ethers.isAddress(walletAddress)
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Valid Circle wallet address is required"
+        });
+      }
+
+      const now =
+        new Date().toISOString();
+
+      const linkCircle =
+        db.transaction(() => {
+
+          /*
+            Link verified Google identity.
+
+            We only add this when the frontend
+            reached this endpoint through the
+            authenticated Google/Circle flow.
+          */
+          if (email) {
+            const existingIdentity =
+              db.prepare(`
+                SELECT *
+                FROM user_identities
+                WHERE identity_type = 'GOOGLE'
+                  AND lower(identity_value) = ?
+              `).get(email);
+
+            if (
+              existingIdentity &&
+              existingIdentity.user_id !== userId
+            ) {
+              throw new Error(
+                "This Google account is already linked to another TROR profile"
+              );
+            }
+
+            if (!existingIdentity) {
+              db.prepare(`
+                INSERT INTO user_identities (
+                  id,
+                  user_id,
+                  identity_type,
+                  identity_value,
+                  provider,
+                  verified_at,
+                  created_at,
+                  updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              `).run(
+                crypto.randomUUID(),
+                userId,
+                "GOOGLE",
+                email,
+                "google",
+                now,
+                now,
+                now
+              );
+            }
+          }
+
+          const existingWallet =
+            db.prepare(`
+              SELECT *
+              FROM user_wallets
+              WHERE lower(address) = ?
+                AND wallet_type = 'CIRCLE'
+                AND chain_id = ?
+            `).get(
+              walletAddress,
+              chainId
+            );
+
+          if (
+            existingWallet &&
+            existingWallet.user_id !== userId
+          ) {
+            throw new Error(
+              "This Circle wallet is already linked to another TROR profile"
+            );
+          }
+
+          if (existingWallet) {
+            db.prepare(`
+              UPDATE user_wallets
+              SET
+                circle_wallet_id = ?,
+                provider = 'circle',
+                is_active = 1,
+                updated_at = ?
+              WHERE id = ?
+            `).run(
+              circleWalletId || null,
+              now,
+              existingWallet.id
+            );
+          } else {
+            db.prepare(`
+              INSERT INTO user_wallets (
+                id,
+                user_id,
+                workspace_id,
+                wallet_type,
+                provider,
+                address,
+                chain_id,
+                circle_wallet_id,
+                is_primary,
+                is_active,
+                created_at,
+                updated_at
+              )
+              VALUES (
+                ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?
+              )
+            `).run(
+              crypto.randomUUID(),
+              userId,
+              null,
+              "CIRCLE",
+              "circle",
+              walletAddress,
+              chainId,
+              circleWalletId || null,
+              0,
+              1,
+              now,
+              now
+            );
+          }
+
+          /*
+            Keep legacy columns populated
+            during migration.
+          */
+          db.prepare(`
+            UPDATE users
+            SET
+              circle_wallet_id = COALESCE(
+                ?,
+                circle_wallet_id
+              ),
+              updated_at = ?
+            WHERE id = ?
+          `).run(
+            circleWalletId || null,
+            now,
+            userId
+          );
+        });
+
+      linkCircle();
+
+      const wallets =
+        db.prepare(`
+          SELECT *
+          FROM user_wallets
+          WHERE user_id = ?
+            AND is_active = 1
+          ORDER BY
+            is_primary DESC,
+            created_at ASC
+        `).all(userId);
+
+      return res.json({
+        success: true,
+        userId,
+        wallets
+      });
+
+    } catch (err) {
+      console.error(
+        "Link Circle wallet error:",
+        err
+      );
+
+      return res.status(409).json({
+        success: false,
+        error:
+          err?.message ||
+          "Failed to link Circle wallet"
+      });
+    }
+  }
+);
 
 /* =========================
    WORKSPACES
