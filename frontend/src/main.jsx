@@ -7092,6 +7092,16 @@ console.log("LOADING WORKSPACES FOR:", walletAddress);
 
   renderWorkspaceSwitcher(workspaces, currentWorkspace);
 
+  if (currentWorkspace?.id) {
+  window.dispatchEvent(
+    new CustomEvent("workspaceChanged", {
+      detail: {
+        workspace: currentWorkspace
+      }
+    })
+  );
+}
+
   return workspaces;
 }
 
@@ -11891,6 +11901,13 @@ if (!list) return;
     }
   }
 }
+
+window.addEventListener(
+  "workspaceChanged",
+  () => {
+    loadEmployees(currentEmployeeStatus || "");
+  }
+);
 
 window.updateEmployeeStatus = async function (id, status) {
   try {

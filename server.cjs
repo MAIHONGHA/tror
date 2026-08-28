@@ -2395,118 +2395,354 @@ app.post(
         });
       }
 
-      const transaction =
-        await provider.getTransaction(
-          txHash
-        );
-
-      if (!transaction) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "Payroll transaction could not be loaded"
-        });
-      }
-
       const TROR_PAYROLL_CONTRACT_ADDRESS =
-        "0xE92413d559aCed050ef10c62DC79AAc568F377F0";
+  "0xE92413d559aCed050ef10c62DC79AAc568F377F0";
 
-      if (
-        String(transaction.to || "")
-          .toLowerCase() !==
-        TROR_PAYROLL_CONTRACT_ADDRESS
-          .toLowerCase()
-      ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "Transaction was not sent to TRORPayroll"
-        });
-      }
+const expectedPayrollId =
+  ethers.keccak256(
+    ethers.toUtf8Bytes(
+      `tror-payroll-${id}`
+    )
+  );
 
-      if (
-        String(transaction.from || "")
-          .toLowerCase() !==
-        payerAddress.toLowerCase()
-      ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "Payroll transaction payer does not match"
-        });
-      }
+const payrollInterface =
+  new ethers.Interface([
+    "event PayrollExecuted(bytes32 indexed payrollId,address indexed payer,uint256 employeeCount,uint256 totalAmount)",
+    "event PayrollPayment(bytes32 indexed payrollId,address indexed payer,address indexed recipient,uint256 amount)"
+  ]);
 
-      const payrollInterface =
-        new ethers.Interface([
-          "function executePayroll(bytes32 payrollId,address[] recipients,uint256[] amounts)"
-        ]);
+let payrollExecutedEvent = null;
 
-      let parsed;
+for (const log of receipt.logs) {
+  if (
+    String(log.address || "")
+      .toLowerCase() !==
+    TROR_PAYROLL_CONTRACT_ADDRESS
+      .toLowerCase()
+  ) {
+    continue;
+  }
 
-      try {
-        parsed =
-          payrollInterface.parseTransaction({
-            data:
-              transaction.data,
-            value:
-              transaction.value
-          });
-      } catch {
-        return res.status(400).json({
-          success: false,
-          error:
-            "Transaction is not a TRORPayroll execution"
-        });
-      }
+  try {
+    const parsedLog =
+      payrollInterface.parseLog({
+        topics:
+          log.topics,
+        data:
+          log.data
+      });
 
-      const expectedPayrollId =
-        ethers.keccak256(
-          ethers.toUtf8Bytes(
-            `tror-payroll-${id}`
-          )
-        );
+    if (
+      parsedLog?.name ===
+      "PayrollExecuted"
+    ) {
+      payrollExecutedEvent =
+        parsedLog;
 
-      if (
-        String(parsed.args[0]).toLowerCase() !==
-        expectedPayrollId.toLowerCase()
-      ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "Payroll ID does not match batch"
-        });
-      }
+      break;
+    }
+  } catch {
+    // Ignore logs from other events.
+  }
+}
+
+if (!payrollExecutedEvent) {
+  return res.status(400).json({
+    success: false,
+    error:
+      "TRORPayroll execution event was not found"
+  });
+}
+
+const eventPayrollId =
+  String(
+    payrollExecutedEvent.args.payrollId
+  );
+
+const eventPayer =
+  String(
+    payrollExecutedEvent.args.payer
+  );
+
+const eventEmployeeCount =
+  BigInt(
+    payrollExecutedEvent.args.employeeCount
+  );
+
+const eventTotalAmount =
+  BigInt(
+    payrollExecutedEvent.args.totalAmount
+  );
+
+if (
+  eventPayrollId.toLowerCase() !==
+  expectedPayrollId.toLowerCase()
+) {
+  return res.status(400).json({
+    success: false,
+    error:
+      "Payroll ID does not match batch"
+  });
+}
+
+if (
+  eventPayer.toLowerCase() !==
+  payerAddress.toLowerCase()
+) {
+  return res.status(400).json({
+    success: false,
+    error:
+      "Payroll transaction payer does not match"
+  });
+}
+
+const expectedItems =
+  db.prepare(`
+    SELECT *
+    FROM payroll_items
+    WHERE batch_id = ?
+  `).all(id);
+
+if (!expectedItems.length) {
+  return res.status(400).json({
+    success: false,
+    error:
+      "Payroll batch has no payment items"
+  });
+}
+
+if (
+  eventEmployeeCount !==
+  BigInt(expectedItems.length)
+) {
+  return res.status(400).json({
+    success: false,
+    error:
+      "Payroll employee count does not match"
+  });
+}
+
+const expectedTotalAmount =
+  expectedItems.reduce(
+    (sum, item) => {
+      return (
+        sum +
+        ethers.parseUnits(
+          String(item.final_amount),
+          6
+        )
+      );
+    },
+    0n
+  );
+
+if (
+  eventTotalAmount !==
+  expectedTotalAmount
+) {
+  return res.status(400).json({
+    success: false,
+    error:
+      "Payroll total amount does not match"
+  });
+}
 
       const now =
         new Date().toISOString();
 
-      const updatePayroll =
-        db.transaction(() => {
-          db.prepare(`
-            UPDATE payroll_batches
-            SET status = 'PAID',
-                tx_hash = ?,
-                paid_at = ?
-            WHERE id = ?
-          `).run(
-            txHash,
-            now,
-            id
-          );
+      let nextBatchId = null;
+let nextPayDate = null;
 
-          db.prepare(`
-            UPDATE payroll_items
-            SET status = 'PAID',
-                tx_hash = ?
-            WHERE batch_id = ?
-              AND status != 'PAID'
-          `).run(
-            txHash,
-            id
-          );
-        });
+const updatePayroll =
+  db.transaction(() => {
+    /*
+      Mark the current payroll PAID only once.
 
-      updatePayroll();
+      This guard is important because /confirm
+      could theoretically be called again with
+      the same transaction hash.
+    */
+    const paidResult = db.prepare(`
+      UPDATE payroll_batches
+      SET status = 'PAID',
+          tx_hash = ?,
+          paid_at = ?
+      WHERE id = ?
+        AND status != 'PAID'
+    `).run(
+      txHash,
+      now,
+      id
+    );
+
+    /*
+      If this batch was already PAID,
+      do not create another monthly cycle.
+    */
+    if (paidResult.changes !== 1) {
+      return;
+    }
+
+    db.prepare(`
+      UPDATE payroll_items
+      SET status = 'PAID',
+          tx_hash = ?
+      WHERE batch_id = ?
+        AND status != 'PAID'
+    `).run(
+      txHash,
+      id
+    );
+
+    /*
+      MONTHLY RECURRENCE
+
+      The paid batch remains immutable history.
+
+      A NEW payroll batch is created for
+      the next month in DRAFT status.
+
+      Base salary is preserved.
+      Variable monthly values are reset.
+    */
+    if (
+      String(batch.frequency || "")
+        .toLowerCase() === "monthly"
+    ) {
+      const currentPayDate =
+        new Date(batch.pay_date);
+
+      if (
+        !Number.isNaN(
+          currentPayDate.getTime()
+        )
+      ) {
+        /*
+          Preserve the intended UTC day/time
+          while safely handling month ends.
+
+          Example:
+          Jan 31 -> Feb 28/29
+        */
+        const originalDay =
+          currentPayDate.getUTCDate();
+
+        const nextDate =
+          new Date(currentPayDate);
+
+        nextDate.setUTCDate(1);
+
+        nextDate.setUTCMonth(
+          nextDate.getUTCMonth() + 1
+        );
+
+        const lastDayOfNextMonth =
+          new Date(
+            Date.UTC(
+              nextDate.getUTCFullYear(),
+              nextDate.getUTCMonth() + 1,
+              0
+            )
+          ).getUTCDate();
+
+        nextDate.setUTCDate(
+          Math.min(
+            originalDay,
+            lastDayOfNextMonth
+          )
+        );
+
+        nextPayDate =
+          nextDate.toISOString();
+
+        nextBatchId =
+          crypto.randomUUID();
+
+        db.prepare(`
+          INSERT INTO payroll_batches (
+            id,
+            title,
+            pay_date,
+            status,
+            frequency,
+            workspace_id
+          )
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+          nextBatchId,
+          batch.title,
+          nextPayDate,
+          "DRAFT",
+          "monthly",
+          batch.workspace_id
+        );
+
+        for (const item of expectedItems) {
+          const baseSalary =
+            Number(
+              item.base_salary || 0
+            );
+
+          /*
+            New month starts clean:
+
+            keep:
+            - employee
+            - wallet
+            - base salary
+
+            reset:
+            - overtime
+            - allowance
+            - bonus
+            - deduction
+          */
+          db.prepare(`
+            INSERT INTO payroll_items (
+              id,
+              batch_id,
+              employee_id,
+              employee_name,
+              employee_email,
+              wallet,
+              base_salary,
+              overtime_hours,
+              overtime_rate,
+              allowance,
+              bonus,
+              deduction,
+              final_amount,
+              status,
+              workspace_id
+            )
+            VALUES (
+              ?, ?, ?, ?, ?, ?,
+              ?, ?, ?, ?, ?, ?,
+              ?, ?, ?
+            )
+          `).run(
+            crypto.randomUUID(),
+            nextBatchId,
+            item.employee_id || null,
+            item.employee_name,
+            item.employee_email || null,
+            item.wallet,
+            baseSalary,
+            0,
+            0,
+            0,
+            0,
+            0,
+            baseSalary,
+            "DRAFT",
+            batch.workspace_id
+          );
+        }
+      }
+    }
+  });
+
+updatePayroll();
 
       return res.json({
         success: true,
@@ -2724,6 +2960,31 @@ app.post("/api/payroll-batches", (req, res) => {
       employees = []
     } = req.body;
 
+if (
+  !String(pay_date || "").trim()
+) {
+  return res.status(400).json({
+    error:
+      String(frequency || "").toLowerCase() === "monthly"
+        ? "First pay date and time is required for monthly payroll."
+        : "Pay date and time is required."
+  });
+}
+
+const parsedPayDate =
+  new Date(pay_date);
+
+if (
+  Number.isNaN(
+    parsedPayDate.getTime()
+  )
+) {
+  return res.status(400).json({
+    error:
+      "Please provide a valid pay date and time."
+  });
+}
+
     const normalizedWorkspaceId = String(
       workspaceId || ""
     ).trim();
@@ -2771,7 +3032,7 @@ app.post("/api/payroll-batches", (req, res) => {
       `).run(
         batchId,
         title,
-        pay_date || new Date().toISOString(),
+        parsedPayDate.toISOString(),
         "DRAFT",
         frequency,
         normalizedWorkspaceId
@@ -5590,12 +5851,31 @@ const totalPayrollsRow = db.prepare(`
   WHERE workspace_id = ?
 `).get(workspaceId);
 
-    const totalVolumeRow = db.prepare(`
-      SELECT COALESCE(SUM(amount),0) as total
-      FROM invoices
-      WHERE status = 'PAID'
-      AND workspace_id = ?
-    `).get(workspaceId);
+    const invoiceVolumeRow = db.prepare(`
+  SELECT COALESCE(SUM(amount), 0) AS total
+  FROM invoices
+  WHERE status = 'PAID'
+  AND workspace_id = ?
+`).get(workspaceId);
+
+const claimVolumeRow = db.prepare(`
+  SELECT COALESCE(SUM(amount), 0) AS total
+  FROM claims
+  WHERE status = 'FUNDED'
+  AND workspace_id = ?
+`).get(workspaceId);
+
+const payoutVolumeRow = db.prepare(`
+  SELECT COALESCE(SUM(amount), 0) AS total
+  FROM payouts
+  WHERE status = 'PAID'
+  AND workspace_id = ?
+`).get(workspaceId);
+
+const totalVolume =
+  Number(invoiceVolumeRow?.total || 0) +
+  Number(claimVolumeRow?.total || 0) +
+  Number(payoutVolumeRow?.total || 0);
 
 const recentActivity = [];
 
@@ -5650,7 +5930,7 @@ if (latestClaim) {
   totalInvoices: totalInvoicesRow.count,
   totalPayrolls: totalPayrollsRow.count,
   totalClaims: totalClaimsRow.count,
-  totalVolume: totalVolumeRow.total,
+  totalVolume,
 
   latestPayment: latestPayment || null,
 recentActivity
@@ -7135,6 +7415,110 @@ cron.schedule("* * * * *", async () => {
 
   } finally {
     payoutSchedulerRunning = false;
+  }
+});
+
+// =======================
+// SCHEDULED PAYROLL CRON
+// NON-CUSTODIAL
+// =======================
+
+let payrollSchedulerRunning = false;
+
+cron.schedule("* * * * *", async () => {
+  if (payrollSchedulerRunning) {
+    console.log(
+      "Scheduled payroll check skipped: previous run still active"
+    );
+    return;
+  }
+
+  payrollSchedulerRunning = true;
+
+  try {
+    const duePayrolls = db.prepare(`
+      SELECT *
+      FROM payroll_batches
+      WHERE status = 'APPROVED'
+        AND pay_date IS NOT NULL
+        AND TRIM(pay_date) != ''
+        AND datetime(pay_date) <= datetime('now')
+      ORDER BY datetime(pay_date) ASC
+      LIMIT 20
+    `).all();
+
+    if (duePayrolls.length === 0) {
+      return;
+    }
+
+    console.log(
+      `Found ${duePayrolls.length} payroll batch(es) ready for wallet authorization`
+    );
+
+    for (const payroll of duePayrolls) {
+      try {
+        /*
+         * NON-CUSTODIAL:
+         *
+         * The server NEVER signs or sends USDC.
+         *
+         * When pay_date arrives,
+         * the payroll becomes REVIEW.
+         *
+         * The connected Web3 or Circle wallet
+         * must authorize the actual transaction.
+         */
+        const result = db.prepare(`
+          UPDATE payroll_batches
+          SET status = 'REVIEW'
+          WHERE id = ?
+            AND status = 'APPROVED'
+        `).run(
+          payroll.id
+        );
+
+        if (result.changes !== 1) {
+          console.log(
+            "Scheduled payroll was already updated:",
+            payroll.id
+          );
+
+          continue;
+        }
+
+        db.prepare(`
+          UPDATE payroll_items
+          SET status = 'REVIEW'
+          WHERE batch_id = ?
+            AND status = 'APPROVED'
+        `).run(
+          payroll.id
+        );
+
+        console.log(
+          "Scheduled payroll ready for wallet authorization:",
+          payroll.id,
+          payroll.frequency,
+          payroll.pay_date
+        );
+
+      } catch (err) {
+        console.error(
+          "Failed to prepare scheduled payroll:",
+          payroll.id,
+          err?.message || err
+        );
+      }
+    }
+
+  } catch (err) {
+    console.error(
+      "Scheduled payroll cron error:",
+      err
+    );
+
+  } finally {
+    payrollSchedulerRunning = false;
   }
 });
 

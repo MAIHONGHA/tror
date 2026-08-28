@@ -1,16 +1,14 @@
 import { useEffect, useState } from "react";
-
 import {
   getAccount,
   writeContract,
   waitForTransactionReceipt
 } from "@wagmi/core";
-
 import {
   wagmiAdapter
 } from "./appkit.js";
-
 import { ethers } from "ethers";
+import { W3SSdk } from "@circle-fin/w3s-pw-web-sdk";
 
 const API_BASE = window.location.origin;
 
@@ -77,6 +75,102 @@ function getCurrentWorkspace() {
   } catch {
     return null;
   }
+}
+
+function getCirclePayrollWallet() {
+  const wallet =
+    window.trorActiveCircleWallet;
+
+  if (!wallet?.address) {
+    return null;
+  }
+
+  const walletId =
+    wallet.walletId ||
+    wallet.id ||
+    null;
+
+  if (!walletId) {
+    return null;
+  }
+
+  if (
+    String(
+      wallet.blockchain || ""
+    ).toUpperCase() !==
+    "ARC-TESTNET"
+  ) {
+    return null;
+  }
+
+  return {
+    ...wallet,
+    walletId
+  };
+}
+
+async function executeCirclePayrollChallenge(
+  challengeId,
+  userToken,
+  encryptionKey
+) {
+  if (!challengeId) {
+    throw new Error(
+      "Missing Circle challengeId."
+    );
+  }
+
+  const configRes =
+    await fetch(
+      `${API_BASE}/api/circle/config`
+    );
+
+  const configData =
+    await configRes.json();
+
+  if (!configRes.ok) {
+    throw new Error(
+      configData?.error ||
+      "Failed to load Circle config."
+    );
+  }
+
+  const appId =
+    configData?.config?.circleAppId;
+
+  if (!appId) {
+    throw new Error(
+      "Missing CIRCLE_APP_ID."
+    );
+  }
+
+  const sdk =
+    new W3SSdk({
+      appSettings: {
+        appId
+      }
+    });
+
+  sdk.setAuthentication({
+    userToken,
+    encryptionKey
+  });
+
+  return await new Promise(
+    (resolve, reject) => {
+      sdk.execute(
+        challengeId,
+        (error, result) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve(result);
+        }
+      );
+    }
+  );
 }
 
 export default function PayrollPanel() {
@@ -243,6 +337,35 @@ if (!currentWorkspace?.id) {
   return;
 }
 
+if (
+  !String(
+    newPayroll.pay_date || ""
+  ).trim()
+) {
+  alert(
+    newPayroll.frequency === "monthly"
+      ? "First pay date and time is required for monthly payroll."
+      : "Pay date and time is required."
+  );
+
+  return;
+}
+
+const selectedPayDate =
+  new Date(newPayroll.pay_date);
+
+if (
+  Number.isNaN(
+    selectedPayDate.getTime()
+  )
+) {
+  alert(
+    "Please select a valid pay date and time."
+  );
+
+  return;
+}
+
     if (newPayroll.employees.length === 0) {
     alert("No active employees available.");
     return;
@@ -278,7 +401,7 @@ if (validEmployees.length === 0) {
       workspaceId: currentWorkspace.id,
       title: newPayroll.title,
       frequency: newPayroll.frequency,
-      pay_date: newPayroll.pay_date,
+      pay_date: selectedPayDate.toISOString(),
       employees: validEmployees.map((emp) => ({
   employee_name: emp.employee_name,
   employee_email: emp.employee_email,
@@ -374,20 +497,24 @@ async function viewBatchItems(batchId) {
         wagmiAdapter.wagmiConfig
       );
 
-    if (!account?.address) {
-      alert(
-        "Connect your Web3 wallet before executing payroll."
-      );
-      return;
-    }
+    const circleWallet =
+      getCirclePayrollWallet();
+
+    if (!account?.address && !circleWallet) {
+  alert(
+    "Connect a Web3 wallet or Circle Wallet before executing payroll."
+  );
+  return;
+}
 
     /*
       Payroll v1 runs on Arc Testnet.
     */
     if (
-      Number(account.chainId) !==
-      5042002
-    ) {
+  account?.address &&
+  Number(account.chainId) !==
+  5042002
+) {
       alert(
         "Switch your connected wallet to Arc Testnet before executing payroll."
       );
@@ -441,18 +568,40 @@ async function viewBatchItems(batchId) {
       This wallet is now explicitly
       the payroll payer.
     */
+
+      const useWeb3 =
+  Boolean(account?.address);
+
+const payerAddress =
+  useWeb3
+    ? account.address
+    : circleWallet.address;
+
+const payerType =
+  useWeb3
+    ? "WEB3"
+    : "CIRCLE";
+
+const payerChainId =
+  useWeb3
+    ? account.chainId
+    : ARC_CHAIN_ID;
+
     window.pendingPayrollPayment = {
-      ...data,
+  ...data,
 
-      payerAddress:
-        account.address,
+  payerAddress,
 
-      payerType:
-        "WEB3",
+  payerType,
 
-      chainId:
-        account.chainId
-    };
+  chainId:
+    payerChainId,
+
+  circleWalletId:
+    !useWeb3
+      ? circleWallet.walletId
+      : null
+};
 
     console.log(
       "TROR payroll payment plan:",
@@ -467,7 +616,7 @@ async function viewBatchItems(batchId) {
     const confirmed =
       confirm(
         `TROR Payroll\n\n` +
-        `Payer:\n${account.address}\n\n` +
+        `Payer (${payerType}):\n${payerAddress}\n\n` +
         `Employees: ${data.employeeCount}\n` +
         `Total: ${data.totalAmount} ${data.currency}\n\n` +
         `Network: ${data.network?.chainName || "Arc Testnet"}\n\n` +
@@ -506,91 +655,347 @@ const payrollId =
     )
   );
 
-alert(
-  "Step 1/2: Approve USDC for TRORPayroll."
-);
+let approveHash = "";
+let payrollHash = "";
 
-const approveHash =
-  await writeContract(
-    wagmiAdapter.wagmiConfig,
-    {
-      address:
-        USDC_ADDRESS,
-
-      abi:
-        ERC20_APPROVE_ABI,
-
-      functionName:
-        "approve",
-
-      args: [
-        TROR_PAYROLL_CONTRACT_ADDRESS,
-        totalAmountUnits
-      ],
-
-      account:
-        account.address,
-
-      chainId:
-        ARC_CHAIN_ID
-    }
+if (useWeb3) {
+  alert(
+    "Step 1/2: Approve USDC for TRORPayroll."
   );
 
-await waitForTransactionReceipt(
-  wagmiAdapter.wagmiConfig,
-  {
-    hash:
-      approveHash
-  }
-);
+  approveHash =
+    await writeContract(
+      wagmiAdapter.wagmiConfig,
+      {
+        address:
+          USDC_ADDRESS,
 
-alert(
-  "Step 2/2: Confirm payroll execution in your wallet."
-);
+        abi:
+          ERC20_APPROVE_ABI,
 
-const payrollHash =
-  await writeContract(
-    wagmiAdapter.wagmiConfig,
-    {
-      address:
-        TROR_PAYROLL_CONTRACT_ADDRESS,
+        functionName:
+          "approve",
 
-      abi:
-        TROR_PAYROLL_ABI,
+        args: [
+          TROR_PAYROLL_CONTRACT_ADDRESS,
+          totalAmountUnits
+        ],
 
-      functionName:
-        "executePayroll",
+        account:
+          account.address,
 
-      args: [
-        payrollId,
-        recipients,
-        amounts
-      ],
+        chainId:
+          ARC_CHAIN_ID
+      }
+    );
 
-      account:
-        account.address,
-
-      chainId:
-        ARC_CHAIN_ID
-    }
-  );
-
-const receipt =
   await waitForTransactionReceipt(
     wagmiAdapter.wagmiConfig,
     {
       hash:
-        payrollHash
+        approveHash
     }
   );
 
-if (
-  !receipt ||
-  receipt.status !== "success"
-) {
-  throw new Error(
-    "Payroll transaction failed."
+  alert(
+    "Step 2/2: Confirm payroll execution in your wallet."
   );
+
+  payrollHash =
+    await writeContract(
+      wagmiAdapter.wagmiConfig,
+      {
+        address:
+          TROR_PAYROLL_CONTRACT_ADDRESS,
+
+        abi:
+          TROR_PAYROLL_ABI,
+
+        functionName:
+          "executePayroll",
+
+        args: [
+          payrollId,
+          recipients,
+          amounts
+        ],
+
+        account:
+          account.address,
+
+        chainId:
+          ARC_CHAIN_ID
+      }
+    );
+
+  const receipt =
+    await waitForTransactionReceipt(
+      wagmiAdapter.wagmiConfig,
+      {
+        hash:
+          payrollHash
+      }
+    );
+
+  if (
+    !receipt ||
+    receipt.status !== "success"
+  ) {
+    throw new Error(
+      "Payroll transaction failed."
+    );
+  }
+} else {
+  if (
+    typeof window.getCircleAuth !==
+    "function"
+  ) {
+    throw new Error(
+      "Circle authentication is not available."
+    );
+  }
+
+  const {
+    userToken,
+    encryptionKey
+  } =
+    await window.getCircleAuth();
+
+  if (
+    !userToken ||
+    !encryptionKey
+  ) {
+    throw new Error(
+      "Missing Circle authentication."
+    );
+  }
+
+  alert(
+    "Step 1/2: Approve USDC in Circle Wallet."
+  );
+
+  const approveRes =
+    await fetch(
+      `${API_BASE}/api/circle/contract-execution`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
+        body: JSON.stringify({
+          userToken,
+
+          walletId:
+            circleWallet.walletId,
+
+          contractAddress:
+            USDC_ADDRESS,
+
+          abiFunctionSignature:
+            "approve(address,uint256)",
+
+          abiParameters: [
+            TROR_PAYROLL_CONTRACT_ADDRESS,
+            totalAmountUnits.toString()
+          ]
+        })
+      }
+    );
+
+  const approveData =
+    await approveRes.json();
+
+  if (!approveRes.ok) {
+    throw new Error(
+      approveData?.error ||
+      "Circle USDC approve failed."
+    );
+  }
+
+  const approveChallengeId =
+    approveData?.data?.challengeId ||
+    approveData?.challengeId;
+
+  if (!approveChallengeId) {
+    throw new Error(
+      "Circle approve challengeId was not returned."
+    );
+  }
+
+  await executeCirclePayrollChallenge(
+    approveChallengeId,
+    userToken,
+    encryptionKey
+  );
+
+  await new Promise(
+    (resolve) =>
+      setTimeout(resolve, 6000)
+  );
+
+  alert(
+    "Step 2/2: Confirm payroll execution in Circle Wallet."
+  );
+
+  const executeRes =
+    await fetch(
+      `${API_BASE}/api/circle/contract-execution`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
+        body: JSON.stringify({
+          userToken,
+
+          walletId:
+            circleWallet.walletId,
+
+          contractAddress:
+            TROR_PAYROLL_CONTRACT_ADDRESS,
+
+          abiFunctionSignature:
+            "executePayroll(bytes32,address[],uint256[])",
+
+          abiParameters: [
+            payrollId,
+            recipients,
+            amounts.map(
+              (amount) =>
+                amount.toString()
+            )
+          ]
+        })
+      }
+    );
+
+  const executeData =
+    await executeRes.json();
+
+  if (!executeRes.ok) {
+    throw new Error(
+      executeData?.error ||
+      "Circle payroll execution failed."
+    );
+  }
+
+  const executeChallengeId =
+    executeData?.data?.challengeId ||
+    executeData?.challengeId;
+
+  if (!executeChallengeId) {
+    throw new Error(
+      "Circle payroll challengeId was not returned."
+    );
+  }
+
+  await executeCirclePayrollChallenge(
+    executeChallengeId,
+    userToken,
+    encryptionKey
+  );
+
+  for (
+    let i = 0;
+    i < 20;
+    i++
+  ) {
+    await new Promise(
+      (resolve) =>
+        setTimeout(resolve, 3000)
+    );
+
+    const txRes =
+      await fetch(
+        `${API_BASE}/api/circle/transactions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+          body: JSON.stringify({
+            userToken
+          })
+        }
+      );
+
+    const txData =
+      await txRes.json();
+
+    if (!txRes.ok) {
+      continue;
+    }
+
+    const transactions =
+      txData?.data?.transactions ||
+      [];
+
+    const tx =
+      transactions.find(
+        (item) => {
+          const operation =
+            String(
+              item?.operation || ""
+            ).toUpperCase();
+
+          const state =
+            String(
+              item?.state ||
+              item?.status ||
+              ""
+            ).toUpperCase();
+
+          const contractAddress =
+            String(
+              item?.contractAddress ||
+              item?.destinationAddress ||
+              ""
+            ).toLowerCase();
+
+          const hash =
+            item?.blockchainTxHash ||
+            item?.txHash ||
+            item?.transactionHash ||
+            "";
+
+          return (
+            operation ===
+              "CONTRACT_EXECUTION" &&
+            state ===
+              "COMPLETE" &&
+            contractAddress ===
+              TROR_PAYROLL_CONTRACT_ADDRESS.toLowerCase() &&
+            String(hash).startsWith(
+              "0x"
+            )
+          );
+        }
+      );
+
+    if (tx) {
+      payrollHash =
+        tx.blockchainTxHash ||
+        tx.txHash ||
+        tx.transactionHash ||
+        "";
+
+      break;
+    }
+  }
+
+  if (
+    !payrollHash ||
+    !String(
+      payrollHash
+    ).startsWith("0x")
+  ) {
+    throw new Error(
+      "Circle payroll was approved, but the Arc transaction hash was not found yet."
+    );
+  }
 }
 
 const confirmRes =
@@ -605,7 +1010,7 @@ const confirmRes =
         txHash:
           payrollHash,
         payerAddress:
-          account.address
+          payerAddress
       })
     }
   );
@@ -629,7 +1034,7 @@ console.log(
     batchId,
     payrollId,
     payer:
-      account.address,
+      payerAddress,
     employeeCount:
       recipients.length,
     totalAmount:
