@@ -838,6 +838,54 @@ if (useWeb3) {
     "Step 2/2: Confirm payroll execution in Circle Wallet."
   );
 
+/*
+  Remember Circle transactions that already
+  existed BEFORE creating this payroll transaction.
+
+  This prevents TROR from accidentally selecting
+  an older completed TRORPayroll transaction.
+*/
+const beforeTxRes =
+  await fetch(
+    `${API_BASE}/api/circle/transactions`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/json"
+      },
+      body: JSON.stringify({
+        userToken
+      })
+    }
+  );
+
+const beforeTxData =
+  await beforeTxRes.json();
+
+if (!beforeTxRes.ok) {
+  throw new Error(
+    beforeTxData?.error ||
+    "Failed to snapshot Circle transactions before payroll execution."
+  );
+}
+
+const existingCircleTransactionIds =
+  new Set(
+    (
+      beforeTxData?.data?.transactions ||
+      []
+    )
+      .map(
+        (item) =>
+          String(item?.id || "")
+      )
+      .filter(Boolean)
+  );
+
+const circlePayrollStartedAt =
+  Date.now();
+
   const executeRes =
     await fetch(
       `${API_BASE}/api/circle/contract-execution`,
@@ -933,11 +981,6 @@ if (useWeb3) {
       txData?.data?.transactions ||
       [];
 
-console.log(
-  "CIRCLE PAYROLL TRANSACTIONS:",
-  transactions
-);
-
     const tx =
       transactions.find(
         (item) => {
@@ -966,17 +1009,42 @@ console.log(
             item?.transactionHash ||
             "";
 
+const transactionId =
+  String(
+    item?.id || ""
+  );
+
+const createdAtMs =
+  Date.parse(
+    String(
+      item?.createDate || ""
+    )
+  );
+
+const isNewTransaction =
+  Boolean(transactionId) &&
+  !existingCircleTransactionIds.has(
+    transactionId
+  );
+
+const isRecentTransaction =
+  Number.isFinite(createdAtMs) &&
+  createdAtMs >=
+    circlePayrollStartedAt - 10000;
+
           return (
-            operation ===
-              "CONTRACT_EXECUTION" &&
-            state ===
-              "COMPLETE" &&
-            contractAddress ===
-              TROR_PAYROLL_CONTRACT_ADDRESS.toLowerCase() &&
-            String(hash).startsWith(
-              "0x"
-            )
-          );
+  operation ===
+    "CONTRACT_EXECUTION" &&
+  state ===
+    "COMPLETE" &&
+  contractAddress ===
+    TROR_PAYROLL_CONTRACT_ADDRESS.toLowerCase() &&
+  String(hash).startsWith(
+    "0x"
+  ) &&
+  isNewTransaction &&
+  isRecentTransaction
+);
         }
       );
 
