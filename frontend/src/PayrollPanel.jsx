@@ -933,6 +933,11 @@ if (useWeb3) {
       txData?.data?.transactions ||
       [];
 
+console.log(
+  "CIRCLE PAYROLL TRANSACTIONS:",
+  transactions
+);
+
     const tx =
       transactions.find(
         (item) => {
