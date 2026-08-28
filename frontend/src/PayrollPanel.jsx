@@ -1768,6 +1768,27 @@ An,an@test.com,0xdef...,80,0`}
       <div>Total: {batch.total_amount} USDC</div>
       <div>Employees: {batch.employee_count}</div>
 
+{batch.tx_hash && (
+  <div>
+    TX:{" "}
+    <a
+      href={`https://testnet.arcscan.app/tx/${batch.tx_hash}`}
+      target="_blank"
+      rel="noreferrer"
+    >
+      {`${batch.tx_hash.slice(0, 10)}...${batch.tx_hash.slice(-6)}`}
+    </a>
+    {" "}
+    <a
+      href={`https://testnet.arcscan.app/tx/${batch.tx_hash}`}
+      target="_blank"
+      rel="noreferrer"
+    >
+      View on ArcScan ↗
+    </a>
+  </div>
+)}
+
       <button onClick={() => viewBatchItems(batch.id)}>
         View Items
       </button>
