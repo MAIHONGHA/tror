@@ -2283,46 +2283,57 @@ function getCurrentWorkspace() {
   }
 }
 
-function getCustomerStorageKey() {
-  const workspace = getCurrentWorkspace();
+let workspaceCustomers = [];
 
-  if (!workspace?.id) {
-    return null;
-  }
+async function loadWorkspaceCustomers() {
+  const currentWorkspace = getCurrentWorkspace();
 
-  return `customers:${workspace.id}`;
-}
-
-function getWorkspaceCustomers() {
-  const storageKey = getCustomerStorageKey();
-
-  if (!storageKey) {
+  if (!currentWorkspace?.id) {
+    workspaceCustomers = [];
+    renderCustomerDropdown();
     return [];
   }
 
   try {
-    return JSON.parse(
-      localStorage.getItem(storageKey) || "[]"
+    const response = await fetch(
+      `${API_BASE}/api/customers?workspaceId=${encodeURIComponent(
+        currentWorkspace.id
+      )}`
     );
-  } catch {
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data?.error || "Failed to load customers"
+      );
+    }
+
+    workspaceCustomers =
+      Array.isArray(data)
+        ? data
+        : Array.isArray(data?.customers)
+          ? data.customers
+          : [];
+
+    renderCustomerDropdown();
+
+    return workspaceCustomers;
+
+  } catch (err) {
+    console.error(
+      "Load workspace customers error:",
+      err
+    );
+
+    workspaceCustomers = [];
+    renderCustomerDropdown();
+
     return [];
   }
 }
 
-function saveWorkspaceCustomers(customers) {
-  const storageKey = getCustomerStorageKey();
-
-  if (!storageKey) {
-    throw new Error("Please select a workspace first.");
-  }
-
-  localStorage.setItem(
-    storageKey,
-    JSON.stringify(customers)
-  );
-}
-
-function saveCustomer() {
+async function saveCustomer() {
   try {
     const currentWorkspace = getCurrentWorkspace();
 
@@ -2335,22 +2346,21 @@ function saveCustomer() {
     }
 
     const customer = {
-      id:
-        globalThis.crypto?.randomUUID?.() ||
-        `cust_${Date.now()}`,
+      workspaceId: currentWorkspace.id,
 
-      name: String(custNameEl?.value || "").trim(),
+      name: String(
+        custNameEl?.value || ""
+      ).trim(),
 
-      email: String(custEmailEl?.value || "")
+      email: String(
+        custEmailEl?.value || ""
+      )
         .trim()
         .toLowerCase(),
 
-      wallet: String(custWalletEl?.value || "")
-        .trim(),
-
-      workspaceId: currentWorkspace.id,
-
-      createdAt: new Date().toISOString()
+      wallet: String(
+        custWalletEl?.value || ""
+      ).trim()
     };
 
     if (!customer.name) {
@@ -2372,24 +2382,41 @@ function saveCustomer() {
       return;
     }
 
-    const customers = getWorkspaceCustomers();
+    const response = await fetch(
+      `${API_BASE}/api/customers`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(customer)
+      }
+    );
 
-    customers.push(customer);
+    const data = await response.json();
 
-    saveWorkspaceCustomers(customers);
+    if (!response.ok) {
+      throw new Error(
+        data?.error || "Failed to save customer"
+      );
+    }
 
     if (custNameEl) custNameEl.value = "";
     if (custEmailEl) custEmailEl.value = "";
     if (custWalletEl) custWalletEl.value = "";
 
-    renderCustomerDropdown();
+    await loadWorkspaceCustomers();
 
     setStatus(
       `Customer saved to ${currentWorkspace.workspace_name}.`,
       "success"
     );
+
   } catch (err) {
-    console.error("Save customer error:", err);
+    console.error(
+      "Save customer error:",
+      err
+    );
 
     setStatus(
       "Save customer failed: " + err.message,
@@ -6466,7 +6493,7 @@ async function loadBusinessProfile() {
 function renderCustomerDropdown() {
   if (!customerSelectEl) return;
 
-  const customers = getWorkspaceCustomers();
+  const customers = workspaceCustomers;
 
   const previousValue =
     customerSelectEl.value || "";
@@ -11339,7 +11366,7 @@ btnLogoutGoogle?.addEventListener("click", () => {
 });
 
 customerSelectEl?.addEventListener("change", () => {
-  const customers = getWorkspaceCustomers();
+  const customers = workspaceCustomers;
 
   const selectedCustomer = customers.find(
     (customer) =>
@@ -11355,13 +11382,13 @@ customerSelectEl?.addEventListener("change", () => {
       selectedCustomer.wallet || "";
   }
 
-  const recipientEmailEl =
-    document.getElementById("recipientEmail");
+  const invoiceEmailEl =
+  document.getElementById("invoiceEmail");
 
-  if (recipientEmailEl) {
-    recipientEmailEl.value =
-      selectedCustomer.email || "";
-  }
+if (invoiceEmailEl) {
+  invoiceEmailEl.value =
+    selectedCustomer.email || "";
+}
 });
 
 // Listen for account changes from MetaMask
@@ -11393,13 +11420,18 @@ if (window.location.pathname.startsWith("/claim/") || initClaimId) {
     if (invoiceId) await openInvoice(invoiceId);
   });
 
-  renderCustomerDropdown();
+  loadWorkspaceCustomers();
   loadWorkspaceClaims();
   loadDashboard();
   loadBusinessProfile();
   window.addEventListener(
   "workspaceChanged",
   loadDashboard
+);
+
+window.addEventListener(
+  "workspaceChanged",
+  loadWorkspaceCustomers
 );
 
 window.addEventListener(

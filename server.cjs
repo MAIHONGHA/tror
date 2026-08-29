@@ -299,6 +299,23 @@ db.prepare(`
   )
 `).run();
 
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS customers (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL DEFAULT '',
+    wallet TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )
+`).run();
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_customers_workspace_id
+  ON customers(workspace_id)
+`).run();
+
 // payouts table
 db.prepare(`
   CREATE TABLE IF NOT EXISTS payouts (
@@ -1531,6 +1548,242 @@ app.post("/api/business-profile", (req, res) => {
 
     return res.status(500).json({
       error: "Failed to save business profile"
+    });
+  }
+});
+
+/* =========================
+   CUSTOMERS
+========================= */
+
+app.get("/api/customers", (req, res) => {
+  try {
+    const workspaceId = String(
+      req.query.workspaceId || ""
+    ).trim();
+
+    if (!workspaceId) {
+      return res.status(400).json({
+        error: "Workspace is required",
+        customers: []
+      });
+    }
+
+    const workspace = db.prepare(`
+      SELECT id
+      FROM workspaces
+      WHERE id = ?
+        AND status = 'ACTIVE'
+    `).get(workspaceId);
+
+    if (!workspace) {
+      return res.status(404).json({
+        error: "Workspace not found",
+        customers: []
+      });
+    }
+
+    const customers = db.prepare(`
+      SELECT
+        id,
+        workspace_id AS workspaceId,
+        name,
+        email,
+        wallet,
+        created_at AS createdAt,
+        updated_at AS updatedAt
+      FROM customers
+      WHERE workspace_id = ?
+      ORDER BY created_at DESC
+    `).all(workspaceId);
+
+    return res.json(customers);
+
+  } catch (err) {
+    console.error(
+      "Load customers error:",
+      err
+    );
+
+    return res.status(500).json({
+      error: "Failed to load customers",
+      customers: []
+    });
+  }
+});
+
+app.post("/api/customers", (req, res) => {
+  try {
+    const workspaceId = String(
+      req.body.workspaceId || ""
+    ).trim();
+
+    const name = String(
+      req.body.name || ""
+    ).trim();
+
+    const email = String(
+      req.body.email || ""
+    )
+      .trim()
+      .toLowerCase();
+
+    const wallet = String(
+      req.body.wallet || ""
+    ).trim();
+
+    if (!workspaceId) {
+      return res.status(400).json({
+        error: "Workspace is required"
+      });
+    }
+
+    if (!name) {
+      return res.status(400).json({
+        error: "Customer name is required"
+      });
+    }
+
+    if (wallet && !ethers.isAddress(wallet)) {
+      return res.status(400).json({
+        error: "Invalid customer wallet address"
+      });
+    }
+
+    const workspace = db.prepare(`
+      SELECT id
+      FROM workspaces
+      WHERE id = ?
+        AND status = 'ACTIVE'
+    `).get(workspaceId);
+
+    if (!workspace) {
+      return res.status(404).json({
+        error: "Workspace not found"
+      });
+    }
+
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      INSERT INTO customers (
+        id,
+        workspace_id,
+        name,
+        email,
+        wallet,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      workspaceId,
+      name,
+      email,
+      wallet,
+      now,
+      now
+    );
+
+    const customer = db.prepare(`
+      SELECT
+        id,
+        workspace_id AS workspaceId,
+        name,
+        email,
+        wallet,
+        created_at AS createdAt,
+        updated_at AS updatedAt
+      FROM customers
+      WHERE id = ?
+        AND workspace_id = ?
+    `).get(
+      id,
+      workspaceId
+    );
+
+    return res.status(201).json({
+      success: true,
+      customer
+    });
+
+  } catch (err) {
+    console.error(
+      "Create customer error:",
+      err
+    );
+
+    return res.status(500).json({
+      error: "Failed to create customer"
+    });
+  }
+});
+
+app.delete("/api/customers/:id", (req, res) => {
+  try {
+    const id = String(
+      req.params.id || ""
+    ).trim();
+
+    const workspaceId = String(
+      req.query.workspaceId || ""
+    ).trim();
+
+    if (!id) {
+      return res.status(400).json({
+        error: "Customer is required"
+      });
+    }
+
+    if (!workspaceId) {
+      return res.status(400).json({
+        error: "Workspace is required"
+      });
+    }
+
+    const workspace = db.prepare(`
+      SELECT id
+      FROM workspaces
+      WHERE id = ?
+        AND status = 'ACTIVE'
+    `).get(workspaceId);
+
+    if (!workspace) {
+      return res.status(404).json({
+        error: "Workspace not found"
+      });
+    }
+
+    const result = db.prepare(`
+      DELETE FROM customers
+      WHERE id = ?
+        AND workspace_id = ?
+    `).run(
+      id,
+      workspaceId
+    );
+
+    if (result.changes !== 1) {
+      return res.status(404).json({
+        error: "Customer not found"
+      });
+    }
+
+    return res.json({
+      success: true,
+      id
+    });
+
+  } catch (err) {
+    console.error(
+      "Delete customer error:",
+      err
+    );
+
+    return res.status(500).json({
+      error: "Failed to delete customer"
     });
   }
 });
