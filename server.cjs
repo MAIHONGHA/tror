@@ -4154,12 +4154,31 @@ app.post("/api/ai/invoice-draft", async (req, res) => {
       req.body?.prompt || ""
     ).trim();
 
+    const workspaceId = String(
+      req.body?.workspaceId || ""
+    ).trim();
+
     if (!prompt) {
       return res.status(400).json({
         success: false,
         error: "Prompt is required"
       });
     }
+
+let workspaceCustomers = [];
+
+if (workspaceId) {
+  workspaceCustomers = db.prepare(`
+    SELECT
+      id,
+      name,
+      email,
+      wallet
+    FROM customers
+    WHERE workspace_id = ?
+    ORDER BY created_at DESC
+  `).all(workspaceId);
+}
 
 const now =
   new Date();
@@ -4169,6 +4188,19 @@ const currentDateTime =
 
 const currentDate =
   currentDateTime.slice(0, 10);
+
+const customerContext =
+  workspaceCustomers.length > 0
+    ? workspaceCustomers
+        .map((customer) => {
+          return [
+            `Name: ${customer.name || ""}`,
+            `Email: ${customer.email || ""}`,
+            `Wallet: ${customer.wallet || ""}`
+          ].join(" | ");
+        })
+        .join("\n")
+    : "No customers are available in this workspace.";
 
     const response =
       await openai.responses.create({
@@ -4183,6 +4215,18 @@ You are TROR AI, a financial action parser.
 
 Current server date: ${currentDate}
 Current server datetime: ${currentDateTime}
+
+Customers available in the current TROR workspace:
+
+${customerContext}
+
+CUSTOMER RESOLUTION RULES:
+- Only use customer information from the workspace customer list above.
+- If the user refers to a customer by name, match that customer from the list.
+- When a customer is matched, use that customer's email as recipientEmail when relevant.
+- When a customer is matched, use that customer's wallet as recipientAddress when relevant.
+- Never invent a customer email or wallet.
+- If no reliable customer match exists, leave recipientEmail or recipientAddress empty as appropriate.
 
 Use this current date and datetime to resolve
 relative expressions such as:
@@ -4524,6 +4568,33 @@ payrollTitle:
     */
     const missingFields = [];
 
+const requestedCustomer =
+  String(draft.customer || "")
+    .trim()
+    .toLowerCase();
+
+const matchedCustomer =
+  requestedCustomer
+    ? workspaceCustomers.find(
+        (customer) =>
+          String(customer.name || "")
+            .trim()
+            .toLowerCase() ===
+          requestedCustomer
+      )
+    : null;
+
+if (matchedCustomer) {
+  draft.customer =
+    matchedCustomer.name || "";
+
+  draft.recipientEmail =
+    matchedCustomer.email || "";
+
+  draft.recipientAddress =
+    matchedCustomer.wallet || "";
+}
+
 if (
   parsed.intent ===
   "invoice.create"
@@ -4542,6 +4613,19 @@ if (
       "amount"
     );
   }
+
+if (
+  draft.customer &&
+  !matchedCustomer
+) {
+  draft.recipientEmail = "";
+  draft.recipientAddress = "";
+
+  missingFields.push(
+    "customer"
+  );
+}
+
 }
 
 if (

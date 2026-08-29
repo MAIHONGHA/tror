@@ -9233,8 +9233,10 @@ window.generateAIDraft = async function () {
           },
 
           body: JSON.stringify({
-            prompt
-          })
+  prompt,
+  workspaceId:
+    getCurrentWorkspace()?.id || ""
+})
         }
       );
 
