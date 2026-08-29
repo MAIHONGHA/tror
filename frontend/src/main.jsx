@@ -2425,6 +2425,104 @@ async function saveCustomer() {
   }
 }
 
+async function deleteSelectedCustomer() {
+  try {
+    const currentWorkspace = getCurrentWorkspace();
+
+    if (!currentWorkspace?.id) {
+      setStatus(
+        "Please select a workspace first.",
+        "error"
+      );
+      return;
+    }
+
+    const customerId =
+      customerSelectEl?.value || "";
+
+    if (!customerId) {
+      setStatus(
+        "Please choose a customer first.",
+        "error"
+      );
+      return;
+    }
+
+    const customer =
+      workspaceCustomers.find(
+        (item) => item.id === customerId
+      );
+
+    if (!customer) {
+      setStatus(
+        "Customer not found.",
+        "error"
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete customer "${customer.name}"?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const response = await fetch(
+      `${API_BASE}/api/customers/${encodeURIComponent(
+        customerId
+      )}?workspaceId=${encodeURIComponent(
+        currentWorkspace.id
+      )}`,
+      {
+        method: "DELETE"
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data?.error || "Failed to delete customer"
+      );
+    }
+
+    if (customerSelectEl) {
+      customerSelectEl.value = "";
+    }
+
+    if (recipientEl) {
+      recipientEl.value = "";
+    }
+
+    const invoiceEmailEl =
+      document.getElementById("invoiceEmail");
+
+    if (invoiceEmailEl) {
+      invoiceEmailEl.value = "";
+    }
+
+    await loadWorkspaceCustomers();
+
+    setStatus(
+      `Customer "${customer.name}" deleted.`,
+      "success"
+    );
+
+  } catch (err) {
+    console.error(
+      "Delete customer error:",
+      err
+    );
+
+    setStatus(
+      "Delete customer failed: " + err.message,
+      "error"
+    );
+  }
+}
+
 /* =========================
    GMAIL CLAIM
 ========================= */
@@ -11208,6 +11306,39 @@ document.addEventListener("click", (e) => {
 });
 
 btnSaveCustomer?.addEventListener("click", saveCustomer);
+
+let btnDeleteCustomer =
+  document.getElementById("btnDeleteCustomer");
+
+if (!btnDeleteCustomer && btnSaveCustomer) {
+  btnDeleteCustomer =
+    document.createElement("button");
+
+  btnDeleteCustomer.id =
+    "btnDeleteCustomer";
+
+  btnDeleteCustomer.type =
+    "button";
+
+  btnDeleteCustomer.textContent =
+    "Delete Customer";
+
+  btnDeleteCustomer.className =
+    btnSaveCustomer.className;
+
+  btnDeleteCustomer.style.marginLeft =
+    "10px";
+
+  btnSaveCustomer.insertAdjacentElement(
+    "afterend",
+    btnDeleteCustomer
+  );
+}
+
+btnDeleteCustomer?.addEventListener(
+  "click",
+  deleteSelectedCustomer
+);
 
 btnSendClaimEmail?.addEventListener("click", async () => {
   const paymentMethod =
