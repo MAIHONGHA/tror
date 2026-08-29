@@ -94,7 +94,18 @@ const MERCHANT_ADDRESS = String(
    DATABASE
 ========================= */
 
-const db = new Database(path.join(__dirname, "data.db"));
+const DATABASE_PATH =
+  process.env.DATABASE_PATH ||
+  path.join(__dirname, "data.db");
+
+console.log(
+  "TROR database:",
+  DATABASE_PATH
+);
+
+const db =
+  new Database(DATABASE_PATH);
+
 db.pragma("journal_mode = WAL");
 
 db.prepare(`
