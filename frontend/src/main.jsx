@@ -752,114 +752,106 @@ const btnCloseScanner = document.getElementById("btnCloseScanner");
 let qrScanner = null;
 
 // Wallet chip and menu event listeners
-document.getElementById("disconnectWalletChip")?.addEventListener("click", async () => {
-  try {
-    if (activeWalletType === "circle") {
-      clearCircleWalletLocal();
-
-      localStorage.removeItem("circleUserToken");
-      localStorage.removeItem("circleEncryptionKey");
-    }
-
-    if (activeWalletType === "web3" || metamaskWallet) {
-      try {
-        await appKit?.disconnect?.();
-      } catch {}
-
-      clearWeb3WalletLocal();
-    }
-
-    activeWalletType = null;
-
-    clearCircleWalletLocal();
-    clearWeb3WalletLocal();
-
-    updateWalletChip(null, null);
-
-activeWalletType = null;
-
-clearCircleWalletLocal();
-clearWeb3WalletLocal();
-
-updateWalletChip(null, null);
-
-// Clear active identity/workspace session
-localStorage.removeItem("currentUser");
-localStorage.removeItem("currentWorkspace");
-localStorage.removeItem("userWorkspaces");
-
-// Clear workspace switcher from previous account
-const workspaceSwitcher =
-  document.getElementById("workspaceSwitcher");
-
-if (workspaceSwitcher) {
-  workspaceSwitcher.remove();
-}
-
-// Clear previous dashboard data
-const resetDashboard = () => {
-  const values = {
-    dashTotal: "0.00 USDC",
-    dashPaid: "0",
-    dashPending: "0",
-    dashLatestTx: "-",
-    dashTotalInvoices: "0",
-    dashTotalPayrolls: "0",
-    dashTotalClaims: "0",
-    dashTotalVolume: "0.00 USDC"
-  };
-
-  Object.entries(values).forEach(([id, value]) => {
-    const el = document.getElementById(id);
-    if (el) el.innerText = value;
-  });
-
-  const activityFeed =
-    document.getElementById("activityFeed");
-
-  if (activityFeed) {
-    activityFeed.innerHTML = "No activity yet.";
-  }
-
-  const activityTicker =
-    document.getElementById("activityTicker");
-
-  if (activityTicker) {
-    activityTicker.innerHTML =
-      `<button type="button" class="ticker-item">No recent activity yet.</button>`;
-  }
-};
-
-resetDashboard();
-
-renderCustomerDropdown();
-loadWorkspaceClaims();
-loadBusinessProfile();
-
 document
-  .getElementById("walletMenu")
-  ?.classList.add("hidden");
+  .getElementById("disconnectWalletChip")
+  ?.addEventListener(
+    "click",
+    async () => {
+      try {
+        /*
+          Disconnect only the currently active
+          wallet connection.
 
-setStatus("Wallet disconnected.", "success");
+          Do NOT delete the canonical TROR user,
+          workspace membership or linked identities.
+        */
 
-    document
-      .getElementById("walletMenu")
-      ?.classList.add("hidden");
+        if (activeWalletType === "web3") {
+          clearWeb3WalletLocal();
 
-    setStatus("Wallet disconnected.", "success");
-  } catch (err) {
-    console.error("Wallet disconnect error:", err);
+          /*
+            If Circle is still connected,
+            keep it as the active wallet.
+          */
+          const circleAddress =
+            circleWalletEl?.textContent
+              ?.trim();
 
-    activeWalletType = null;
-    clearCircleWalletLocal();
-    clearWeb3WalletLocal();
-    updateWalletChip(null, null);
+          if (
+            circleAddress &&
+            circleAddress.startsWith("0x")
+          ) {
+            activeWalletType = "circle";
 
-    document
-      .getElementById("walletMenu")
-      ?.classList.add("hidden");
-  }
-});
+            updateWalletChip(
+              circleAddress,
+              null
+            );
+          } else {
+            activeWalletType = null;
+
+            updateWalletChip(
+              null,
+              null
+            );
+          }
+        } else if (
+          activeWalletType === "circle"
+        ) {
+          clearCircleWalletLocal();
+
+          /*
+            If Web3 is still connected,
+            keep it active.
+          */
+          if (metamaskWallet) {
+            activeWalletType = "web3";
+
+            updateWalletChip(
+              metamaskWallet,
+              null
+            );
+          } else {
+            activeWalletType = null;
+
+            updateWalletChip(
+              null,
+              null
+            );
+          }
+        }
+
+        document
+          .getElementById(
+            "walletMenu"
+          )
+          ?.classList.add("hidden");
+
+        setStatus(
+          "Wallet disconnected.",
+          "success"
+        );
+
+      } catch (err) {
+        console.error(
+          "Wallet disconnect error:",
+          err
+        );
+
+        document
+          .getElementById(
+            "walletMenu"
+          )
+          ?.classList.add("hidden");
+
+        setStatus(
+          err?.message ||
+            "Wallet disconnect failed.",
+          "error"
+        );
+      }
+    }
+  );
 
 document.getElementById("copyWalletAddress")?.addEventListener("click", async () => {
   const circleAddress =
@@ -13477,7 +13469,10 @@ let lastProfileCheckedWallet = null;
 
 watchAccount(wagmiAdapter.wagmiConfig, {
   async onChange(account) {
-    if (account.address) {
+    if (
+  account.isConnected &&
+  account.address
+) {
       metamaskWallet = account.address;
 
       const web3UsdcBalance =
@@ -14670,14 +14665,47 @@ if (!isInvoicePaymentMode()) {
 }
       }
     } else {
-      metamaskWallet = null;
-      lastProfileCheckedWallet = null;
+  metamaskWallet = null;
+  lastProfileCheckedWallet = null;
 
-      updateWalletChip(null, null);
+  if (metamaskWalletEl) {
+    metamaskWalletEl.textContent =
+      "Disconnected";
+  }
 
-      if (activeWalletType === "web3") {
-        activeWalletType = null;
-      }
+  /*
+    Web3 is disconnected.
+
+    If Circle is still connected,
+    keep Circle as the active wallet
+    and keep its address in the topbar.
+  */
+  const circleAddress =
+    circleWalletEl?.textContent
+      ?.trim();
+
+  if (
+    circleAddress &&
+    circleAddress.startsWith("0x")
+  ) {
+    activeWalletType = "circle";
+
+    updateWalletChip(
+      circleAddress,
+      null
+    );
+  } else {
+    if (
+      activeWalletType === "web3"
+    ) {
+      activeWalletType = null;
     }
+
+    updateWalletChip(
+      null,
+      null
+    );
+  }
+}
   }
 });
