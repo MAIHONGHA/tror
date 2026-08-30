@@ -793,7 +793,7 @@ const workspaceSwitcher =
   document.getElementById("workspaceSwitcher");
 
 if (workspaceSwitcher) {
-  workspaceSwitcher.innerHTML = "";
+  workspaceSwitcher.remove();
 }
 
 // Clear previous dashboard data
