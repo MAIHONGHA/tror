@@ -734,10 +734,21 @@ app.get("/api/users/:wallet", (req, res) => {
       .toLowerCase();
 
     const user = db.prepare(`
-      SELECT *
-      FROM users
-      WHERE lower(primary_wallet_address)=?
-    `).get(wallet);
+  SELECT DISTINCT u.*
+  FROM users u
+  LEFT JOIN user_wallets uw
+    ON uw.user_id = u.id
+  WHERE
+    lower(u.primary_wallet_address) = ?
+    OR (
+      lower(uw.address) = ?
+      AND uw.is_active = 1
+    )
+  LIMIT 1
+`).get(
+  wallet,
+  wallet
+);
 
     if (!user) {
       return res.status(404).json({
@@ -819,19 +830,86 @@ app.post("/api/users", (req, res) => {
       });
     }
 
-    const existingUser = db.prepare(`
-      SELECT *
-      FROM users
-      WHERE lower(primary_wallet_address) = ?
-    `).get(walletAddress);
+    let existingUser = null;
 
-    if (existingUser) {
-      return res.status(409).json({
-        success: false,
-        error: "User profile already exists",
-        user: existingUser
-      });
-    }
+/*
+  1. Resolve by any wallet already linked
+  to an existing TROR user.
+*/
+existingUser = db.prepare(`
+  SELECT u.*
+  FROM users u
+  LEFT JOIN user_wallets uw
+    ON uw.user_id = u.id
+  WHERE
+    lower(u.primary_wallet_address) = ?
+    OR lower(uw.address) = ?
+  LIMIT 1
+`).get(
+  walletAddress,
+  walletAddress
+);
+
+/*
+  2. If no wallet match, resolve by
+  verified Google identity.
+*/
+if (
+  !existingUser &&
+  email
+) {
+  existingUser = db.prepare(`
+    SELECT u.*
+    FROM users u
+    INNER JOIN user_identities ui
+      ON ui.user_id = u.id
+    WHERE ui.identity_type = 'GOOGLE'
+      AND lower(ui.identity_value) = ?
+    LIMIT 1
+  `).get(email);
+}
+
+/*
+  3. Legacy fallback for profiles that
+  have an email but were created before
+  user_identities was populated.
+*/
+if (
+  !existingUser &&
+  email
+) {
+  existingUser = db.prepare(`
+    SELECT *
+    FROM users
+    WHERE lower(email) = ?
+    LIMIT 1
+  `).get(email);
+}
+
+if (existingUser) {
+  const existingWorkspace = db.prepare(`
+    SELECT
+      w.*,
+      wm.role,
+      wm.status AS member_status,
+      wm.joined_at
+    FROM workspaces w
+    INNER JOIN workspace_members wm
+      ON wm.workspace_id = w.id
+    WHERE wm.user_id = ?
+      AND wm.status = 'ACTIVE'
+      AND w.status = 'ACTIVE'
+    ORDER BY w.created_at ASC
+    LIMIT 1
+  `).get(existingUser.id);
+
+  return res.json({
+    success: true,
+    existing: true,
+    user: existingUser,
+    workspace: existingWorkspace || null
+  });
+}
 
     const userId = crypto.randomUUID();
     const workspaceId = crypto.randomUUID();
@@ -1211,10 +1289,21 @@ app.get("/api/workspaces/:wallet", (req, res) => {
     }
 
     const user = db.prepare(`
-      SELECT *
-      FROM users
-      WHERE lower(primary_wallet_address) = ?
-    `).get(walletAddress);
+  SELECT DISTINCT u.*
+  FROM users u
+  LEFT JOIN user_wallets uw
+    ON uw.user_id = u.id
+  WHERE
+    lower(u.primary_wallet_address) = ?
+    OR (
+      lower(uw.address) = ?
+      AND uw.is_active = 1
+    )
+  LIMIT 1
+`).get(
+  walletAddress,
+  walletAddress
+);
 
     if (!user) {
       return res.status(404).json({

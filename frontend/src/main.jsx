@@ -2162,15 +2162,51 @@ ${
 })
         });
 
-        localStorage.setItem(
-          "currentUser",
-          JSON.stringify(data.user)
-        );
+localStorage.setItem(
+  "currentUser",
+  JSON.stringify(data.user)
+);
 
-        localStorage.setItem(
-          "currentWorkspace",
-          JSON.stringify(data.workspace)
-        );
+if (data.workspace) {
+  localStorage.setItem(
+    "currentWorkspace",
+    JSON.stringify(data.workspace)
+  );
+}
+
+if (
+  isGoogleCircleProfile &&
+  data.user?.id
+) {
+  const activeCircleWallet =
+    window.trorActiveCircleWallet;
+
+  if (activeCircleWallet?.address) {
+    await api(
+      `/api/users/${encodeURIComponent(
+        data.user.id
+      )}/link-circle-wallet`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          email: String(
+            googleUser?.email || ""
+          )
+            .trim()
+            .toLowerCase(),
+
+          walletAddress:
+            activeCircleWallet.address,
+
+          circleWalletId:
+            activeCircleWallet.walletId || "",
+
+          chainId: ARC_CHAIN_ID
+        })
+      }
+    );
+  }
+}
 
 const shouldReturnToInvoice =
   Boolean(
