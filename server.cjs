@@ -184,6 +184,36 @@ db.prepare(`
 `).run();
 
 db.prepare(`
+  CREATE TABLE IF NOT EXISTS profile_merge_challenges (
+    id TEXT PRIMARY KEY,
+    target_user_id TEXT NOT NULL,
+    source_user_id TEXT NOT NULL,
+    wallet_address TEXT NOT NULL,
+    chain_id INTEGER NOT NULL,
+    nonce TEXT NOT NULL,
+    message TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )
+`).run();
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_profile_merge_target_user
+  ON profile_merge_challenges(target_user_id)
+`).run();
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_profile_merge_source_user
+  ON profile_merge_challenges(source_user_id)
+`).run();
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_profile_merge_wallet
+  ON profile_merge_challenges(wallet_address, chain_id)
+`).run();
+
+db.prepare(`
   CREATE INDEX IF NOT EXISTS idx_wallet_link_challenges_user_id
   ON wallet_link_challenges(user_id)
 `).run();
@@ -1208,15 +1238,17 @@ if (
       );
 
       if (
-        existingWallet &&
-        existingWallet.user_id !== userId
-      ) {
-        return res.status(409).json({
-          success: false,
-          error:
-            "This Web3 wallet is already linked to another TROR profile"
-        });
-      }
+  existingWallet &&
+  existingWallet.user_id !== userId
+) {
+  return res.status(409).json({
+    success: false,
+    code: "PROFILE_MERGE_REQUIRED",
+    error:
+      "This Web3 wallet is already linked to another TROR profile",
+    canMerge: true
+  });
+}
 
       const challengeId =
         crypto.randomUUID();
@@ -1288,6 +1320,1239 @@ if (
         success: false,
         error:
           "Failed to create Web3 wallet link challenge"
+      });
+    }
+  }
+);
+
+/* =========================
+   PROFILE MERGE CHALLENGE
+========================= */
+
+app.post(
+  "/api/users/:userId/profile-merge-challenge",
+  async (req, res) => {
+    try {
+      const targetUserId = String(
+        req.params.userId || ""
+      ).trim();
+
+      const walletAddress = String(
+        req.body.walletAddress || ""
+      )
+        .trim()
+        .toLowerCase();
+
+      const chainId = Number(
+        req.body.chainId || 5042002
+      );
+
+      const googleAccessToken = String(
+        req.body.googleAccessToken || ""
+      ).trim();
+
+      if (!targetUserId) {
+        return res.status(400).json({
+          success: false,
+          error: "Target TROR user is required"
+        });
+      }
+
+      if (
+        !walletAddress ||
+        !ethers.isAddress(walletAddress)
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Valid Web3 wallet address is required"
+        });
+      }
+
+      const targetUser = db.prepare(`
+        SELECT id
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `).get(targetUserId);
+
+      if (!targetUser) {
+        return res.status(404).json({
+          success: false,
+          error: "Target TROR profile not found"
+        });
+      }
+
+      /*
+        Verify ownership of the currently
+        active target profile through Google.
+      */
+      if (!googleAccessToken) {
+        return res.status(401).json({
+          success: false,
+          error:
+            "Google verification is required before merging profiles"
+        });
+      }
+
+      let googleUser;
+
+      try {
+        googleUser =
+          await getGoogleUserFromToken(
+            googleAccessToken
+          );
+      } catch {
+        return res.status(401).json({
+          success: false,
+          error:
+            "Google verification failed. Please sign in with Google again."
+        });
+      }
+
+      const verifiedEmail = String(
+        googleUser?.email || ""
+      )
+        .trim()
+        .toLowerCase();
+
+      let targetGoogleIdentity =
+  db.prepare(`
+    SELECT *
+    FROM user_identities
+    WHERE identity_type = 'GOOGLE'
+      AND lower(identity_value) = ?
+    LIMIT 1
+  `).get(verifiedEmail);
+
+if (
+  targetGoogleIdentity &&
+  targetGoogleIdentity.user_id !==
+    targetUserId
+) {
+  return res.status(403).json({
+    success: false,
+    error:
+      "This Google account is already linked to another TROR profile"
+  });
+}
+
+/*
+  Legacy recovery:
+  some older TROR profiles have users.email
+  populated but no GOOGLE identity row yet.
+*/
+if (!targetGoogleIdentity) {
+  const legacyTargetUser =
+    db.prepare(`
+      SELECT
+        id,
+        email
+      FROM users
+      WHERE id = ?
+      LIMIT 1
+    `).get(targetUserId);
+
+  const legacyEmail = String(
+    legacyTargetUser?.email || ""
+  )
+    .trim()
+    .toLowerCase();
+
+  if (
+    !legacyTargetUser ||
+    !legacyEmail ||
+    legacyEmail !== verifiedEmail
+  ) {
+    return res.status(403).json({
+      success: false,
+      error:
+        "Google account does not match the active TROR profile"
+    });
+  }
+
+  const now =
+    new Date().toISOString();
+
+  db.prepare(`
+    INSERT INTO user_identities (
+      id,
+      user_id,
+      identity_type,
+      identity_value,
+      provider,
+      verified_at,
+      created_at,
+      updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    crypto.randomUUID(),
+    targetUserId,
+    "GOOGLE",
+    verifiedEmail,
+    "google",
+    now,
+    now,
+    now
+  );
+
+  targetGoogleIdentity = {
+    user_id: targetUserId
+  };
+}
+
+      /*
+        Resolve the source profile entirely
+        on the backend from the conflict wallet.
+        Never trust sourceUserId from the client.
+      */
+      const sourceWallet = db.prepare(`
+        SELECT
+          id,
+          user_id,
+          address,
+          chain_id
+        FROM user_wallets
+        WHERE lower(address) = ?
+          AND wallet_type = 'WEB3'
+          AND chain_id = ?
+          AND is_active = 1
+        LIMIT 1
+      `).get(
+        walletAddress,
+        chainId
+      );
+
+      if (!sourceWallet) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "The Web3 wallet is not linked to another TROR profile"
+        });
+      }
+
+      const sourceUserId =
+        String(sourceWallet.user_id || "");
+
+      if (
+        !sourceUserId ||
+        sourceUserId === targetUserId
+      ) {
+        return res.status(409).json({
+          success: false,
+          error:
+            "These identities already belong to the same TROR profile"
+        });
+      }
+
+      const sourceUser = db.prepare(`
+        SELECT id
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `).get(sourceUserId);
+
+      if (!sourceUser) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "Source TROR profile was not found"
+        });
+      }
+
+      const challengeId =
+        crypto.randomUUID();
+
+      const nonce =
+        crypto.randomBytes(32).toString("hex");
+
+      const createdAt = new Date();
+
+      const expiresAt = new Date(
+        createdAt.getTime() +
+          5 * 60 * 1000
+      );
+
+      const message = [
+        "TROR Profile Merge",
+        "",
+        "Sign this message to prove ownership of the Web3 wallet before merging TROR profiles.",
+        "",
+        `Wallet: ${walletAddress}`,
+        `Chain ID: ${chainId}`,
+        `Nonce: ${nonce}`,
+        `Issued At: ${createdAt.toISOString()}`,
+        `Expiration Time: ${expiresAt.toISOString()}`
+      ].join("\n");
+
+      db.prepare(`
+        INSERT INTO profile_merge_challenges (
+          id,
+          target_user_id,
+          source_user_id,
+          wallet_address,
+          chain_id,
+          nonce,
+          message,
+          expires_at,
+          used_at,
+          created_at
+        )
+        VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?
+        )
+      `).run(
+        challengeId,
+        targetUserId,
+        sourceUserId,
+        walletAddress,
+        chainId,
+        nonce,
+        message,
+        expiresAt.toISOString(),
+        createdAt.toISOString()
+      );
+
+      return res.json({
+        success: true,
+        challengeId,
+        message,
+        expiresAt:
+          expiresAt.toISOString(),
+        requiresWalletSignature: true
+      });
+    } catch (err) {
+      console.error(
+        "Create profile merge challenge error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          "Failed to create profile merge challenge"
+      });
+    }
+  }
+);
+
+/* =========================
+   PROFILE MERGE VERIFY
+========================= */
+
+app.post(
+  "/api/users/:userId/profile-merge-verify",
+  (req, res) => {
+    try {
+      const targetUserId = String(
+        req.params.userId || ""
+      ).trim();
+
+      const challengeId = String(
+        req.body.challengeId || ""
+      ).trim();
+
+      const signature = String(
+        req.body.signature || ""
+      ).trim();
+
+      if (!targetUserId) {
+        return res.status(400).json({
+          success: false,
+          error: "Target TROR user is required"
+        });
+      }
+
+      if (!challengeId) {
+        return res.status(400).json({
+          success: false,
+          error: "Merge challenge ID is required"
+        });
+      }
+
+      if (
+        !signature ||
+        !signature.startsWith("0x")
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Valid Web3 wallet signature is required"
+        });
+      }
+
+      const challenge = db.prepare(`
+        SELECT *
+        FROM profile_merge_challenges
+        WHERE id = ?
+          AND target_user_id = ?
+        LIMIT 1
+      `).get(
+        challengeId,
+        targetUserId
+      );
+
+      if (!challenge) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "Profile merge challenge not found"
+        });
+      }
+
+      if (challenge.used_at) {
+        return res.status(409).json({
+          success: false,
+          error:
+            "This profile merge challenge has already been used"
+        });
+      }
+
+      const expiresAt =
+        Date.parse(challenge.expires_at);
+
+      if (
+        !Number.isFinite(expiresAt) ||
+        Date.now() > expiresAt
+      ) {
+        return res.status(410).json({
+          success: false,
+          error:
+            "Profile merge challenge has expired"
+        });
+      }
+
+      let recoveredAddress;
+
+      try {
+        recoveredAddress =
+          ethers.verifyMessage(
+            challenge.message,
+            signature
+          );
+      } catch {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Invalid Web3 wallet signature"
+        });
+      }
+
+      const normalizedRecovered =
+        String(recoveredAddress || "")
+          .trim()
+          .toLowerCase();
+
+      const normalizedExpected =
+        String(
+          challenge.wallet_address || ""
+        )
+          .trim()
+          .toLowerCase();
+
+      if (
+        !normalizedRecovered ||
+        normalizedRecovered !==
+          normalizedExpected
+      ) {
+        return res.status(403).json({
+          success: false,
+          error:
+            "Signature does not match the merge wallet"
+        });
+      }
+
+      const targetUser = db.prepare(`
+        SELECT
+          id,
+          full_name,
+          email,
+          account_type,
+          primary_wallet_address
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `).get(targetUserId);
+
+      const sourceUser = db.prepare(`
+        SELECT
+          id,
+          full_name,
+          email,
+          account_type,
+          primary_wallet_address
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `).get(
+        challenge.source_user_id
+      );
+
+      if (!targetUser || !sourceUser) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "One of the TROR profiles no longer exists"
+        });
+      }
+
+      if (
+        sourceUser.id ===
+        targetUser.id
+      ) {
+        return res.status(409).json({
+          success: false,
+          error:
+            "These identities already belong to the same TROR profile"
+        });
+      }
+
+      /*
+        Reconfirm that the signed wallet
+        still belongs to the source profile.
+      */
+      const sourceWallet = db.prepare(`
+        SELECT
+          id,
+          user_id,
+          wallet_type,
+          provider,
+          address,
+          chain_id,
+          is_primary,
+          is_active
+        FROM user_wallets
+        WHERE user_id = ?
+          AND lower(address) = ?
+          AND wallet_type = 'WEB3'
+          AND chain_id = ?
+          AND is_active = 1
+        LIMIT 1
+      `).get(
+        sourceUser.id,
+        normalizedExpected,
+        challenge.chain_id
+      );
+
+      if (!sourceWallet) {
+        return res.status(409).json({
+          success: false,
+          error:
+            "The signed Web3 wallet no longer belongs to the source TROR profile"
+        });
+      }
+
+      const targetWallets = db.prepare(`
+        SELECT
+          wallet_type,
+          provider,
+          address,
+          chain_id,
+          circle_wallet_id,
+          is_primary,
+          is_active
+        FROM user_wallets
+        WHERE user_id = ?
+          AND is_active = 1
+        ORDER BY
+          is_primary DESC,
+          created_at ASC
+      `).all(targetUser.id);
+
+      const sourceWallets = db.prepare(`
+        SELECT
+          wallet_type,
+          provider,
+          address,
+          chain_id,
+          circle_wallet_id,
+          is_primary,
+          is_active
+        FROM user_wallets
+        WHERE user_id = ?
+          AND is_active = 1
+        ORDER BY
+          is_primary DESC,
+          created_at ASC
+      `).all(sourceUser.id);
+
+      const targetWorkspaces = db.prepare(`
+        SELECT
+          id,
+          workspace_type,
+          workspace_name,
+          owner_user_id
+        FROM workspaces
+        WHERE owner_user_id = ?
+        ORDER BY created_at ASC
+      `).all(targetUser.id);
+
+      const sourceWorkspaces = db.prepare(`
+        SELECT
+          id,
+          workspace_type,
+          workspace_name,
+          owner_user_id
+        FROM workspaces
+        WHERE owner_user_id = ?
+        ORDER BY created_at ASC
+      `).all(sourceUser.id);
+
+      return res.json({
+        success: true,
+        verified: true,
+        requiresConfirmation: true,
+        challengeId,
+        preview: {
+          targetProfile: targetUser,
+          sourceProfile: sourceUser,
+          targetWallets,
+          sourceWallets,
+          targetWorkspaces,
+          sourceWorkspaces
+        }
+      });
+    } catch (err) {
+      console.error(
+        "Verify profile merge challenge error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          "Failed to verify profile merge challenge"
+      });
+    }
+  }
+);
+
+/* =========================
+   PROFILE MERGE CONFIRM
+========================= */
+
+app.post(
+  "/api/users/:userId/profile-merge-confirm",
+  async (req, res) => {
+    try {
+      const targetUserId = String(
+        req.params.userId || ""
+      ).trim();
+
+      const challengeId = String(
+        req.body.challengeId || ""
+      ).trim();
+
+      const signature = String(
+        req.body.signature || ""
+      ).trim();
+
+const googleAccessToken = String(
+  req.body.googleAccessToken || ""
+).trim();
+
+      if (!targetUserId) {
+        return res.status(400).json({
+          success: false,
+          error: "Target TROR user is required"
+        });
+      }
+
+      if (!challengeId) {
+        return res.status(400).json({
+          success: false,
+          error: "Merge challenge ID is required"
+        });
+      }
+
+      if (
+        !signature ||
+        !signature.startsWith("0x")
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Valid Web3 wallet signature is required"
+        });
+      }
+
+if (!googleAccessToken) {
+  return res.status(401).json({
+    success: false,
+    error:
+      "Google verification is required before confirming profile merge"
+  });
+}
+
+let googleUser;
+
+try {
+  googleUser =
+    await getGoogleUserFromToken(
+      googleAccessToken
+    );
+} catch {
+  return res.status(401).json({
+    success: false,
+    error:
+      "Google verification failed. Please sign in with Google again."
+  });
+}
+
+const verifiedEmail = String(
+  googleUser?.email || ""
+)
+  .trim()
+  .toLowerCase();
+
+const targetGoogleIdentity =
+  db.prepare(`
+    SELECT user_id
+    FROM user_identities
+    WHERE identity_type = 'GOOGLE'
+      AND lower(identity_value) = ?
+    LIMIT 1
+  `).get(verifiedEmail);
+
+if (
+  !targetGoogleIdentity ||
+  targetGoogleIdentity.user_id !==
+    targetUserId
+) {
+  return res.status(403).json({
+    success: false,
+    error:
+      "Google account does not match the target TROR profile"
+  });
+}
+
+      const challenge = db.prepare(`
+        SELECT *
+        FROM profile_merge_challenges
+        WHERE id = ?
+          AND target_user_id = ?
+        LIMIT 1
+      `).get(
+        challengeId,
+        targetUserId
+      );
+
+      if (!challenge) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "Profile merge challenge not found"
+        });
+      }
+
+      if (challenge.used_at) {
+        return res.status(409).json({
+          success: false,
+          error:
+            "This profile merge challenge has already been used"
+        });
+      }
+
+      const expiresAt =
+        Date.parse(challenge.expires_at);
+
+      if (
+        !Number.isFinite(expiresAt) ||
+        Date.now() > expiresAt
+      ) {
+        return res.status(410).json({
+          success: false,
+          error:
+            "Profile merge challenge has expired"
+        });
+      }
+
+      /*
+        Verify the Web3 proof again.
+        Preview verification alone is not enough
+        to authorize the final merge.
+      */
+      let recoveredAddress;
+
+      try {
+        recoveredAddress =
+          ethers.verifyMessage(
+            challenge.message,
+            signature
+          );
+      } catch {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Invalid Web3 wallet signature"
+        });
+      }
+
+      const normalizedRecovered =
+        String(recoveredAddress || "")
+          .trim()
+          .toLowerCase();
+
+      const normalizedExpected =
+        String(
+          challenge.wallet_address || ""
+        )
+          .trim()
+          .toLowerCase();
+
+      if (
+        !normalizedRecovered ||
+        normalizedRecovered !==
+          normalizedExpected
+      ) {
+        return res.status(403).json({
+          success: false,
+          error:
+            "Signature does not match the merge wallet"
+        });
+      }
+
+      const sourceUserId = String(
+        challenge.source_user_id || ""
+      ).trim();
+
+      if (
+        !sourceUserId ||
+        sourceUserId === targetUserId
+      ) {
+        return res.status(409).json({
+          success: false,
+          error:
+            "Source and target profiles are invalid"
+        });
+      }
+
+      const now =
+        new Date().toISOString();
+
+      const mergeProfiles =
+        db.transaction(() => {
+
+          /*
+            Re-read challenge inside transaction.
+          */
+          const freshChallenge =
+            db.prepare(`
+              SELECT *
+              FROM profile_merge_challenges
+              WHERE id = ?
+                AND target_user_id = ?
+              LIMIT 1
+            `).get(
+              challengeId,
+              targetUserId
+            );
+
+          if (
+            !freshChallenge ||
+            freshChallenge.used_at
+          ) {
+            const err =
+              new Error(
+                "Profile merge challenge already used"
+              );
+
+            err.code =
+              "MERGE_CHALLENGE_USED";
+
+            throw err;
+          }
+
+          const freshExpiresAt =
+            Date.parse(
+              freshChallenge.expires_at
+            );
+
+          if (
+            !Number.isFinite(
+              freshExpiresAt
+            ) ||
+            Date.now() >
+              freshExpiresAt
+          ) {
+            const err =
+              new Error(
+                "Profile merge challenge expired"
+              );
+
+            err.code =
+              "MERGE_CHALLENGE_EXPIRED";
+
+            throw err;
+          }
+
+          const targetUser =
+            db.prepare(`
+              SELECT *
+              FROM users
+              WHERE id = ?
+              LIMIT 1
+            `).get(targetUserId);
+
+          const sourceUser =
+            db.prepare(`
+              SELECT *
+              FROM users
+              WHERE id = ?
+              LIMIT 1
+            `).get(sourceUserId);
+
+          if (
+            !targetUser ||
+            !sourceUser
+          ) {
+            const err =
+              new Error(
+                "One of the TROR profiles no longer exists"
+              );
+
+            err.code =
+              "PROFILE_NOT_FOUND";
+
+            throw err;
+          }
+
+          /*
+            Reconfirm that the signed wallet
+            still belongs to the source profile.
+          */
+          const sourceProofWallet =
+            db.prepare(`
+              SELECT *
+              FROM user_wallets
+              WHERE user_id = ?
+                AND lower(address) = ?
+                AND wallet_type = 'WEB3'
+                AND chain_id = ?
+                AND is_active = 1
+              LIMIT 1
+            `).get(
+              sourceUserId,
+              normalizedExpected,
+              freshChallenge.chain_id
+            );
+
+          if (!sourceProofWallet) {
+            const err =
+              new Error(
+                "Signed wallet no longer belongs to source profile"
+              );
+
+            err.code =
+              "SOURCE_WALLET_CHANGED";
+
+            throw err;
+          }
+
+          /*
+            Move all source identities
+            to the canonical target user.
+          */
+          db.prepare(`
+            UPDATE user_identities
+            SET
+              user_id = ?,
+              updated_at = ?
+            WHERE user_id = ?
+          `).run(
+            targetUserId,
+            now,
+            sourceUserId
+          );
+
+          /*
+            Move all source wallets.
+            Source primary flags are cleared;
+            target keeps its canonical primary.
+          */
+          db.prepare(`
+            UPDATE user_wallets
+            SET
+              user_id = ?,
+              is_primary = 0,
+              updated_at = ?
+            WHERE user_id = ?
+          `).run(
+            targetUserId,
+            now,
+            sourceUserId
+          );
+
+          /*
+            Preserve all workspace IDs and data.
+            Only ownership changes.
+          */
+          db.prepare(`
+            UPDATE workspaces
+            SET
+              owner_user_id = ?,
+              updated_at = ?
+            WHERE owner_user_id = ?
+          `).run(
+            targetUserId,
+            now,
+            sourceUserId
+          );
+
+          /*
+            Transfer memberships safely.
+
+            If target already has membership
+            in the same workspace, combine them
+            instead of violating UNIQUE().
+          */
+          const sourceMemberships =
+            db.prepare(`
+              SELECT *
+              FROM workspace_members
+              WHERE user_id = ?
+            `).all(sourceUserId);
+
+          for (
+            const membership
+            of sourceMemberships
+          ) {
+            const targetMembership =
+              db.prepare(`
+                SELECT *
+                FROM workspace_members
+                WHERE workspace_id = ?
+                  AND user_id = ?
+                LIMIT 1
+              `).get(
+                membership.workspace_id,
+                targetUserId
+              );
+
+            if (targetMembership) {
+              const mergedRole =
+                membership.role === "OWNER" ||
+                targetMembership.role === "OWNER"
+                  ? "OWNER"
+                  : targetMembership.role;
+
+              const mergedStatus =
+                membership.status === "ACTIVE" ||
+                targetMembership.status === "ACTIVE"
+                  ? "ACTIVE"
+                  : targetMembership.status;
+
+              db.prepare(`
+                UPDATE workspace_members
+                SET
+                  role = ?,
+                  status = ?
+                WHERE id = ?
+              `).run(
+                mergedRole,
+                mergedStatus,
+                targetMembership.id
+              );
+
+              db.prepare(`
+                DELETE FROM workspace_members
+                WHERE id = ?
+              `).run(
+                membership.id
+              );
+            } else {
+              db.prepare(`
+                UPDATE workspace_members
+                SET user_id = ?
+                WHERE id = ?
+              `).run(
+                targetUserId,
+                membership.id
+              );
+            }
+          }
+
+          /*
+            Any invitations created by source
+            now reference canonical target.
+          */
+          db.prepare(`
+            UPDATE workspace_members
+            SET invited_by_user_id = ?
+            WHERE invited_by_user_id = ?
+          `).run(
+            targetUserId,
+            sourceUserId
+          );
+
+          /*
+            Backfill legacy Circle fields only
+            when target does not already have them.
+          */
+          db.prepare(`
+            UPDATE users
+            SET
+              circle_user_id =
+                COALESCE(
+                  circle_user_id,
+                  ?
+                ),
+              circle_wallet_id =
+                COALESCE(
+                  circle_wallet_id,
+                  ?
+                ),
+              updated_at = ?
+            WHERE id = ?
+          `).run(
+            sourceUser.circle_user_id ||
+              null,
+            sourceUser.circle_wallet_id ||
+              null,
+            now,
+            targetUserId
+          );
+
+          /*
+            Old source wallet-link challenges
+            must not remain usable after merge.
+          */
+          db.prepare(`
+            DELETE FROM wallet_link_challenges
+            WHERE user_id = ?
+          `).run(sourceUserId);
+
+          /*
+            Consume this merge challenge only
+            after all transfers succeeded.
+          */
+          db.prepare(`
+            UPDATE profile_merge_challenges
+            SET used_at = ?
+            WHERE id = ?
+              AND used_at IS NULL
+          `).run(
+            now,
+            challengeId
+          );
+
+          /*
+            Source user is removed last.
+            All identities, wallets and workspaces
+            already belong to target at this point.
+          */
+          db.prepare(`
+            DELETE FROM users
+            WHERE id = ?
+          `).run(sourceUserId);
+
+          const mergedUser =
+            db.prepare(`
+              SELECT *
+              FROM users
+              WHERE id = ?
+            `).get(targetUserId);
+
+          const wallets =
+            db.prepare(`
+              SELECT *
+              FROM user_wallets
+              WHERE user_id = ?
+                AND is_active = 1
+              ORDER BY
+                is_primary DESC,
+                created_at ASC
+            `).all(targetUserId);
+
+          const workspaces =
+            db.prepare(`
+              SELECT
+                w.*,
+                wm.role,
+                wm.status AS member_status
+              FROM workspaces w
+              INNER JOIN workspace_members wm
+                ON wm.workspace_id = w.id
+              WHERE wm.user_id = ?
+                AND wm.status = 'ACTIVE'
+                AND w.status = 'ACTIVE'
+              ORDER BY w.created_at ASC
+            `).all(targetUserId);
+
+          return {
+            user: mergedUser,
+            wallets,
+            workspaces
+          };
+        });
+
+      let result;
+
+      try {
+        result =
+          mergeProfiles();
+      } catch (err) {
+        if (
+          err.code ===
+          "MERGE_CHALLENGE_USED"
+        ) {
+          return res.status(409).json({
+            success: false,
+            error:
+              "Profile merge challenge has already been used"
+          });
+        }
+
+        if (
+          err.code ===
+          "MERGE_CHALLENGE_EXPIRED"
+        ) {
+          return res.status(410).json({
+            success: false,
+            error:
+              "Profile merge challenge has expired"
+          });
+        }
+
+        if (
+          err.code ===
+          "PROFILE_NOT_FOUND" ||
+          err.code ===
+          "SOURCE_WALLET_CHANGED"
+        ) {
+          return res.status(409).json({
+            success: false,
+            error: err.message
+          });
+        }
+
+        throw err;
+      }
+
+      return res.json({
+        success: true,
+        merged: true,
+        canonicalUserId:
+          targetUserId,
+        removedSourceUserId:
+          sourceUserId,
+        user: result.user,
+        wallets: result.wallets,
+        workspaces: result.workspaces
+      });
+
+    } catch (err) {
+      console.error(
+        "Confirm profile merge error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          "Failed to merge TROR profiles",
+        details: err.message
       });
     }
   }

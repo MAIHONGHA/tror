@@ -7645,20 +7645,42 @@ ${
       : web3LinkStatus.linked &&
         !web3LinkStatus.belongsToCurrentUser
         ? `
-          <div
-            style="
-              margin-top:12px;
-              padding:11px 12px;
-              border-radius:12px;
-              background:#fff7ed;
-              color:#9a3412;
-              font-size:13px;
-              font-weight:700;
-            "
-          >
-            This wallet belongs to another TROR profile.
-          </div>
-        `
+  <div
+    style="
+      margin-top:12px;
+      padding:11px 12px;
+      border-radius:12px;
+      background:#fff7ed;
+      color:#9a3412;
+      font-size:13px;
+      font-weight:700;
+    "
+  >
+    This wallet belongs to another TROR profile.
+  </div>
+
+  <button
+    id="btnMergeWeb3Profiles"
+    type="button"
+    style="
+      width:100%;
+      margin-top:10px;
+      border:0;
+      border-radius:12px;
+      padding:12px 14px;
+      background:
+        linear-gradient(
+          135deg,
+          #c99b32,
+          #f0d166
+        );
+      font-weight:800;
+      cursor:pointer;
+    "
+  >
+    Verify & Merge Profiles
+  </button>
+`
         : `
           <button
             id="btnLinkWeb3ToTrorProfile"
@@ -7881,6 +7903,28 @@ document
       if (!result) {
         return;
       }
+
+      await openWalletConnectionsModal();
+    }
+  );
+
+document
+  .getElementById(
+    "btnMergeWeb3Profiles"
+  )
+  ?.addEventListener(
+    "click",
+    async () => {
+      const result =
+        await mergeWeb3Profiles();
+
+      if (!result) {
+        return;
+      }
+
+      await loadUserWorkspaces(
+        metamaskWallet
+      );
 
       await openWalletConnectionsModal();
     }
@@ -8390,6 +8434,550 @@ async function linkWeb3WalletToTrorProfile() {
     setStatus(
       err?.message ||
         "Web3 wallet linking failed.",
+      "error"
+    );
+
+    return null;
+  }
+}
+
+function openProfileMergeConfirmModal({
+  targetProfile,
+  sourceProfile,
+  walletCount,
+  workspaceCount
+}) {
+  return new Promise((resolve) => {
+    let modal =
+      document.getElementById(
+        "profileMergeConfirmModal"
+      );
+
+    if (!modal) {
+      modal =
+        document.createElement("div");
+
+      modal.id =
+        "profileMergeConfirmModal";
+
+      modal.style.cssText = `
+        position:fixed;
+        inset:0;
+        z-index:1000005;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        padding:20px;
+        background:rgba(15,23,42,.58);
+        backdrop-filter:blur(4px);
+      `;
+
+      document.body.appendChild(
+        modal
+      );
+    }
+
+    modal.innerHTML = `
+      <div
+        style="
+          width:100%;
+          max-width:460px;
+          background:#ffffff;
+          color:#111827;
+          border-radius:24px;
+          padding:26px;
+          box-shadow:
+            0 24px 70px
+            rgba(15,23,42,.28);
+        "
+      >
+        <div
+          style="
+            font-size:12px;
+            font-weight:800;
+            letter-spacing:.14em;
+            color:#9a6f18;
+            margin-bottom:10px;
+          "
+        >
+          TROR IDENTITY
+        </div>
+
+        <h2
+          style="
+            margin:0 0 8px;
+            font-size:22px;
+          "
+        >
+          Merge TROR Profiles?
+        </h2>
+
+        <p
+          style="
+            margin:0 0 20px;
+            color:#6b7280;
+            font-size:14px;
+            line-height:1.5;
+          "
+        >
+          Verify the profiles below before
+          completing the merge.
+        </p>
+
+        <div
+          style="
+            padding:14px;
+            border:1px solid #e5e7eb;
+            border-radius:14px;
+            margin-bottom:10px;
+          "
+        >
+          <div
+            style="
+              color:#6b7280;
+              font-size:12px;
+              margin-bottom:4px;
+            "
+          >
+            KEEP PROFILE
+          </div>
+
+          <strong>
+            ${
+              targetProfile?.full_name ||
+              "Current TROR profile"
+            }
+          </strong>
+        </div>
+
+        <div
+          style="
+            padding:14px;
+            border:1px solid #e5e7eb;
+            border-radius:14px;
+            margin-bottom:14px;
+          "
+        >
+          <div
+            style="
+              color:#6b7280;
+              font-size:12px;
+              margin-bottom:4px;
+            "
+          >
+            MERGE PROFILE
+          </div>
+
+          <strong>
+            ${
+              sourceProfile?.full_name ||
+              "Web3 wallet profile"
+            }
+          </strong>
+        </div>
+
+        <div
+          style="
+            padding:14px;
+            background:#f9fafb;
+            border-radius:14px;
+            margin-bottom:14px;
+            line-height:1.7;
+            font-size:14px;
+          "
+        >
+          <div>
+            Wallets:
+            <strong>
+              ${walletCount}
+            </strong>
+          </div>
+
+          <div>
+            Workspaces:
+            <strong>
+              ${workspaceCount}
+            </strong>
+          </div>
+        </div>
+
+        <div
+          style="
+            padding:12px 14px;
+            border-radius:12px;
+            background:#fff7ed;
+            color:#9a3412;
+            font-size:13px;
+            line-height:1.45;
+            margin-bottom:18px;
+          "
+        >
+          The source profile will be removed
+          only after its identities, wallets
+          and workspaces are transferred.
+        </div>
+
+        <div
+          style="
+            display:flex;
+            gap:10px;
+          "
+        >
+          <button
+            id="btnCancelProfileMerge"
+            type="button"
+            style="
+              flex:1;
+              border:1px solid #d1d5db;
+              border-radius:12px;
+              padding:12px;
+              background:#fff;
+              font-weight:800;
+              cursor:pointer;
+            "
+          >
+            Cancel
+          </button>
+
+          <button
+            id="btnConfirmProfileMerge"
+            type="button"
+            style="
+              flex:1;
+              border:0;
+              border-radius:12px;
+              padding:12px;
+              background:
+                linear-gradient(
+                  135deg,
+                  #c99b32,
+                  #f0d166
+                );
+              font-weight:800;
+              cursor:pointer;
+            "
+          >
+            Confirm Merge
+          </button>
+        </div>
+      </div>
+    `;
+
+    modal.style.display = "flex";
+
+    const close = (result) => {
+      modal.style.display = "none";
+      resolve(result);
+    };
+
+    document
+      .getElementById(
+        "btnCancelProfileMerge"
+      )
+      ?.addEventListener(
+        "click",
+        () => close(false)
+      );
+
+    document
+      .getElementById(
+        "btnConfirmProfileMerge"
+      )
+      ?.addEventListener(
+        "click",
+        () => close(true)
+      );
+  });
+}
+
+async function mergeWeb3Profiles() {
+  try {
+    if (!window.ethereum) {
+      throw new Error(
+        "No Web3 wallet detected."
+      );
+    }
+
+    if (!metamaskWallet) {
+      throw new Error(
+        "Connect your Web3 wallet first."
+      );
+    }
+
+    let currentUser = null;
+
+    try {
+      currentUser = JSON.parse(
+        localStorage.getItem(
+          "currentUser"
+        ) || "null"
+      );
+    } catch {
+      currentUser = null;
+    }
+
+    if (!currentUser?.id) {
+      throw new Error(
+        "TROR profile is not available."
+      );
+    }
+
+    const googleAccessToken =
+      localStorage.getItem(
+        "googleToken"
+      );
+
+    if (!googleAccessToken) {
+      throw new Error(
+        "Please sign in with Google before merging profiles."
+      );
+    }
+
+    const walletAddress =
+      String(metamaskWallet)
+        .trim()
+        .toLowerCase();
+
+    /*
+      STEP 1:
+      Create verified profile merge challenge.
+    */
+    const challenge =
+      await api(
+        `/api/users/${encodeURIComponent(
+          currentUser.id
+        )}/profile-merge-challenge`,
+        {
+          method: "POST",
+
+          body: JSON.stringify({
+            walletAddress,
+            chainId: ARC_CHAIN_ID,
+            googleAccessToken
+          })
+        }
+      );
+
+    if (
+      !challenge?.challengeId ||
+      !challenge?.message
+    ) {
+      throw new Error(
+        challenge?.error ||
+          "Could not create profile merge challenge."
+      );
+    }
+
+    /*
+      STEP 2:
+      Source Web3 wallet proves ownership.
+    */
+    const provider =
+      new ethers.BrowserProvider(
+        window.ethereum
+      );
+
+    const signer =
+      await provider.getSigner();
+
+    const signerAddress =
+      String(
+        await signer.getAddress()
+      )
+        .trim()
+        .toLowerCase();
+
+    if (
+      signerAddress !== walletAddress
+    ) {
+      throw new Error(
+        "The active signing wallet does not match the connected wallet."
+      );
+    }
+
+    const signature =
+      await signer.signMessage(
+        challenge.message
+      );
+
+    /*
+      STEP 3:
+      Verify signature and load preview.
+    */
+    const verified =
+      await api(
+        `/api/users/${encodeURIComponent(
+          currentUser.id
+        )}/profile-merge-verify`,
+        {
+          method: "POST",
+
+          body: JSON.stringify({
+            challengeId:
+              challenge.challengeId,
+
+            signature
+          })
+        }
+      );
+
+    if (
+      !verified?.success ||
+      !verified?.verified ||
+      !verified?.requiresConfirmation
+    ) {
+      throw new Error(
+        verified?.error ||
+          "Profile merge verification failed."
+      );
+    }
+
+    const targetProfile =
+      verified.preview?.targetProfile;
+
+    const sourceProfile =
+      verified.preview?.sourceProfile;
+
+    const targetWalletCount =
+      verified.preview?.targetWallets
+        ?.length || 0;
+
+    const sourceWalletCount =
+      verified.preview?.sourceWallets
+        ?.length || 0;
+
+    const targetWorkspaceCount =
+      verified.preview?.targetWorkspaces
+        ?.length || 0;
+
+    const sourceWorkspaceCount =
+      verified.preview?.sourceWorkspaces
+        ?.length || 0;
+
+    const confirmed =
+  await openProfileMergeConfirmModal({
+    targetProfile,
+    sourceProfile,
+
+    walletCount:
+      targetWalletCount +
+      sourceWalletCount,
+
+    workspaceCount:
+      targetWorkspaceCount +
+      sourceWorkspaceCount
+  });
+
+    if (!confirmed) {
+      setStatus(
+        "Profile merge cancelled.",
+        "info"
+      );
+
+      return null;
+    }
+
+    /*
+      STEP 4:
+      Explicit final confirmation.
+      Backend re-verifies both Google target
+      and Web3 source before transaction.
+    */
+    const merged =
+      await api(
+        `/api/users/${encodeURIComponent(
+          currentUser.id
+        )}/profile-merge-confirm`,
+        {
+          method: "POST",
+
+          body: JSON.stringify({
+            challengeId:
+              challenge.challengeId,
+
+            signature,
+
+            googleAccessToken
+          })
+        }
+      );
+
+    if (
+      !merged?.success ||
+      !merged?.merged
+    ) {
+      throw new Error(
+        merged?.error ||
+          "Profile merge failed."
+      );
+    }
+
+    if (merged.user) {
+      localStorage.setItem(
+        "currentUser",
+        JSON.stringify(merged.user)
+      );
+    }
+
+    if (
+      Array.isArray(
+        merged.workspaces
+      ) &&
+      merged.workspaces.length
+    ) {
+      const currentWorkspace =
+        merged.workspaces.find(
+          (workspace) =>
+            workspace.id ===
+            JSON.parse(
+              localStorage.getItem(
+                "currentWorkspace"
+              ) || "null"
+            )?.id
+        ) ||
+        merged.workspaces[0];
+
+      localStorage.setItem(
+        "currentWorkspace",
+        JSON.stringify(
+          currentWorkspace
+        )
+      );
+    }
+
+    console.log(
+      "TROR profiles merged:",
+      {
+        canonicalUserId:
+          merged.canonicalUserId,
+
+        removedSourceUserId:
+          merged.removedSourceUserId,
+
+        wallets:
+          merged.wallets?.length || 0,
+
+        workspaces:
+          merged.workspaces?.length || 0
+      }
+    );
+
+    setStatus(
+      "TROR profiles merged successfully.",
+      "success"
+    );
+
+    return merged;
+
+  } catch (err) {
+    console.error(
+      "TROR profile merge error:",
+      err
+    );
+
+    setStatus(
+      err?.message ||
+        "TROR profile merge failed.",
       "error"
     );
 
