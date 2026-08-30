@@ -5595,6 +5595,11 @@ if (
         activeCircleWallet.walletId
     }
   );
+
+await loadUserWorkspaces(
+  activeCircleWallet.address
+);
+
 } else {
   /*
     No existing TROR profile yet.
