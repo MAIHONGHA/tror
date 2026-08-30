@@ -5961,7 +5961,19 @@ async function setupCirclePin() {
       });
       challengeId = initData?.data?.challengeId || initData?.challengeId;
     } catch (err) {
-  if (String(err.message || "").includes("already been initialized")) {
+  const circleErrorText =
+    String(err?.message || "");
+
+  const alreadyInitialized =
+    circleErrorText.includes("155106") ||
+    circleErrorText
+      .toLowerCase()
+      .includes("already been initialized") ||
+    circleErrorText
+      .toLowerCase()
+      .includes("already initialized");
+
+  if (alreadyInitialized) {
     setStatus("User already initialized. Checking wallets...");
 
     const sdk = new W3SSdk({
@@ -6105,9 +6117,20 @@ return;
 
       try {
         const walletData = await api("/api/circle/create-wallet", {
-          method: "POST",
-          body: JSON.stringify({ userToken })
-        });
+  method: "POST",
+  body: JSON.stringify({
+    userToken,
+    blockchains: [
+      "ETH-SEPOLIA",
+      "BASE-SEPOLIA",
+      "ARB-SEPOLIA",
+      "AVAX-FUJI",
+      "OP-SEPOLIA",
+      "MATIC-AMOY",
+      "UNI-SEPOLIA"
+    ]
+  })
+});
 
         console.log("Wallet response:", walletData);
 

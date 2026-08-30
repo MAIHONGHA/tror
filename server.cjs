@@ -5903,7 +5903,6 @@ app.post("/api/circle/user-token", async (req, res) => {
     const text = await response.text();
 
 console.log("Circle status:", response.status);
-console.log("Circle body:", text);
 
     let data;
     try {
@@ -5912,7 +5911,14 @@ console.log("Circle body:", text);
       data = { raw: text };
     }
 
-    console.log("Circle user-token response:", response.status, data);
+console.log(
+  "Circle user-token fields:",
+  Object.keys(data || {}),
+  "data fields:",
+  Object.keys(data?.data || {})
+);
+
+    
     return res.status(response.status).json(data);
   } catch (err) {
     console.error("Circle user-token error:", err);
