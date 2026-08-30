@@ -7354,7 +7354,7 @@ async function createBusinessWorkspace() {
   }
 }
 
-function openWalletConnectionsModal() {
+async function openWalletConnectionsModal() {
   let modal =
     document.getElementById(
       "walletConnectionsModal"
@@ -7399,6 +7399,55 @@ function openWalletConnectionsModal() {
 
   const web3Address =
     metamaskWallet || null;
+
+let web3LinkStatus = {
+  linked: false,
+  verified: false,
+  belongsToCurrentUser: false
+};
+
+if (
+  web3Address &&
+  currentUser?.id
+) {
+  try {
+    const response = await fetch(
+      `${API_BASE}/api/users/${encodeURIComponent(
+        web3Address.toLowerCase()
+      )}`
+    );
+
+    const data =
+      await response
+        .json()
+        .catch(() => ({}));
+
+    if (
+      response.ok &&
+      data?.exists &&
+      data?.user?.id
+    ) {
+      web3LinkStatus = {
+        linked: true,
+
+        verified:
+          Boolean(
+            data.web3Verified
+          ),
+
+        belongsToCurrentUser:
+          data.user.id ===
+          currentUser.id
+      };
+    }
+
+  } catch (err) {
+    console.error(
+      "TROR Web3 link status error:",
+      err
+    );
+  }
+}
 
   const activeCircleWallet =
     window.trorActiveCircleWallet;
@@ -7525,9 +7574,8 @@ function openWalletConnectionsModal() {
           </div>
 
 ${
-  web3Address
-    ? ""
-    : `
+  !web3Address
+    ? `
       <button
         id="btnConnectWeb3FromSettings"
         type="button"
@@ -7550,6 +7598,63 @@ ${
         Connect Web3 Wallet
       </button>
     `
+    : web3LinkStatus.belongsToCurrentUser &&
+      web3LinkStatus.verified
+      ? `
+        <div
+          style="
+            margin-top:12px;
+            padding:11px 12px;
+            border-radius:12px;
+            background:#ecfdf5;
+            color:#166534;
+            font-size:13px;
+            font-weight:800;
+          "
+        >
+          ✓ Linked & Verified
+        </div>
+      `
+      : web3LinkStatus.linked &&
+        !web3LinkStatus.belongsToCurrentUser
+        ? `
+          <div
+            style="
+              margin-top:12px;
+              padding:11px 12px;
+              border-radius:12px;
+              background:#fff7ed;
+              color:#9a3412;
+              font-size:13px;
+              font-weight:700;
+            "
+          >
+            This wallet belongs to another TROR profile.
+          </div>
+        `
+        : `
+          <button
+            id="btnLinkWeb3ToTrorProfile"
+            type="button"
+            style="
+              width:100%;
+              margin-top:12px;
+              border:0;
+              border-radius:12px;
+              padding:12px 14px;
+              background:
+                linear-gradient(
+                  135deg,
+                  #c99b32,
+                  #f0d166
+                );
+              font-weight:800;
+              cursor:pointer;
+            "
+          >
+            Link to TROR Profile
+          </button>
+        `
 }
 
         </div>
@@ -7733,6 +7838,24 @@ document
         "none";
 
       await openAppKitWallet();
+    }
+  );
+
+document
+  .getElementById(
+    "btnLinkWeb3ToTrorProfile"
+  )
+  ?.addEventListener(
+    "click",
+    async () => {
+      const result =
+        await linkWeb3WalletToTrorProfile();
+
+      if (!result) {
+        return;
+      }
+
+      await openWalletConnectionsModal();
     }
   );
 
@@ -8066,6 +8189,184 @@ async function connectMetaMask() {
     setStatus("Wallet connected.", "success");
   } catch (err) {
     setStatus("MetaMask connect failed: " + err.message, "error");
+  }
+}
+
+async function linkWeb3WalletToTrorProfile() {
+  try {
+    if (!window.ethereum) {
+      throw new Error(
+        "No Web3 wallet detected."
+      );
+    }
+
+    if (!metamaskWallet) {
+      throw new Error(
+        "Connect your Web3 wallet first."
+      );
+    }
+
+    let currentUser = null;
+
+    try {
+      currentUser = JSON.parse(
+        localStorage.getItem(
+          "currentUser"
+        ) || "null"
+      );
+    } catch {
+      currentUser = null;
+    }
+
+    if (!currentUser?.id) {
+      throw new Error(
+        "TROR profile is not available."
+      );
+    }
+
+    const googleAccessToken =
+      localStorage.getItem(
+        "googleToken"
+      );
+
+    if (!googleAccessToken) {
+      throw new Error(
+        "Please sign in with Google before linking this wallet."
+      );
+    }
+
+    const walletAddress =
+      String(metamaskWallet)
+        .trim()
+        .toLowerCase();
+
+    /*
+      STEP 1:
+      Ask TROR backend for a one-time
+      wallet ownership challenge.
+    */
+    const challenge =
+      await api(
+        `/api/users/${encodeURIComponent(
+          currentUser.id
+        )}/web3-link-challenge`,
+        {
+          method: "POST",
+
+          body: JSON.stringify({
+            walletAddress,
+            chainId: ARC_CHAIN_ID,
+            googleAccessToken
+          })
+        }
+      );
+
+    if (
+      !challenge?.challengeId ||
+      !challenge?.message
+    ) {
+      throw new Error(
+        challenge?.error ||
+          "Could not create wallet verification challenge."
+      );
+    }
+
+    /*
+      STEP 2:
+      Wallet signs the exact message
+      generated by TROR backend.
+    */
+    const provider =
+      new ethers.BrowserProvider(
+        window.ethereum
+      );
+
+    const signer =
+      await provider.getSigner();
+
+    const signerAddress =
+      String(
+        await signer.getAddress()
+      )
+        .trim()
+        .toLowerCase();
+
+    if (
+      signerAddress !== walletAddress
+    ) {
+      throw new Error(
+        "The active signing wallet does not match the connected wallet."
+      );
+    }
+
+    const signature =
+      await signer.signMessage(
+        challenge.message
+      );
+
+    /*
+      STEP 3:
+      Backend recovers signer and
+      permanently links verified wallet.
+    */
+    const verified =
+      await api(
+        `/api/users/${encodeURIComponent(
+          currentUser.id
+        )}/web3-link-verify`,
+        {
+          method: "POST",
+
+          body: JSON.stringify({
+            challengeId:
+              challenge.challengeId,
+
+            signature
+          })
+        }
+      );
+
+    if (!verified?.success) {
+      throw new Error(
+        verified?.error ||
+          "Wallet verification failed."
+      );
+    }
+
+    console.log(
+      "TROR Web3 wallet verified:",
+      {
+        userId:
+          currentUser.id,
+
+        walletAddress:
+          verified.walletAddress,
+
+        chainId:
+          verified.chainId
+      }
+    );
+
+    setStatus(
+      "Web3 wallet linked to your TROR profile.",
+      "success"
+    );
+
+    return verified;
+
+  } catch (err) {
+    console.error(
+      "TROR Web3 wallet link error:",
+      err
+    );
+
+    setStatus(
+      err?.message ||
+        "Web3 wallet linking failed.",
+      "error"
+    );
+
+    return null;
   }
 }
 
@@ -13678,29 +13979,65 @@ loadTrorUnifiedBalance(account.address);
 
 activeWalletType = "web3";
 
-      const normalizedWallet =
-        account.address.toLowerCase();
+const normalizedWallet =
+  account.address.toLowerCase();
 
-      if (
-        lastProfileCheckedWallet !== normalizedWallet
-      ) {
-        lastProfileCheckedWallet = normalizedWallet;
+if (
+  lastProfileCheckedWallet !== normalizedWallet
+) {
+  lastProfileCheckedWallet = normalizedWallet;
 
-        const hasProfile =
-          await checkUserProfile(account.address);
+  let currentUser = null;
 
-        if (!hasProfile) {
-          setStatus(
-            "Please create your TROR profile.",
-            "error"
-          );
-          return;
-        }
+  try {
+    currentUser = JSON.parse(
+      localStorage.getItem(
+        "currentUser"
+      ) || "null"
+    );
+  } catch {
+    currentUser = null;
+  }
 
-        setStatus(
-  "Wallet and profile connected.",
-  "success"
-);
+  /*
+    If a TROR profile is already active,
+    connecting another Web3 wallet must NOT
+    replace or clear that profile.
+
+    The wallet is only connected at this stage.
+    Linking + ownership verification is a
+    separate explicit action.
+  */
+  if (currentUser?.id) {
+    setStatus(
+      "Web3 wallet connected. Link it to your TROR profile to verify ownership.",
+      "success"
+    );
+  } else {
+    /*
+      Web3-first onboarding:
+      no active TROR profile exists yet,
+      so profile discovery/creation by wallet
+      is still allowed.
+    */
+    const hasProfile =
+      await checkUserProfile(
+        account.address
+      );
+
+    if (!hasProfile) {
+      setStatus(
+        "Please create your TROR profile.",
+        "error"
+      );
+      return;
+    }
+
+    setStatus(
+      "Wallet and profile connected.",
+      "success"
+    );
+  }
 
 // Close AppKit after successful wallet connection
 appKit?.close?.();

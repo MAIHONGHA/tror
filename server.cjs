@@ -169,6 +169,30 @@ db.prepare(`
   ON user_wallets(workspace_id)
 `).run();
 
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS wallet_link_challenges (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    wallet_address TEXT NOT NULL,
+    chain_id INTEGER NOT NULL,
+    nonce TEXT NOT NULL,
+    message TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )
+`).run();
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_wallet_link_challenges_user_id
+  ON wallet_link_challenges(user_id)
+`).run();
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_wallet_link_challenges_wallet
+  ON wallet_link_challenges(wallet_address, chain_id)
+`).run();
+
 /* =========================
    IDENTITY / WALLET BACKFILL
 ========================= */
@@ -756,10 +780,53 @@ app.get("/api/users/:wallet", (req, res) => {
       });
     }
 
-    res.json({
-      exists: true,
-      user
-    });
+const linkedWallet = db.prepare(`
+  SELECT
+    id,
+    user_id,
+    wallet_type,
+    provider,
+    address,
+    chain_id,
+    is_primary,
+    is_active
+  FROM user_wallets
+  WHERE user_id = ?
+    AND lower(address) = ?
+    AND is_active = 1
+  LIMIT 1
+`).get(
+  user.id,
+  wallet
+);
+
+const web3Identity = db.prepare(`
+  SELECT
+    id,
+    user_id,
+    identity_type,
+    identity_value,
+    provider,
+    verified_at
+  FROM user_identities
+  WHERE user_id = ?
+    AND identity_type = 'WEB3'
+    AND lower(identity_value) = ?
+  LIMIT 1
+`).get(
+  user.id,
+  wallet
+);
+
+res.json({
+  exists: true,
+  user,
+  wallet: linkedWallet || null,
+  web3Identity: web3Identity || null,
+  web3Verified: Boolean(
+    web3Identity?.verified_at
+  )
+});
 
   } catch (err) {
     console.error(err);
@@ -1018,6 +1085,662 @@ if (existingUser) {
     });
   }
 });
+
+/* =========================
+   WEB3 WALLET LINK CHALLENGE
+========================= */
+
+app.post(
+  "/api/users/:userId/web3-link-challenge",
+  async (req, res) => {
+    try {
+      const userId = String(
+        req.params.userId || ""
+      ).trim();
+
+      const walletAddress = String(
+        req.body.walletAddress || ""
+      )
+        .trim()
+        .toLowerCase();
+
+      const chainId = Number(
+        req.body.chainId || 5042002
+      );
+
+      const googleAccessToken = String(
+        req.body.googleAccessToken || ""
+        ).trim();
+
+      if (!userId) {
+        return res.status(400).json({
+          success: false,
+          error: "User ID is required"
+        });
+      }
+
+      if (
+        !walletAddress ||
+        !ethers.isAddress(walletAddress)
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "Valid Web3 wallet address is required"
+        });
+      }
+
+      const user = db.prepare(`
+        SELECT id
+        FROM users
+        WHERE id = ?
+      `).get(userId);
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          error: "TROR user not found"
+        });
+      }
+
+if (!googleAccessToken) {
+  return res.status(401).json({
+    success: false,
+    error: "Google verification is required"
+  });
+}
+
+let googleUser;
+
+try {
+  googleUser =
+    await getGoogleUserFromToken(
+      googleAccessToken
+    );
+} catch (err) {
+  return res.status(401).json({
+    success: false,
+    error:
+      "Google verification failed. Please sign in with Google again."
+  });
+}
+
+const verifiedEmail = String(
+  googleUser?.email || ""
+)
+  .trim()
+  .toLowerCase();
+
+const identity = db.prepare(`
+  SELECT user_id
+  FROM user_identities
+  WHERE identity_type = 'GOOGLE'
+    AND lower(identity_value) = ?
+  LIMIT 1
+`).get(verifiedEmail);
+
+if (
+  !identity ||
+  identity.user_id !== userId
+) {
+  return res.status(403).json({
+    success: false,
+    error:
+      "Google account does not match this TROR profile"
+  });
+}
+
+      /*
+        Do not issue a linking challenge if
+        this wallet already belongs to
+        another TROR profile.
+      */
+      const existingWallet = db.prepare(`
+        SELECT user_id
+        FROM user_wallets
+        WHERE lower(address) = ?
+          AND wallet_type = 'WEB3'
+          AND chain_id = ?
+          AND is_active = 1
+        LIMIT 1
+      `).get(
+        walletAddress,
+        chainId
+      );
+
+      if (
+        existingWallet &&
+        existingWallet.user_id !== userId
+      ) {
+        return res.status(409).json({
+          success: false,
+          error:
+            "This Web3 wallet is already linked to another TROR profile"
+        });
+      }
+
+      const challengeId =
+        crypto.randomUUID();
+
+      const nonce =
+        crypto.randomBytes(32).toString("hex");
+
+      const createdAt =
+        new Date();
+
+      const expiresAt =
+        new Date(
+          createdAt.getTime() +
+            5 * 60 * 1000
+        );
+
+      const message = [
+        "TROR Wallet Link",
+        "",
+        "Sign this message to verify ownership of your Web3 wallet.",
+        "",
+        `User ID: ${userId}`,
+        `Wallet: ${walletAddress}`,
+        `Chain ID: ${chainId}`,
+        `Nonce: ${nonce}`,
+        `Issued At: ${createdAt.toISOString()}`,
+        `Expiration Time: ${expiresAt.toISOString()}`
+      ].join("\n");
+
+      db.prepare(`
+        INSERT INTO wallet_link_challenges (
+          id,
+          user_id,
+          wallet_address,
+          chain_id,
+          nonce,
+          message,
+          expires_at,
+          used_at,
+          created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)
+      `).run(
+        challengeId,
+        userId,
+        walletAddress,
+        chainId,
+        nonce,
+        message,
+        expiresAt.toISOString(),
+        createdAt.toISOString()
+      );
+
+      return res.json({
+        success: true,
+        challengeId,
+        message,
+        expiresAt:
+          expiresAt.toISOString()
+      });
+
+    } catch (err) {
+      console.error(
+        "Create Web3 link challenge error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          "Failed to create Web3 wallet link challenge"
+      });
+    }
+  }
+);
+
+/* =========================
+   WEB3 WALLET LINK VERIFY
+========================= */
+
+app.post(
+  "/api/users/:userId/web3-link-verify",
+  (req, res) => {
+    try {
+      const userId = String(
+        req.params.userId || ""
+      ).trim();
+
+      const challengeId = String(
+        req.body.challengeId || ""
+      ).trim();
+
+      const signature = String(
+        req.body.signature || ""
+      ).trim();
+
+      if (!userId) {
+        return res.status(400).json({
+          success: false,
+          error: "User ID is required"
+        });
+      }
+
+      if (!challengeId) {
+        return res.status(400).json({
+          success: false,
+          error: "Challenge ID is required"
+        });
+      }
+
+      if (
+        !signature ||
+        !signature.startsWith("0x")
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "Valid wallet signature is required"
+        });
+      }
+
+      const challenge = db.prepare(`
+        SELECT *
+        FROM wallet_link_challenges
+        WHERE id = ?
+          AND user_id = ?
+        LIMIT 1
+      `).get(
+        challengeId,
+        userId
+      );
+
+      if (!challenge) {
+        return res.status(404).json({
+          success: false,
+          error: "Wallet link challenge not found"
+        });
+      }
+
+      if (challenge.used_at) {
+        return res.status(409).json({
+          success: false,
+          error:
+            "This wallet link challenge has already been used"
+        });
+      }
+
+      const expiresAt =
+        Date.parse(challenge.expires_at);
+
+      if (
+        !Number.isFinite(expiresAt) ||
+        Date.now() > expiresAt
+      ) {
+        return res.status(410).json({
+          success: false,
+          error:
+            "Wallet link challenge has expired"
+        });
+      }
+
+      let recoveredAddress;
+
+      try {
+        recoveredAddress =
+          ethers.verifyMessage(
+            challenge.message,
+            signature
+          );
+      } catch (err) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid wallet signature"
+        });
+      }
+
+      const normalizedRecovered =
+        String(recoveredAddress || "")
+          .trim()
+          .toLowerCase();
+
+      const normalizedExpected =
+        String(
+          challenge.wallet_address || ""
+        )
+          .trim()
+          .toLowerCase();
+
+      if (
+        !normalizedRecovered ||
+        normalizedRecovered !==
+          normalizedExpected
+      ) {
+        return res.status(403).json({
+          success: false,
+          error:
+            "Signature does not match the wallet being linked"
+        });
+      }
+
+      const now =
+        new Date().toISOString();
+
+      const linkWallet =
+        db.transaction(() => {
+
+          /*
+            Recheck challenge inside transaction
+            so it cannot be reused concurrently.
+          */
+          const freshChallenge =
+            db.prepare(`
+              SELECT *
+              FROM wallet_link_challenges
+              WHERE id = ?
+                AND user_id = ?
+              LIMIT 1
+            `).get(
+              challengeId,
+              userId
+            );
+
+          if (
+            !freshChallenge ||
+            freshChallenge.used_at
+          ) {
+            const err =
+              new Error(
+                "Wallet link challenge already used"
+              );
+
+            err.code =
+              "CHALLENGE_USED";
+
+            throw err;
+          }
+
+const freshExpiresAt =
+  Date.parse(
+    freshChallenge.expires_at
+  );
+
+if (
+  !Number.isFinite(
+    freshExpiresAt
+  ) ||
+  Date.now() >
+    freshExpiresAt
+) {
+  const err =
+    new Error(
+      "Wallet link challenge expired"
+    );
+
+  err.code =
+    "CHALLENGE_EXPIRED";
+
+  throw err;
+}
+
+          /*
+            Recheck wallet ownership conflict.
+          */
+          const existingWallet =
+            db.prepare(`
+              SELECT *
+              FROM user_wallets
+              WHERE lower(address) = ?
+                AND wallet_type = 'WEB3'
+                AND chain_id = ?
+              LIMIT 1
+            `).get(
+              normalizedExpected,
+              challenge.chain_id
+            );
+
+          if (
+            existingWallet &&
+            existingWallet.user_id !==
+              userId
+          ) {
+            const err =
+              new Error(
+                "Wallet belongs to another TROR profile"
+              );
+
+            err.code =
+              "WALLET_CONFLICT";
+
+            throw err;
+          }
+
+          /*
+            Identity must also not belong
+            to another TROR profile.
+          */
+          const existingIdentity =
+            db.prepare(`
+              SELECT *
+              FROM user_identities
+              WHERE identity_type = 'WEB3'
+                AND lower(identity_value) = ?
+              LIMIT 1
+            `).get(
+              normalizedExpected
+            );
+
+          if (
+            existingIdentity &&
+            existingIdentity.user_id !==
+              userId
+          ) {
+            const err =
+              new Error(
+                "Web3 identity belongs to another TROR profile"
+              );
+
+            err.code =
+              "IDENTITY_CONFLICT";
+
+            throw err;
+          }
+
+          /*
+            Update existing wallet for same user,
+            otherwise create a new linked wallet.
+          */
+          if (existingWallet) {
+            db.prepare(`
+              UPDATE user_wallets
+              SET
+                provider = 'web3',
+                is_active = 1,
+                updated_at = ?
+              WHERE id = ?
+            `).run(
+              now,
+              existingWallet.id
+            );
+          } else {
+            const activeWeb3Wallet =
+              db.prepare(`
+                SELECT id
+                FROM user_wallets
+                WHERE user_id = ?
+                  AND wallet_type = 'WEB3'
+                  AND is_active = 1
+                LIMIT 1
+              `).get(userId);
+
+            db.prepare(`
+              INSERT INTO user_wallets (
+                id,
+                user_id,
+                workspace_id,
+                wallet_type,
+                provider,
+                address,
+                chain_id,
+                circle_wallet_id,
+                is_primary,
+                is_active,
+                created_at,
+                updated_at
+              )
+              VALUES (
+                ?, ?, NULL,
+                'WEB3',
+                'web3',
+                ?, ?,
+                NULL,
+                ?, 1,
+                ?, ?
+              )
+            `).run(
+              crypto.randomUUID(),
+              userId,
+              normalizedExpected,
+              challenge.chain_id,
+              activeWeb3Wallet ? 0 : 1,
+              now,
+              now
+            );
+          }
+
+          /*
+            Promote legacy WEB3 identity
+            to cryptographically verified,
+            or create it if missing.
+          */
+          if (existingIdentity) {
+            db.prepare(`
+              UPDATE user_identities
+              SET
+                provider = 'web3',
+                verified_at = ?,
+                updated_at = ?
+              WHERE id = ?
+            `).run(
+              now,
+              now,
+              existingIdentity.id
+            );
+          } else {
+            db.prepare(`
+              INSERT INTO user_identities (
+                id,
+                user_id,
+                identity_type,
+                identity_value,
+                provider,
+                verified_at,
+                created_at,
+                updated_at
+              )
+              VALUES (
+                ?, ?,
+                'WEB3',
+                ?,
+                'web3',
+                ?,
+                ?, ?
+              )
+            `).run(
+              crypto.randomUUID(),
+              userId,
+              normalizedExpected,
+              now,
+              now,
+              now
+            );
+          }
+
+          /*
+            Consume challenge only after
+            wallet + identity linking succeeds.
+          */
+          db.prepare(`
+            UPDATE wallet_link_challenges
+            SET used_at = ?
+            WHERE id = ?
+              AND used_at IS NULL
+          `).run(
+            now,
+            challengeId
+          );
+
+          return db.prepare(`
+            SELECT *
+            FROM user_wallets
+            WHERE user_id = ?
+              AND is_active = 1
+            ORDER BY
+              is_primary DESC,
+              created_at ASC
+          `).all(userId);
+        });
+
+      let wallets;
+
+      try {
+        wallets = linkWallet();
+      } catch (err) {
+        if (
+          err.code ===
+          "CHALLENGE_USED"
+        ) {
+          return res.status(409).json({
+            success: false,
+            error:
+              "This wallet link challenge has already been used"
+          });
+        }
+
+if (
+  err.code ===
+  "CHALLENGE_EXPIRED"
+) {
+  return res.status(410).json({
+    success: false,
+    error:
+      "Wallet link challenge has expired"
+  });
+}
+
+        if (
+          err.code ===
+            "WALLET_CONFLICT" ||
+          err.code ===
+            "IDENTITY_CONFLICT"
+        ) {
+          return res.status(409).json({
+            success: false,
+            error:
+              "This Web3 wallet is already linked to another TROR profile"
+          });
+        }
+
+        throw err;
+      }
+
+      return res.json({
+        success: true,
+        verified: true,
+        walletAddress:
+          normalizedExpected,
+        chainId:
+          challenge.chain_id,
+        wallets
+      });
+
+    } catch (err) {
+      console.error(
+        "Verify Web3 wallet link error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          "Failed to verify Web3 wallet link"
+      });
+    }
+  }
+);
 
 app.post(
   "/api/users/:userId/link-circle-wallet",
