@@ -6123,6 +6123,195 @@ app.post("/api/claims/:id/verify-google", async (req, res) => {
   }
 });
 
+app.post(
+  "/api/claims/:id/circle-auth",
+  async (req, res) => {
+    try {
+      if (!requireCircle(res)) {
+        return;
+      }
+
+      const googleAccessToken = String(
+        req.body.googleAccessToken || ""
+      ).trim();
+
+      if (!googleAccessToken) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Google verification is required"
+        });
+      }
+
+      /*
+        Verify the Google account against
+        the actual recipient stored on
+        this claim.
+
+        Do NOT trust an email supplied
+        by the frontend.
+      */
+      const {
+        claim,
+        googleUser
+      } = await verifyClaimRecipient(
+        req.params.id,
+        googleAccessToken
+      );
+
+      if (claim.status === "CLAIMED") {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Claim already claimed"
+        });
+      }
+
+      const recipientEmail =
+        String(
+          googleUser.email || ""
+        )
+          .trim()
+          .toLowerCase();
+
+      if (!recipientEmail) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Verified Google email is missing"
+        });
+      }
+
+      /*
+        Ensure a Circle user exists for
+        the verified Gmail recipient.
+
+        Circle may return an already-exists
+        response. That is acceptable because
+        the next step requests a user token.
+      */
+      try {
+        const createResponse =
+          await fetch(
+            "https://api.circle.com/v1/w3s/users",
+            {
+              method: "POST",
+              headers: {
+                Authorization:
+                  `Bearer ${CIRCLE_API_KEY}`,
+                "Content-Type":
+                  "application/json"
+              },
+              body: JSON.stringify({
+                userId:
+                  recipientEmail
+              })
+            }
+          );
+
+        /*
+          Consume the response body but do
+          not expose it or log sensitive data.
+        */
+        await createResponse
+          .json()
+          .catch(() => null);
+
+      } catch (createError) {
+        console.warn(
+          "Claim Circle create-user warning:",
+          createError?.message ||
+            "Circle create-user request failed"
+        );
+      }
+
+      /*
+        Request Circle user-controlled-wallet
+        authentication for the VERIFIED
+        recipient email.
+      */
+      const tokenResponse =
+        await fetch(
+          "https://api.circle.com/v1/w3s/users/token",
+          {
+            method: "POST",
+            headers: {
+              Authorization:
+                `Bearer ${CIRCLE_API_KEY}`,
+              "Content-Type":
+                "application/json"
+            },
+            body: JSON.stringify({
+              userId:
+                recipientEmail
+            })
+          }
+        );
+
+      const tokenData =
+        await tokenResponse.json();
+
+      if (!tokenResponse.ok) {
+        return res
+          .status(tokenResponse.status)
+          .json({
+            success: false,
+            error:
+              tokenData?.message ||
+              tokenData?.error ||
+              "Failed to prepare Circle wallet"
+          });
+      }
+
+      const userToken =
+        tokenData?.data?.userToken ||
+        tokenData?.userToken;
+
+      const encryptionKey =
+        tokenData?.data?.encryptionKey ||
+        tokenData?.encryptionKey;
+
+      if (
+        !userToken ||
+        !encryptionKey
+      ) {
+        return res.status(500).json({
+          success: false,
+          error:
+            "Circle authentication data is incomplete"
+        });
+      }
+
+      return res.json({
+        success: true,
+
+        recipient: {
+          email:
+            recipientEmail
+        },
+
+        circle: {
+          userToken,
+          encryptionKey
+        }
+      });
+
+    } catch (err) {
+      console.error(
+        "CLAIM CIRCLE AUTH ERROR:",
+        err?.message || err
+      );
+
+      return res.status(403).json({
+        success: false,
+        error:
+          err?.message ||
+          "Failed to prepare Circle recipient"
+      });
+    }
+  }
+);
+
 function requireCircle(res) {
   if (!CIRCLE_API_KEY) {
     res.status(500).json({
@@ -9224,10 +9413,25 @@ app.post(
         req.body.walletAddress || ""
       ).trim();
 
+      const walletType = String(
+        req.body.walletType || "web3"
+      )
+        .trim()
+        .toLowerCase();
+
+      const circleUserToken = String(
+        req.body.circleUserToken || ""
+      ).trim();
+
+      const circleWalletId = String(
+        req.body.circleWalletId || ""
+      ).trim();
+
       if (!txHash.startsWith("0x")) {
         return res.status(400).json({
           success: false,
-          error: "Valid transaction hash is required"
+          error:
+            "Valid transaction hash is required"
         });
       }
 
@@ -9237,7 +9441,18 @@ app.post(
       ) {
         return res.status(400).json({
           success: false,
-          error: "Valid wallet address is required"
+          error:
+            "Valid wallet address is required"
+        });
+      }
+
+      if (
+        walletType !== "web3" &&
+        walletType !== "circle"
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid wallet type"
         });
       }
 
@@ -9253,6 +9468,78 @@ app.post(
           error: "Claim not found"
         });
       }
+
+      if (claim.status === "CLAIMED") {
+  const storedTxHash =
+    String(
+      claim.txHash || ""
+    )
+      .trim()
+      .toLowerCase();
+
+  const storedWalletAddress =
+    String(
+      claim.walletAddress || ""
+    )
+      .trim()
+      .toLowerCase();
+
+  const submittedTxHash =
+    txHash.toLowerCase();
+
+  const submittedWalletAddress =
+    walletAddress.toLowerCase();
+
+  const sameTransaction =
+    storedTxHash &&
+    storedTxHash ===
+      submittedTxHash;
+
+  const sameReceiver =
+    storedWalletAddress &&
+    storedWalletAddress ===
+      submittedWalletAddress;
+
+  if (
+    sameTransaction &&
+    sameReceiver
+  ) {
+    /*
+      Idempotent retry of the same
+      successfully confirmed claim.
+    */
+    return res.json({
+      success: true,
+      alreadyClaimed: true,
+      claim
+    });
+  }
+
+  return res.status(409).json({
+    success: false,
+    error:
+      "Claim has already been received by another confirmed transaction."
+  });
+}
+
+      const amount =
+        Number(claim.amount);
+
+      if (
+        !Number.isFinite(amount) ||
+        amount <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid claim amount"
+        });
+      }
+
+      const expectedAmount =
+        ethers.parseUnits(
+          amount.toFixed(6),
+          6
+        );
 
       const receipt =
         await provider.getTransactionReceipt(
@@ -9275,83 +9562,404 @@ app.post(
         });
       }
 
-      const transaction =
-        await provider.getTransaction(
-          txHash
-        );
+      /*
+        ==================================================
+        CIRCLE SCA VERIFICATION
+        ==================================================
 
-      if (!transaction) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "Claim transaction could not be loaded"
-        });
-      }
+        Circle SCA outer transaction may not have:
 
-      if (
-        String(transaction.to || "")
-          .toLowerCase() !==
-        String(CLAIM_V2_CONTRACT_ADDRESS)
-          .toLowerCase()
-      ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "Transaction was not sent to TRORClaim V2"
-        });
-      }
+          transaction.to === TRORClaim V2
+          transaction.from === Circle wallet
 
-      const claimInterface =
-        new ethers.Interface([
-          "function claim(uint256 claimId,uint256 authorizationDeadline,bytes authorization)"
-        ]);
+        Therefore verify:
 
-      let parsed;
-
-      try {
-        parsed =
-          claimInterface.parseTransaction({
-            data: transaction.data,
-            value: transaction.value
+          1. Circle transaction metadata
+          2. Arc receipt
+          3. ClaimPaid event emitted by TRORClaim V2
+      */
+      if (walletType === "circle") {
+        if (!circleUserToken) {
+          return res.status(400).json({
+            success: false,
+            error:
+              "Circle user token is required"
           });
-      } catch {
-        return res.status(400).json({
-          success: false,
-          error:
-            "Transaction is not a TRORClaim V2 claim"
-        });
+        }
+
+        if (!circleWalletId) {
+          return res.status(400).json({
+            success: false,
+            error:
+              "Circle wallet ID is required"
+          });
+        }
+
+        if (!requireCircle(res)) {
+          return;
+        }
+
+        const circleResponse =
+          await fetch(
+            "https://api.circle.com/v1/w3s/transactions",
+            {
+              method: "GET",
+              headers: {
+                Authorization:
+                  `Bearer ${CIRCLE_API_KEY}`,
+                "X-User-Token":
+                  circleUserToken,
+                "Content-Type":
+                  "application/json"
+              }
+            }
+          );
+
+        const circleData =
+          await circleResponse.json();
+
+        if (!circleResponse.ok) {
+          return res
+            .status(circleResponse.status)
+            .json({
+              success: false,
+              error:
+                circleData?.message ||
+                circleData?.error ||
+                "Failed to verify Circle claim transaction"
+            });
+        }
+
+        const circleTransactions =
+          circleData?.data
+            ?.transactions ||
+          [];
+
+        const circleTransaction =
+          circleTransactions.find(
+            (item) => {
+              const hash =
+                item?.blockchainTxHash ||
+                item?.txHash ||
+                item?.transactionHash ||
+                "";
+
+              return (
+                String(hash).toLowerCase() ===
+                txHash.toLowerCase()
+              );
+            }
+          );
+
+        if (!circleTransaction) {
+          return res.status(400).json({
+            success: false,
+            error:
+              "Circle claim transaction was not found"
+          });
+        }
+
+        const circleState =
+          String(
+            circleTransaction?.state ||
+            circleTransaction?.status ||
+            ""
+          ).toUpperCase();
+
+        if (circleState !== "COMPLETE") {
+          return res.status(400).json({
+            success: false,
+            error:
+              "Circle claim transaction is not complete"
+          });
+        }
+
+        const circleOperation =
+          String(
+            circleTransaction?.operation ||
+            ""
+          ).toUpperCase();
+
+        if (
+          circleOperation !==
+          "CONTRACT_EXECUTION"
+        ) {
+          return res.status(400).json({
+            success: false,
+            error:
+              "Circle transaction is not a contract execution"
+          });
+        }
+
+        const transactionWalletId =
+          String(
+            circleTransaction?.walletId ||
+            ""
+          );
+
+        if (
+          transactionWalletId !==
+          circleWalletId
+        ) {
+          return res.status(400).json({
+            success: false,
+            error:
+              "Circle claim wallet does not match"
+          });
+        }
+
+        const circleBlockchain =
+          String(
+            circleTransaction?.blockchain ||
+            ""
+          ).toUpperCase();
+
+        if (
+          circleBlockchain !==
+          "ARC-TESTNET"
+        ) {
+          return res.status(400).json({
+            success: false,
+            error:
+              "Circle claim is not on Arc Testnet"
+          });
+        }
+
+        const circleContractAddress =
+          String(
+            circleTransaction
+              ?.contractAddress ||
+            ""
+          ).toLowerCase();
+
+        if (
+          circleContractAddress !==
+          String(
+            CLAIM_V2_CONTRACT_ADDRESS
+          ).toLowerCase()
+        ) {
+          return res.status(400).json({
+            success: false,
+            error:
+              "Circle transaction was not sent to TRORClaim V2"
+          });
+        }
+
+        const circleSourceAddress =
+          String(
+            circleTransaction
+              ?.sourceAddress ||
+            ""
+          ).toLowerCase();
+
+        if (
+          circleSourceAddress !==
+          walletAddress.toLowerCase()
+        ) {
+          return res.status(400).json({
+            success: false,
+            error:
+              "Circle claim receiver does not match"
+          });
+        }
+
+        /*
+          Verify the actual ClaimPaid event
+          emitted by TRORClaim V2.
+
+          This proves that claim() completed
+          successfully and USDC was sent to
+          the expected Circle SCA receiver.
+        */
+        const claimEventInterface =
+          new ethers.Interface([
+            "event ClaimPaid(uint256 indexed claimId,address indexed receiver,uint256 amount,string memo)"
+          ]);
+
+        let claimPaidEvent = null;
+
+        for (
+          const log of receipt.logs || []
+        ) {
+          if (
+            String(log?.address || "")
+              .toLowerCase() !==
+            String(
+              CLAIM_V2_CONTRACT_ADDRESS
+            ).toLowerCase()
+          ) {
+            continue;
+          }
+
+          try {
+            const parsedLog =
+              claimEventInterface.parseLog({
+                topics: log.topics,
+                data: log.data
+              });
+
+            if (
+              parsedLog?.name ===
+              "ClaimPaid"
+            ) {
+              claimPaidEvent =
+                parsedLog;
+              break;
+            }
+          } catch {
+            // Ignore unrelated logs.
+          }
+        }
+
+        if (!claimPaidEvent) {
+          return res.status(400).json({
+            success: false,
+            error:
+              "TRORClaim ClaimPaid event was not found"
+          });
+        }
+
+        const eventClaimId =
+          String(
+            claimPaidEvent.args[0]
+          );
+
+        const eventReceiver =
+          String(
+            claimPaidEvent.args[1]
+          ).toLowerCase();
+
+        const eventAmount =
+          BigInt(
+            claimPaidEvent.args[2]
+          );
+
+        if (
+          eventClaimId !==
+          String(id)
+        ) {
+          return res.status(400).json({
+            success: false,
+            error:
+              "Claim event ID does not match"
+          });
+        }
+
+        if (
+          eventReceiver !==
+          walletAddress.toLowerCase()
+        ) {
+          return res.status(400).json({
+            success: false,
+            error:
+              "Claim event receiver does not match"
+          });
+        }
+
+        if (
+          eventAmount !==
+          expectedAmount
+        ) {
+          return res.status(400).json({
+            success: false,
+            error:
+              "Claim event amount does not match"
+          });
+        }
       }
 
-      const txClaimId =
-        parsed.args[0].toString();
+      /*
+        ==================================================
+        WEB3 / EOA VERIFICATION
+        ==================================================
 
-      if (
-        txClaimId !==
-        String(id)
-      ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "Transaction claimId does not match"
-        });
+        Keep the existing direct-wallet
+        verification unchanged.
+      */
+      else {
+        const transaction =
+          await provider.getTransaction(
+            txHash
+          );
+
+        if (!transaction) {
+          return res.status(400).json({
+            success: false,
+            error:
+              "Claim transaction could not be loaded"
+          });
+        }
+
+        if (
+          String(transaction.to || "")
+            .toLowerCase() !==
+          String(
+            CLAIM_V2_CONTRACT_ADDRESS
+          ).toLowerCase()
+        ) {
+          return res.status(400).json({
+            success: false,
+            error:
+              "Transaction was not sent to TRORClaim V2"
+          });
+        }
+
+        const claimInterface =
+          new ethers.Interface([
+            "function claim(uint256 claimId,uint256 authorizationDeadline,bytes authorization)"
+          ]);
+
+        let parsed;
+
+        try {
+          parsed =
+            claimInterface.parseTransaction({
+              data: transaction.data,
+              value: transaction.value
+            });
+        } catch {
+          return res.status(400).json({
+            success: false,
+            error:
+              "Transaction is not a TRORClaim V2 claim"
+          });
+        }
+
+        const txClaimId =
+          parsed.args[0].toString();
+
+        if (
+          txClaimId !==
+          String(id)
+        ) {
+          return res.status(400).json({
+            success: false,
+            error:
+              "Transaction claimId does not match"
+          });
+        }
+
+        const sender =
+          String(
+            transaction.from || ""
+          ).toLowerCase();
+
+        if (
+          sender !==
+          walletAddress.toLowerCase()
+        ) {
+          return res.status(400).json({
+            success: false,
+            error:
+              "Transaction sender does not match receiving wallet"
+          });
+        }
       }
 
-      const sender =
-        String(
-          transaction.from || ""
-        ).toLowerCase();
-
-      if (
-        sender !==
-        walletAddress.toLowerCase()
-      ) {
-        return res.status(400).json({
-          success: false,
-          error:
-            "Transaction sender does not match receiving wallet"
-        });
-      }
-
+      /*
+        Both verification paths have now
+        proved the on-chain claim.
+      */
       const now =
         new Date().toISOString();
 

@@ -3231,6 +3231,430 @@ function extractCircleWallets(data) {
     : [];
 }
 
+function getClaimCircleArcWallet(data) {
+  const wallets =
+    extractCircleWallets(data);
+
+  return (
+    wallets.find((wallet) => {
+      const blockchain =
+        String(
+          wallet?.blockchain || ""
+        ).toUpperCase();
+
+      const accountType =
+        String(
+          wallet?.accountType || ""
+        ).toUpperCase();
+
+      const state =
+        String(
+          wallet?.state || ""
+        ).toUpperCase();
+
+      const address =
+        wallet?.address ||
+        wallet?.walletAddress ||
+        wallet?.accounts?.[0]?.address ||
+        null;
+
+      return (
+        blockchain === "ARC-TESTNET" &&
+        accountType === "SCA" &&
+        state === "LIVE" &&
+        Boolean(address)
+      );
+    }) || null
+  );
+}
+
+function getClaimCircleWalletAddress(wallet) {
+  return (
+    wallet?.address ||
+    wallet?.walletAddress ||
+    wallet?.accounts?.[0]?.address ||
+    null
+  );
+}
+
+async function getClaimCircleAuth(
+  claimId,
+  googleAccessToken
+) {
+  if (!claimId) {
+    throw new Error(
+      "Missing claim ID."
+    );
+  }
+
+  if (!googleAccessToken) {
+    throw new Error(
+      "Verify your Google account first."
+    );
+  }
+
+  const result = await api(
+    `/api/claims/${encodeURIComponent(
+      claimId
+    )}/circle-auth`,
+    {
+      method: "POST",
+
+      body: JSON.stringify({
+        googleAccessToken
+      })
+    }
+  );
+
+  const userToken =
+    result?.circle?.userToken;
+
+  const encryptionKey =
+    result?.circle?.encryptionKey;
+
+  const recipientEmail =
+    result?.recipient?.email || null;
+
+  if (
+    !userToken ||
+    !encryptionKey
+  ) {
+    throw new Error(
+      "Circle authentication data is incomplete."
+    );
+  }
+
+  return {
+    userToken,
+    encryptionKey,
+    recipientEmail
+  };
+}
+
+async function prepareClaimCircleWallet(
+  claimId,
+  googleAccessToken
+) {
+  const {
+    userToken,
+    encryptionKey,
+    recipientEmail
+  } = await getClaimCircleAuth(
+    claimId,
+    googleAccessToken
+  );
+
+  /*
+    First check whether this verified
+    recipient already has an Arc SCA.
+  */
+  const listData =
+    await listCircleWallets(
+      userToken
+    );
+
+  const existingWallet =
+    getClaimCircleArcWallet(
+      listData
+    );
+
+  if (existingWallet) {
+    return {
+      ready: true,
+      needsSetup: false,
+      recipientEmail,
+      userToken,
+      encryptionKey,
+      wallet: existingWallet,
+      walletAddress:
+        getClaimCircleWalletAddress(
+          existingWallet
+        )
+    };
+  }
+
+  /*
+    No Arc SCA exists yet.
+
+    Do not modify the dashboard Circle
+    session. Initialize only this verified
+    claim recipient.
+  */
+  const cfg =
+    await api(
+      "/api/circle/config"
+    );
+
+  const appId =
+    cfg?.config?.circleAppId;
+
+  if (!appId) {
+    throw new Error(
+      "Missing CIRCLE_APP_ID."
+    );
+  }
+
+  let initializeData = null;
+
+  try {
+    initializeData =
+      await api(
+        "/api/circle/initialize-user",
+        {
+          method: "POST",
+
+          body: JSON.stringify({
+            userToken
+          })
+        }
+      );
+  } catch (err) {
+    const text =
+      String(
+        err?.message || ""
+      );
+
+    const alreadyInitialized =
+      text.includes("155106") ||
+      text
+        .toLowerCase()
+        .includes(
+          "already been initialized"
+        ) ||
+      text
+        .toLowerCase()
+        .includes(
+          "already initialized"
+        );
+
+    if (!alreadyInitialized) {
+      throw err;
+    }
+
+    /*
+      User has already set up Circle,
+      but Arc wallet may be missing.
+    */
+    return {
+      ready: false,
+      needsSetup: true,
+      initialized: true,
+      recipientEmail,
+      userToken,
+      encryptionKey,
+      appId
+    };
+  }
+
+  const challengeId =
+    initializeData?.data?.challengeId ||
+    initializeData?.challengeId;
+
+  if (!challengeId) {
+    throw new Error(
+      "Circle did not return a PIN setup challenge."
+    );
+  }
+
+  return {
+    ready: false,
+    needsSetup: true,
+    initialized: false,
+    recipientEmail,
+    userToken,
+    encryptionKey,
+    appId,
+    challengeId
+  };
+}
+
+async function completeClaimCircleWalletSetup(
+  prepared
+) {
+  if (!prepared?.userToken) {
+    throw new Error(
+      "Missing Circle user token."
+    );
+  }
+
+  if (!prepared?.encryptionKey) {
+    throw new Error(
+      "Missing Circle encryption key."
+    );
+  }
+
+  if (!prepared?.appId) {
+    throw new Error(
+      "Missing Circle app ID."
+    );
+  }
+
+  const {
+    userToken,
+    encryptionKey,
+    appId
+  } = prepared;
+
+  const sdk = new W3SSdk({
+    appSettings: {
+      appId
+    }
+  });
+
+  sdk.setAuthentication({
+    userToken,
+    encryptionKey
+  });
+
+  /*
+    New Circle recipient:
+    complete PIN setup first.
+  */
+  if (
+    prepared.initialized === false &&
+    prepared.challengeId
+  ) {
+    await new Promise(
+      (resolve, reject) => {
+        sdk.execute(
+          prepared.challengeId,
+          (error, result) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+
+            resolve(result);
+          }
+        );
+      }
+    );
+  }
+
+  /*
+    Re-check after PIN setup because
+    initialize-user may already have
+    created the Arc SCA.
+  */
+  let listData =
+    await listCircleWallets(
+      userToken
+    );
+
+  let wallet =
+    getClaimCircleArcWallet(
+      listData
+    );
+
+  if (wallet) {
+    return {
+      ready: true,
+      recipientEmail:
+        prepared.recipientEmail,
+      userToken,
+      encryptionKey,
+      wallet,
+      walletAddress:
+        getClaimCircleWalletAddress(
+          wallet
+        )
+    };
+  }
+
+  /*
+    Recipient is initialized but has no
+    ARC-TESTNET SCA yet.
+
+    Create ONLY Arc Testnet for the
+    Gmail Claim receiver.
+  */
+  const walletData =
+    await api(
+      "/api/circle/create-wallet",
+      {
+        method: "POST",
+
+        body: JSON.stringify({
+          userToken,
+          blockchains: [
+            "ARC-TESTNET"
+          ]
+        })
+      }
+    );
+
+  const walletChallengeId =
+    walletData?.data?.challengeId ||
+    walletData?.challengeId;
+
+  if (walletChallengeId) {
+    await new Promise(
+      (resolve, reject) => {
+        sdk.execute(
+          walletChallengeId,
+          (error, result) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+
+            resolve(result);
+          }
+        );
+      }
+    );
+  }
+
+  /*
+    Circle wallet creation can take a
+    short moment to appear in list-wallets.
+  */
+  for (
+    let attempt = 0;
+    attempt < 8;
+    attempt += 1
+  ) {
+    await new Promise(
+      (resolve) =>
+        setTimeout(
+          resolve,
+          attempt === 0
+            ? 1500
+            : 1000
+        )
+    );
+
+    listData =
+      await listCircleWallets(
+        userToken
+      );
+
+    wallet =
+      getClaimCircleArcWallet(
+        listData
+      );
+
+    if (wallet) {
+      return {
+        ready: true,
+        recipientEmail:
+          prepared.recipientEmail,
+        userToken,
+        encryptionKey,
+        wallet,
+        walletAddress:
+          getClaimCircleWalletAddress(
+            wallet
+          )
+      };
+    }
+  }
+
+  throw new Error(
+    "Arc Circle wallet is not ready yet. Please try again."
+  );
+}
+
 function getCircleWalletByBlockchain(data, blockchain) {
   const wallets = extractCircleWallets(data);
 
@@ -11981,16 +12405,31 @@ async function loadClaimPage() {
         ></p>
       </div>
 
-      <!-- RECEIVE OPTIONS -->
+            <!-- RECEIVE OPTIONS -->
       <div
         id="receiveOptions"
-        style="display:none;margin-top:28px;"
+        style="
+          display:none;
+          margin-top:28px;
+        "
       >
-        <h3 style="margin-bottom:8px;">
+        <h3
+          style="
+            margin-bottom:8px;
+            color:#ffffff;
+            font-weight:800;
+          "
+        >
           Choose how you want to receive your USDC
         </h3>
 
-        <p style="color:#cbd5e1;margin-top:0;">
+        <p
+          style="
+            color:#e2e8f0;
+            margin-top:0;
+            line-height:1.5;
+          "
+        >
           Select one receiving method.
         </p>
 
@@ -12002,43 +12441,117 @@ async function loadClaimPage() {
             margin-top:18px;
           "
         >
+          <!-- WEB3 -->
           <button
             id="btnWalletOption"
             style="
               padding:18px;
-              border:none;
+              border:1px solid rgba(255,255,255,0.16);
               border-radius:16px;
               cursor:pointer;
               background:linear-gradient(135deg,#38bdf8,#8b5cf6);
-              color:white;
+              color:#ffffff;
               font-size:16px;
               text-align:left;
             "
           >
-            <b>🦊 Web3 Wallet</b><br>
+            <b
+              style="
+                color:#ffffff;
+                font-size:16px;
+              "
+            >
+              🦊 Web3 Wallet
+            </b>
 
-            <span style="font-size:13px;opacity:.88;">
+            <br>
+
+            <span
+              style="
+                display:inline-block;
+                margin-top:5px;
+                font-size:13px;
+                color:#f1f5f9;
+                line-height:1.45;
+              "
+            >
               MetaMask • OKX • Coinbase • WalletConnect
             </span>
           </button>
 
+          <!-- GOOGLE / CIRCLE -->
           <button
-            id="btnBankOption"
+            id="btnCircleOption"
             style="
               padding:18px;
-              border:none;
+              border:1px solid rgba(255,255,255,0.16);
               border-radius:16px;
               cursor:pointer;
-              background:linear-gradient(135deg,#0ea5e9,#10b981);
-              color:white;
+              background:linear-gradient(135deg,#2563eb,#7c3aed);
+              color:#ffffff;
               font-size:16px;
               text-align:left;
             "
           >
-            <b>🏦 Withdraw to Bank</b><br>
+            <b
+              style="
+                color:#ffffff;
+                font-size:16px;
+              "
+            >
+              ⭕ Google / Circle Wallet
+            </b>
 
-            <span style="font-size:13px;opacity:.88;">
-              Use the existing TROR withdrawal flow
+            <br>
+
+            <span
+              style="
+                display:inline-block;
+                margin-top:5px;
+                font-size:13px;
+                color:#f1f5f9;
+                line-height:1.45;
+              "
+            >
+              Receive with Gmail — no Web3 wallet required
+            </span>
+          </button>
+
+          <!-- BANK -->
+          <button
+            id="btnBankOption"
+            style="
+              padding:18px;
+              border:1px solid rgba(255,255,255,0.16);
+              border-radius:16px;
+              cursor:pointer;
+              background:linear-gradient(135deg,#0ea5e9,#10b981);
+              color:#ffffff;
+              font-size:16px;
+              text-align:left;
+            "
+          >
+            <b
+              style="
+                color:#ffffff;
+                font-size:16px;
+              "
+            >
+              🏦 Withdraw to Bank
+            </b>
+
+            <br>
+
+            <span
+              style="
+                display:inline-block;
+                margin-top:5px;
+                font-size:13px;
+                color:#f1f5f9;
+                line-height:1.45;
+              "
+            >
+              Receive through the TROR bank withdrawal flow
             </span>
           </button>
         </div>
@@ -12052,12 +12565,28 @@ async function loadClaimPage() {
           margin-top:24px;
           padding:20px;
           border-radius:18px;
-          background:rgba(255,255,255,0.07);
+          border:1px solid rgba(255,255,255,0.12);
+          background:rgba(255,255,255,0.08);
+          color:#ffffff;
         "
       >
-        <h3 style="margin-top:0;">
+        <h3
+          style="
+            margin-top:0;
+            color:#ffffff;
+          "
+        >
           Receive with Web3 Wallet
         </h3>
+
+        <p
+          style="
+            color:#e2e8f0;
+            line-height:1.5;
+          "
+        >
+          Enter the wallet address that should receive this claim.
+        </p>
 
         <input
           id="walletInput"
@@ -12066,8 +12595,10 @@ async function loadClaimPage() {
             width:100%;
             padding:14px;
             border-radius:12px;
-            border:none;
+            border:1px solid rgba(255,255,255,0.16);
             box-sizing:border-box;
+            background:#ffffff;
+            color:#111827;
           "
         />
 
@@ -12080,7 +12611,7 @@ async function loadClaimPage() {
             border:none;
             border-radius:12px;
             background:linear-gradient(135deg,#38bdf8,#d946ef);
-            color:white;
+            color:#ffffff;
             font-size:16px;
             font-weight:bold;
             cursor:pointer;
@@ -12090,20 +12621,106 @@ async function loadClaimPage() {
         </button>
       </div>
 
-      <!-- BANK BOX -->
+      <!-- CIRCLE CLAIM BOX -->
       <div
-        id="bankBox"
+        id="circleBox"
         style="
           display:none;
           margin-top:24px;
           padding:20px;
           border-radius:18px;
-          background:rgba(255,255,255,0.07);
+          border:1px solid rgba(255,255,255,0.12);
+          background:rgba(255,255,255,0.08);
+          color:#ffffff;
         "
       >
-        <h3 style="margin-top:0;">
-          Withdraw to Bank
+        <h3
+          style="
+            margin-top:0;
+            margin-bottom:8px;
+            color:#ffffff;
+          "
+        >
+          Receive with Google / Circle
         </h3>
+
+        <p
+          id="circleClaimDescription"
+          style="
+            margin-top:0;
+            margin-bottom:16px;
+            color:#e2e8f0;
+            line-height:1.55;
+          "
+        >
+          Use your verified Gmail account to receive USDC.
+          No Web3 wallet is required.
+        </p>
+
+        <div
+          id="circleClaimWalletInfo"
+          style="
+            display:none;
+            margin-bottom:16px;
+            padding:14px;
+            border-radius:12px;
+            border:1px solid rgba(255,255,255,0.12);
+            background:rgba(15,23,42,0.55);
+            color:#f8fafc;
+            line-height:1.55;
+            word-break:break-word;
+          "
+        ></div>
+
+        <button
+          id="btnClaimCircle"
+          style="
+            width:100%;
+            padding:15px;
+            border:none;
+            border-radius:12px;
+            background:linear-gradient(135deg,#2563eb,#7c3aed);
+            color:#ffffff;
+            font-size:16px;
+            font-weight:bold;
+            cursor:pointer;
+          "
+        >
+          Continue with Circle Wallet
+        </button>
+
+        <p
+          id="circleClaimStatus"
+          style="
+            margin-top:14px;
+            margin-bottom:0;
+            color:#e2e8f0;
+            line-height:1.5;
+          "
+        ></p>
+      </div>
+
+      <!-- BANK BOX -->
+<div
+  id="bankBox"
+  style="
+    display:none;
+    margin-top:24px;
+    padding:20px;
+    border-radius:18px;
+    border:1px solid rgba(255,255,255,0.12);
+    background:rgba(255,255,255,0.08);
+    color:#ffffff;
+  "
+>
+  <h3
+    style="
+      margin-top:0;
+      color:#ffffff;
+    "
+  >
+    Withdraw to Bank
+  </h3>
 
         <div
           id="bankWithdrawForm"
@@ -12119,7 +12736,11 @@ async function loadClaimPage() {
             style="
               padding:14px;
               border-radius:12px;
-              border:none;
+              border:1px solid rgba(255,255,255,0.16);
+              background:#ffffff;
+              color:#111827;
+              box-sizing:border-box;
+              width:100%;
             "
           />
 
@@ -12129,7 +12750,11 @@ async function loadClaimPage() {
             style="
               padding:14px;
               border-radius:12px;
-              border:none;
+              border:1px solid rgba(255,255,255,0.16);
+              background:#ffffff;
+              color:#111827;
+              box-sizing:border-box;
+              width:100%;
             "
           />
 
@@ -12139,7 +12764,11 @@ async function loadClaimPage() {
             style="
               padding:14px;
               border-radius:12px;
-              border:none;
+              border:1px solid rgba(255,255,255,0.16);
+              background:#ffffff;
+              color:#111827;
+              box-sizing:border-box;
+              width:100%;
             "
           />
 
@@ -12149,7 +12778,11 @@ async function loadClaimPage() {
             style="
               padding:14px;
               border-radius:12px;
-              border:none;
+              border:1px solid rgba(255,255,255,0.16);
+              background:#ffffff;
+              color:#111827;
+              box-sizing:border-box;
+              width:100%;
             "
           />
 
@@ -12160,7 +12793,8 @@ async function loadClaimPage() {
               border:none;
               border-radius:14px;
               background:linear-gradient(135deg,#0ea5e9,#10b981);
-              color:white;
+              color:#ffffff;
+              font-size:16px;
               font-weight:bold;
               cursor:pointer;
             "
@@ -12309,6 +12943,24 @@ async function loadClaimPage() {
     ).style.display = "none";
   };
 
+document.getElementById(
+  "btnCircleOption"
+).onclick = () => {
+  if (!googleVerified) return;
+
+  document.getElementById(
+    "circleBox"
+  ).style.display = "block";
+
+  document.getElementById(
+    "walletBox"
+  ).style.display = "none";
+
+  document.getElementById(
+    "bankBox"
+  ).style.display = "none";
+};
+
   document.getElementById(
     "btnBankOption"
   ).onclick = () => {
@@ -12326,6 +12978,455 @@ async function loadClaimPage() {
       "circleBox"
     ).style.display = "none";
   };
+
+document.getElementById(
+  "btnClaimCircle"
+).onclick = async () => {
+  const button =
+    document.getElementById(
+      "btnClaimCircle"
+    );
+
+  const statusEl =
+    document.getElementById(
+      "circleClaimStatus"
+    );
+
+  const walletInfoEl =
+    document.getElementById(
+      "circleClaimWalletInfo"
+    );
+
+  try {
+    if (!googleVerified) {
+      throw new Error(
+        "Verify the recipient Gmail account first."
+      );
+    }
+
+    const googleAccessToken =
+      localStorage.getItem(
+        "googleToken"
+      );
+
+    if (!googleAccessToken) {
+      throw new Error(
+        "Google verification expired. Please verify Gmail again."
+      );
+    }
+
+    button.disabled = true;
+
+    statusEl.textContent =
+      "Checking your Circle wallet...";
+
+    /*
+      STEP 1
+      Resolve the Circle account that belongs
+      to the verified claim recipient.
+
+      This does NOT change the active
+      TROR dashboard wallet/session.
+    */
+    let circle =
+      await prepareClaimCircleWallet(
+        claimId,
+        googleAccessToken
+      );
+
+    if (!circle?.ready) {
+      statusEl.textContent =
+        circle?.initialized
+          ? "Preparing your Arc Circle wallet..."
+          : "Set up your Circle PIN to receive USDC...";
+
+      circle =
+        await completeClaimCircleWalletSetup(
+          circle
+        );
+    }
+
+    if (
+      !circle?.ready ||
+      !circle?.wallet
+    ) {
+      throw new Error(
+        "Circle wallet is not ready."
+      );
+    }
+
+    const userToken =
+      circle.userToken;
+
+    const encryptionKey =
+      circle.encryptionKey;
+
+    const circleWallet =
+      circle.wallet;
+
+    const walletId =
+      circleWallet?.id ||
+      circleWallet?.walletId;
+
+    const walletAddress =
+      circle.walletAddress ||
+      getClaimCircleWalletAddress(
+        circleWallet
+      );
+
+    if (
+      !userToken ||
+      !encryptionKey
+    ) {
+      throw new Error(
+        "Missing Circle authentication."
+      );
+    }
+
+    if (!walletId) {
+      throw new Error(
+        "Circle wallet ID was not found."
+      );
+    }
+
+    if (
+      !walletAddress ||
+      !ethers.isAddress(
+        walletAddress
+      )
+    ) {
+      throw new Error(
+        "Circle wallet address is invalid."
+      );
+    }
+
+    /*
+      Show only safe recipient information.
+      Never display or store Circle secrets.
+    */
+    if (walletInfoEl) {
+      walletInfoEl.style.display =
+        "block";
+
+      walletInfoEl.textContent =
+        `${circle.recipientEmail || "Verified Gmail"} → ${walletAddress}`;
+    }
+
+    /*
+      STEP 2
+      Ask TROR backend for the verifier-signed
+      Claim authorization.
+
+      The authorization is bound to this
+      recipient Circle SCA address.
+    */
+    statusEl.textContent =
+      "Preparing your USDC claim...";
+
+    const claimPrepare =
+      await api(
+        `/api/claims/${claimId}/claim`,
+        {
+          method: "POST",
+
+          body: JSON.stringify({
+            walletAddress,
+            googleAccessToken
+          })
+        }
+      );
+
+    const claimContractAddress =
+      claimPrepare?.contractAddress ||
+      claimPrepare?.claimContractAddress;
+
+    const contractArgs =
+      claimPrepare?.args ||
+      claimPrepare?.contractArgs;
+
+    if (
+      !claimContractAddress ||
+      !ethers.isAddress(
+        claimContractAddress
+      )
+    ) {
+      throw new Error(
+        "Claim contract address is invalid."
+      );
+    }
+
+    if (
+      !Array.isArray(contractArgs) ||
+      contractArgs.length < 3
+    ) {
+      throw new Error(
+        "Claim contract arguments are missing."
+      );
+    }
+
+    /*
+      Record existing Circle transactions first,
+      so polling cannot accidentally select an
+      older CONTRACT_EXECUTION to the same contract.
+    */
+    const beforeData =
+      await api(
+        "/api/circle/transactions",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            userToken
+          })
+        }
+      );
+
+    const beforeTransactions =
+      beforeData?.data?.transactions ||
+      [];
+
+    const existingTxKeys =
+      new Set(
+        beforeTransactions
+          .map(
+            (item) =>
+              item?.id ||
+              item?.blockchainTxHash ||
+              item?.txHash ||
+              item?.transactionHash ||
+              ""
+          )
+          .filter(Boolean)
+          .map(String)
+      );
+
+    /*
+      STEP 3
+      Execute TRORClaim.claim(...)
+      directly from the recipient Circle SCA.
+    */
+    statusEl.textContent =
+      "Confirm the claim with your Circle PIN...";
+
+    const executeData =
+      await api(
+        "/api/circle/contract-execution",
+        {
+          method: "POST",
+
+          body: JSON.stringify({
+            userToken,
+
+            walletId,
+
+            contractAddress:
+              claimContractAddress,
+
+            abiFunctionSignature:
+              "claim(uint256,uint256,bytes)",
+
+            abiParameters: [
+              String(contractArgs[0]),
+              String(contractArgs[1]),
+              contractArgs[2]
+            ]
+          })
+        }
+      );
+
+    const challengeId =
+      executeData?.data?.challengeId ||
+      executeData?.challengeId;
+
+    if (!challengeId) {
+      throw new Error(
+        "Circle claim challengeId was not returned."
+      );
+    }
+
+    await executeCircleChallenge(
+      challengeId,
+      userToken,
+      encryptionKey
+    );
+
+    /*
+      STEP 4
+      Wait until Circle reports the Arc
+      CONTRACT_EXECUTION as COMPLETE.
+    */
+    statusEl.textContent =
+      "Claim submitted. Waiting for Arc confirmation...";
+
+    let txHash = "";
+
+    for (
+      let attempt = 0;
+      attempt < 30;
+      attempt += 1
+    ) {
+      await new Promise(
+        (resolve) =>
+          setTimeout(
+            resolve,
+            3000
+          )
+      );
+
+      const txData =
+        await api(
+          "/api/circle/transactions",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              userToken
+            })
+          }
+        );
+
+      const transactions =
+        txData?.data?.transactions ||
+        [];
+
+      const tx =
+        transactions.find(
+          (item) => {
+            const key =
+              String(
+                item?.id ||
+                item?.blockchainTxHash ||
+                item?.txHash ||
+                item?.transactionHash ||
+                ""
+              );
+
+            const hash =
+              item?.blockchainTxHash ||
+              item?.txHash ||
+              item?.transactionHash ||
+              "";
+
+            const state =
+              String(
+                item?.state ||
+                item?.status ||
+                ""
+              ).toUpperCase();
+
+            const operation =
+              String(
+                item?.operation ||
+                ""
+              ).toUpperCase();
+
+            const transactionWalletId =
+              String(
+                item?.walletId ||
+                ""
+              );
+
+            const transactionContract =
+              String(
+                item?.contractAddress ||
+                item?.destinationAddress ||
+                ""
+              ).toLowerCase();
+
+            return (
+              !existingTxKeys.has(key) &&
+              operation ===
+                "CONTRACT_EXECUTION" &&
+              state ===
+                "COMPLETE" &&
+              transactionWalletId ===
+                String(walletId) &&
+              transactionContract ===
+                String(
+                  claimContractAddress
+                ).toLowerCase() &&
+              String(hash).startsWith(
+                "0x"
+              )
+            );
+          }
+        );
+
+      txHash =
+        tx?.blockchainTxHash ||
+        tx?.txHash ||
+        tx?.transactionHash ||
+        "";
+
+      if (txHash) {
+        break;
+      }
+    }
+
+    if (!txHash) {
+      throw new Error(
+        "Circle claim transaction is still confirming. Please try again shortly."
+      );
+    }
+
+    /*
+      STEP 5
+      Server independently verifies the Circle
+      transaction and ClaimPaid event before
+      marking the claim CLAIMED.
+    */
+    statusEl.textContent =
+      "Verifying the received USDC...";
+
+    const confirmResult =
+      await api(
+        `/api/claims/${claimId}/confirm`,
+        {
+          method: "POST",
+
+          body: JSON.stringify({
+            txHash,
+            walletAddress,
+            walletType:
+              "circle",
+            circleUserToken:
+              userToken,
+            circleWalletId:
+              walletId
+          })
+        }
+      );
+
+    if (!confirmResult?.success) {
+      throw new Error(
+        confirmResult?.error ||
+        "Failed to verify Circle claim."
+      );
+    }
+
+    statusEl.textContent =
+      "Claimed successfully to your Circle wallet!";
+
+    button.textContent =
+      "USDC Received";
+
+    button.disabled = true;
+
+  } catch (err) {
+    console.error(
+      "TROR Circle claim receiver error:",
+      err
+    );
+
+    statusEl.textContent =
+      "Error: " +
+      (
+        err?.shortMessage ||
+        err?.message ||
+        String(err)
+      );
+
+    button.disabled = false;
+  }
+};
 
   document.getElementById(
     "btnClaim"
