@@ -9651,13 +9651,50 @@ app.post(
             }
           );
 
-        if (!circleTransaction) {
-          return res.status(400).json({
-            success: false,
-            error:
-              "Circle claim transaction was not found"
-          });
-        }
+        console.log(
+  "TROR Circle claim verification metadata:",
+  {
+    id:
+      circleTransaction?.id || null,
+
+    state:
+      circleTransaction?.state ||
+      circleTransaction?.status ||
+      null,
+
+    operation:
+      circleTransaction?.operation ||
+      null,
+
+    transactionType:
+      circleTransaction?.transactionType ||
+      circleTransaction?.type ||
+      null,
+
+    blockchain:
+      circleTransaction?.blockchain ||
+      null,
+
+    walletId:
+      circleTransaction?.walletId ||
+      null,
+
+    contractAddress:
+      circleTransaction?.contractAddress ||
+      circleTransaction?.destinationAddress ||
+      null,
+
+    sourceAddress:
+      circleTransaction?.sourceAddress ||
+      null,
+
+    blockchainTxHash:
+      circleTransaction?.blockchainTxHash ||
+      circleTransaction?.txHash ||
+      circleTransaction?.transactionHash ||
+      null
+  }
+);
 
         const circleState =
           String(
