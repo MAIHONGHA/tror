@@ -13137,12 +13137,10 @@ document.getElementById(
       );
 
     const claimContractAddress =
-      claimPrepare?.contractAddress ||
-      claimPrepare?.claimContractAddress;
+  claimPrepare?.network?.claimContract;
 
     const contractArgs =
-      claimPrepare?.args ||
-      claimPrepare?.contractArgs;
+  claimPrepare?.contractCall?.args;
 
     if (
       !claimContractAddress ||
