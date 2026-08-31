@@ -9717,16 +9717,13 @@ app.post(
             ""
           ).toUpperCase();
 
-        if (
-          circleOperation !==
-          "CONTRACT_EXECUTION"
-        ) {
-          return res.status(400).json({
-            success: false,
-            error:
-              "Circle transaction is not a contract execution"
-          });
-        }
+        const circleTransactionType =
+          String(
+            circleTransaction
+              ?.transactionType ||
+            circleTransaction?.type ||
+            ""
+          ).toUpperCase();
 
         const transactionWalletId =
           String(
@@ -9762,25 +9759,22 @@ app.post(
           });
         }
 
+        const expectedClaimContract =
+          String(
+            CLAIM_V2_CONTRACT_ADDRESS
+          ).toLowerCase();
+
+        const expectedReceiver =
+          walletAddress.toLowerCase();
+
         const circleContractAddress =
           String(
             circleTransaction
               ?.contractAddress ||
+            circleTransaction
+              ?.destinationAddress ||
             ""
           ).toLowerCase();
-
-        if (
-          circleContractAddress !==
-          String(
-            CLAIM_V2_CONTRACT_ADDRESS
-          ).toLowerCase()
-        ) {
-          return res.status(400).json({
-            success: false,
-            error:
-              "Circle transaction was not sent to TRORClaim V2"
-          });
-        }
 
         const circleSourceAddress =
           String(
@@ -9789,14 +9783,46 @@ app.post(
             ""
           ).toLowerCase();
 
+        /*
+          Circle can expose the same Arc
+          contract claim in two representations:
+
+          1. CONTRACT_EXECUTION
+             receiver SCA -> TRORClaim
+
+          2. TRANSFER / INBOUND
+             TRORClaim -> receiver SCA
+
+          The ClaimPaid event verified below
+          remains the authoritative on-chain
+          proof in both cases.
+        */
+        const isContractExecution =
+          circleOperation ===
+            "CONTRACT_EXECUTION" &&
+          circleContractAddress ===
+            expectedClaimContract &&
+          circleSourceAddress ===
+            expectedReceiver;
+
+        const isInboundClaimTransfer =
+          circleOperation ===
+            "TRANSFER" &&
+          circleTransactionType ===
+            "INBOUND" &&
+          circleSourceAddress ===
+            expectedClaimContract &&
+          circleContractAddress ===
+            expectedReceiver;
+
         if (
-          circleSourceAddress !==
-          walletAddress.toLowerCase()
+          !isContractExecution &&
+          !isInboundClaimTransfer
         ) {
           return res.status(400).json({
             success: false,
             error:
-              "Circle claim receiver does not match"
+              "Circle transaction does not match the TROR claim flow"
           });
         }
 
