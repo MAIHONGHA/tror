@@ -666,6 +666,86 @@ let metamaskWallet = null;
 let activeWalletType = null; // "web3" | "circle"
 let pendingAIAction = null;
 
+function getActivePaymentWallet() {
+  const appKitAccount =
+    getAccount(
+      wagmiAdapter.wagmiConfig
+    );
+
+  const web3Address =
+    metamaskWallet ||
+    (
+      appKitAccount?.isConnected &&
+      appKitAccount?.address
+        ? appKitAccount.address
+        : null
+    );
+
+  const activeCircleWallet =
+    window.trorActiveCircleWallet;
+
+  const circleAddress =
+    activeCircleWallet?.address ||
+    (
+      circleWalletEl?.textContent
+        ?.trim()
+        ?.startsWith("0x")
+        ? circleWalletEl.textContent.trim()
+        : null
+    );
+
+  if (
+    activeWalletType === "web3" &&
+    web3Address
+  ) {
+    return {
+      type: "web3",
+      address: web3Address,
+      source: metamaskWallet
+        ? "metamask"
+        : "appkit"
+    };
+  }
+
+  if (
+    activeWalletType === "circle" &&
+    circleAddress
+  ) {
+    return {
+      type: "circle",
+      address: circleAddress,
+      source: "circle",
+      wallet:
+        activeCircleWallet || null
+    };
+  }
+
+  if (web3Address) {
+    return {
+      type: "web3",
+      address: web3Address,
+      source: metamaskWallet
+        ? "metamask"
+        : "appkit"
+    };
+  }
+
+  if (circleAddress) {
+    return {
+      type: "circle",
+      address: circleAddress,
+      source: "circle",
+      wallet:
+        activeCircleWallet || null
+    };
+  }
+
+  return null;
+}
+
+window.getActivePaymentWallet =
+  getActivePaymentWallet;
+
 function clearCircleWalletLocal() {
   // Clear Circle wallet from UI
   if (circleWalletEl) {
@@ -906,20 +986,19 @@ document.getElementById("viewWalletExplorer")?.addEventListener("click", () => {
 document
   .getElementById("btnWalletSend")
   ?.addEventListener("click", async () => {
-    const circleAddress =
-      circleWalletEl?.textContent?.startsWith("0x")
-        ? circleWalletEl.textContent.trim()
-        : null;
+    const activeWallet =
+  getActivePaymentWallet();
 
-    const activeAddress =
-      activeWalletType === "circle"
-        ? circleAddress
-        : metamaskWallet || circleAddress;
+if (!activeWallet) {
+  setStatus(
+    "No active payment wallet connected.",
+    "error"
+  );
+  return;
+}
 
-    if (!activeAddress) {
-      setStatus("No wallet connected.", "error");
-      return;
-    }
+const activeAddress =
+  activeWallet.address;
 
     document
       .getElementById("walletMenu")
@@ -1104,7 +1183,18 @@ const sendButton =
     }
 
     // Circle Wallet will be connected separately next
-    if (activeWalletType === "circle") {
+    const paymentWallet =
+  getActivePaymentWallet();
+
+if (!paymentWallet) {
+  setStatus(
+    "No active payment wallet connected.",
+    "error"
+  );
+  return;
+}
+
+if (paymentWallet.type === "circle") {
   try {
     const cfg = await api("/api/circle/config");
     const appId = cfg?.config?.circleAppId;
@@ -6265,6 +6355,115 @@ return;
   }
 }
 
+window.setupCirclePin = setupCirclePin;
+
+async function recoverCirclePin() {
+  try {
+    setStatus(
+      "Starting Circle PIN recovery..."
+    );
+
+    const cfg =
+      await api("/api/circle/config");
+
+    const appId =
+      cfg?.config?.circleAppId;
+
+    if (!appId) {
+      throw new Error(
+        "Missing CIRCLE_APP_ID."
+      );
+    }
+
+    const {
+      userToken,
+      encryptionKey
+    } =
+      await getCircleAuth();
+
+    const restoreData =
+      await api(
+        "/api/circle/restore-pin",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            userToken
+          })
+        }
+      );
+
+    const challengeId =
+      restoreData?.data?.challengeId ||
+      restoreData?.challengeId;
+
+    if (!challengeId) {
+      throw new Error(
+        "Circle did not return a PIN recovery challenge."
+      );
+    }
+
+    const sdk =
+      new W3SSdk({
+        appSettings: {
+          appId
+        }
+      });
+
+    sdk.setAuthentication({
+      userToken,
+      encryptionKey
+    });
+
+    setStatus(
+      "Complete Circle account recovery..."
+    );
+
+    await new Promise(
+      (resolve, reject) => {
+        sdk.execute(
+          challengeId,
+          (error, result) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+
+            console.log(
+              "Circle PIN recovery result:",
+              result
+            );
+
+            resolve(result);
+          }
+        );
+      }
+    );
+
+    setStatus(
+      "Circle PIN recovery completed.",
+      "success"
+    );
+
+  } catch (err) {
+    console.error(
+      "Circle PIN recovery error:",
+      err
+    );
+
+    setStatus(
+      "Circle PIN recovery failed: " +
+        (
+          err?.message ||
+          "Unknown error"
+        ),
+      "error"
+    );
+  }
+}
+
+window.recoverCirclePin =
+  recoverCirclePin;
+
 /* =========================
    INVOICES
 ========================= */
@@ -7417,7 +7616,46 @@ async function openWalletConnectionsModal() {
     getGoogleUser();
 
   const web3Address =
-    metamaskWallet || null;
+  metamaskWallet || null;
+
+let linkedProfileWallets = [];
+let linkedWeb3Wallets = [];
+
+if (currentUser?.id) {
+  try {
+    const response = await fetch(
+      `${API_BASE}/api/users/${encodeURIComponent(
+        currentUser.id
+      )}/wallets`
+    );
+
+    const data =
+      await response
+        .json()
+        .catch(() => ({}));
+
+    if (
+      response.ok &&
+      Array.isArray(data?.wallets)
+    ) {
+      linkedProfileWallets =
+        data.wallets;
+
+      linkedWeb3Wallets =
+        linkedProfileWallets.filter(
+          (wallet) =>
+            wallet.wallet_type ===
+              "WEB3" &&
+            Number(wallet.is_active) === 1
+        );
+    }
+  } catch (err) {
+    console.error(
+      "TROR profile wallets load error:",
+      err
+    );
+  }
+}
 
 let web3LinkStatus = {
   linked: false,
@@ -7468,6 +7706,25 @@ if (
   }
 }
 
+const connectedWeb3LinkedWallet =
+  web3Address
+    ? linkedWeb3Wallets.find(
+        (wallet) =>
+          String(
+            wallet.address || ""
+          ).toLowerCase() ===
+          web3Address.toLowerCase()
+      )
+    : null;
+
+const primaryLinkedWeb3Wallet =
+  linkedWeb3Wallets.find(
+    (wallet) =>
+      Number(wallet.is_primary) === 1
+  ) ||
+  linkedWeb3Wallets[0] ||
+  null;
+
   const activeCircleWallet =
     window.trorActiveCircleWallet;
 
@@ -7495,13 +7752,15 @@ if (
     <div
       style="
         width:100%;
-        max-width:520px;
-        border-radius:24px;
-        padding:26px;
+        max-width:420px;
+        max-height:88vh;
+        overflow-y:auto;
+        border-radius:20px;
+        padding:14px;
         background:#ffffff;
         color:#18181b;
         box-shadow:
-          0 28px 80px rgba(0,0,0,.28);
+          0 24px 60px rgba(0,0,0,.24);
       "
     >
 
@@ -7536,9 +7795,9 @@ if (
         to your TROR profile.
       </p>
 
-      <div
+            <div
         style="
-          padding:16px;
+          padding:20px;
           border:1px solid #e5e7eb;
           border-radius:16px;
           margin-bottom:12px;
@@ -7546,159 +7805,243 @@ if (
       >
         <div
           style="
-            display:flex;
-            justify-content:space-between;
-            gap:16px;
-            align-items:center;
-          "
-        >
-          <div>
-            <div
-              style="
-                font-weight:800;
-                margin-bottom:4px;
-              "
-            >
-              Web3 Wallet
-            </div>
-
-            <div
-              style="
-                color:#6b7280;
-                font-size:13px;
-              "
-            >
-              ${shortAddress(
-                web3Address
-              )}
-            </div>
-          </div>
-
-          <div
-            style="
-              color:${
-                web3Address
-                  ? "#16a34a"
-                  : "#6b7280"
-              };
-              font-weight:700;
-              font-size:13px;
-            "
-          >
-            ${
-              web3Address
-                ? "Connected"
-                : "Not connected"
-            }
-          </div>
-
-${
-  !web3Address
-    ? `
-      <button
-        id="btnConnectWeb3FromSettings"
-        type="button"
-        style="
-          width:100%;
-          margin-top:12px;
-          border:0;
-          border-radius:12px;
-          padding:12px 14px;
-          background:
-            linear-gradient(
-              135deg,
-              #c99b32,
-              #f0d166
-            );
-          font-weight:800;
-          cursor:pointer;
-        "
-      >
-        Connect Web3 Wallet
-      </button>
-    `
-    : web3LinkStatus.belongsToCurrentUser &&
-      web3LinkStatus.verified
-      ? `
-        <div
-          style="
-            margin-top:12px;
-            padding:11px 12px;
-            border-radius:12px;
-            background:#ecfdf5;
-            color:#166534;
-            font-size:13px;
             font-weight:800;
+            margin-bottom:12px;
           "
         >
-          ✓ Linked & Verified
+          Web3 Wallets
         </div>
-      `
-      : web3LinkStatus.linked &&
-        !web3LinkStatus.belongsToCurrentUser
-        ? `
-  <div
-    style="
-      margin-top:12px;
-      padding:11px 12px;
-      border-radius:12px;
-      background:#fff7ed;
-      color:#9a3412;
-      font-size:13px;
-      font-weight:700;
-    "
-  >
-    This wallet belongs to another TROR profile.
-  </div>
 
-  <button
-    id="btnMergeWeb3Profiles"
-    type="button"
-    style="
-      width:100%;
-      margin-top:10px;
-      border:0;
-      border-radius:12px;
-      padding:12px 14px;
-      background:
-        linear-gradient(
-          135deg,
-          #c99b32,
-          #f0d166
-        );
-      font-weight:800;
-      cursor:pointer;
-    "
-  >
-    Verify & Merge Profiles
-  </button>
-`
-        : `
-          <button
-            id="btnLinkWeb3ToTrorProfile"
-            type="button"
-            style="
-              width:100%;
-              margin-top:12px;
-              border:0;
-              border-radius:12px;
-              padding:12px 14px;
-              background:
-                linear-gradient(
-                  135deg,
-                  #c99b32,
-                  #f0d166
-                );
-              font-weight:800;
-              cursor:pointer;
-            "
-          >
-            Link to TROR Profile
-          </button>
-        `
-}
+        ${
+          linkedWeb3Wallets.length
+            ? linkedWeb3Wallets
+                .map((wallet) => {
+                  const address =
+                    String(
+                      wallet.address || ""
+                    );
 
-        </div>
+                  const isConnected =
+                    Boolean(web3Address) &&
+                    address.toLowerCase() ===
+                      web3Address.toLowerCase();
+
+                  const isVerified =
+                    Number(
+                      wallet.verified
+                    ) === 1;
+
+                  const isPrimary =
+                    Number(
+                      wallet.is_primary
+                    ) === 1;
+
+                  return `
+                    <div
+                      style="
+                        padding:12px;
+                        margin-bottom:10px;
+                        border:1px solid #e5e7eb;
+                        border-radius:12px;
+                        background:#f9fafb;
+                      "
+                    >
+                      <div
+                        style="
+                          display:flex;
+                          justify-content:space-between;
+                          gap:12px;
+                          align-items:center;
+                        "
+                      >
+                        <div>
+                          <div
+                            style="
+                              color:#374151;
+                              font-size:13px;
+                              font-weight:700;
+                            "
+                          >
+                            ${shortAddress(
+                              address
+                            )}
+                          </div>
+
+                          ${
+                            isPrimary
+                              ? `
+                                <div
+                                  style="
+                                    margin-top:3px;
+                                    color:#9a741e;
+                                    font-size:11px;
+                                    font-weight:800;
+                                  "
+                                >
+                                  Primary Web3
+                                </div>
+                              `
+                              : ""
+                          }
+                        </div>
+
+                        <div
+                          style="
+                            color:${
+                              isConnected
+                                ? "#16a34a"
+                                : "#6b7280"
+                            };
+                            font-size:12px;
+                            font-weight:800;
+                          "
+                        >
+                          ${
+                            isConnected
+                              ? "Active"
+                              : "Linked"
+                          }
+                        </div>
+                      </div>
+
+                      ${
+                        isVerified
+                          ? `
+                            <div
+                              style="
+                                margin-top:9px;
+                                padding:8px 10px;
+                                border-radius:10px;
+                                background:#ecfdf5;
+                                color:#166534;
+                                font-size:12px;
+                                font-weight:800;
+                              "
+                            >
+                              ✓ Linked & Verified
+                            </div>
+                          `
+                          : `
+                            <div
+                              style="
+                                margin-top:9px;
+                                color:#6b7280;
+                                font-size:12px;
+                              "
+                            >
+                              Linked to TROR Profile
+                            </div>
+                          `
+                      }
+                    </div>
+                  `;
+                })
+                .join("")
+            : `
+              <div
+                style="
+                  color:#6b7280;
+                  font-size:13px;
+                  margin-bottom:10px;
+                "
+              >
+                No Web3 wallet linked to this
+                TROR profile yet.
+              </div>
+            `
+        }
+
+        ${
+          !web3Address
+            ? `
+              <button
+                id="btnConnectWeb3FromSettings"
+                type="button"
+                style="
+                  width:100%;
+                  margin-top:2px;
+                  border:0;
+                  border-radius:12px;
+                  padding:12px 14px;
+                  background:
+                    linear-gradient(
+                      135deg,
+                      #c99b32,
+                      #f0d166
+                    );
+                  font-weight:800;
+                  cursor:pointer;
+                "
+              >
+                Connect Web3 Wallet
+              </button>
+            `
+            : web3LinkStatus.linked &&
+              !web3LinkStatus.belongsToCurrentUser
+              ? `
+                <div
+                  style="
+                    margin-top:10px;
+                    padding:11px 12px;
+                    border-radius:12px;
+                    background:#fff7ed;
+                    color:#9a3412;
+                    font-size:13px;
+                    font-weight:700;
+                  "
+                >
+                  This connected wallet belongs
+                  to another TROR profile.
+                </div>
+
+                <button
+                  id="btnMergeWeb3Profiles"
+                  type="button"
+                  style="
+                    width:100%;
+                    margin-top:10px;
+                    border:0;
+                    border-radius:12px;
+                    padding:12px 14px;
+                    background:
+                      linear-gradient(
+                        135deg,
+                        #c99b32,
+                        #f0d166
+                      );
+                    font-weight:800;
+                    cursor:pointer;
+                  "
+                >
+                  Verify & Merge Profiles
+                </button>
+              `
+              : !connectedWeb3LinkedWallet
+                ? `
+                  <button
+                    id="btnLinkWeb3ToTrorProfile"
+                    type="button"
+                    style="
+                      width:100%;
+                      margin-top:10px;
+                      border:0;
+                      border-radius:12px;
+                      padding:12px 14px;
+                      background:
+                        linear-gradient(
+                          135deg,
+                          #c99b32,
+                          #f0d166
+                        );
+                      font-weight:800;
+                      cursor:pointer;
+                    "
+                  >
+                    Link Connected Wallet
+                  </button>
+                `
+                : ""
+        }
       </div>
 
       <div
@@ -7834,10 +8177,27 @@ ${
           }
         </button>
 
+<button
+  id="btnRecoverCirclePin"
+  type="button"
+  style="
+    border:1px solid #d4a017;
+    border-radius:12px;
+    padding:13px 16px;
+    background:#fffaf0;
+    color:#7c5a10;
+    font-weight:800;
+    cursor:pointer;
+  "
+>
+  Forgot / Reset PIN
+</button>
+
         <button
           id="btnCloseWalletConnections"
           type="button"
           style="
+            grid-column:1 / -1;
             border:1px solid #e5e7eb;
             border-radius:12px;
             padding:13px 16px;
@@ -7939,6 +8299,21 @@ document
         await connectGoogleCircle();
       }
     );
+
+document
+  .getElementById(
+    "btnRecoverCirclePin"
+  )
+  ?.addEventListener(
+    "click",
+    async () => {
+      modal.style.display =
+        "none";
+
+      await recoverCirclePin();
+    }
+  );
+
 }
 
 function renderWorkspaceSwitcher(
@@ -11569,7 +11944,7 @@ async function loadClaimPage() {
         id="googleVerifyBox"
         style="
           margin-top:24px;
-          padding:20px;
+          padding:16px;
           border-radius:18px;
           background:rgba(255,255,255,0.08);
         "
@@ -12286,30 +12661,54 @@ btnDeleteCustomer?.addEventListener(
   deleteSelectedCustomer
 );
 
-btnSendClaimEmail?.addEventListener("click", async () => {
-  const paymentMethod =
-    document.querySelector(
-      'input[name="paymentMethod"]:checked'
-    )?.value;
+btnSendClaimEmail?.addEventListener(
+  "click",
+  async () => {
+    const paymentMethod =
+      document.querySelector(
+        'input[name="paymentMethod"]:checked'
+      )?.value;
 
-  if (paymentMethod === "card") {
-    alert("Visa/Mastercard flow coming soon");
-    return;
+    if (paymentMethod === "card") {
+      alert(
+        "Visa/Mastercard flow coming soon"
+      );
+      return;
+    }
+
+    const activeWallet =
+      getActivePaymentWallet();
+
+    if (!activeWallet) {
+      setStatus(
+        "Please connect an active Web3 or Circle Wallet first.",
+        "error"
+      );
+      return;
+    }
+
+    if (
+      activeWallet.type ===
+      "circle"
+    ) {
+      await sendClaimWithCircleWalletV2();
+      return;
+    }
+
+    if (
+      activeWallet.type ===
+      "web3"
+    ) {
+      await sendClaimEmail();
+      return;
+    }
+
+    setStatus(
+      "No active wallet is available for Gmail Claim.",
+      "error"
+    );
   }
-
-  const circleAddress =
-    circleWalletEl?.textContent?.trim() || "";
-
-  if (
-  circleAddress &&
-  circleAddress !== "-" &&
-  circleAddress.startsWith("0x")
-) {
-  await sendClaimWithCircleWalletV2();
-} else {
-  await sendClaimEmail();
-}
-});
+);
 
 btnSaveBiz?.addEventListener("click", saveBusinessProfile);
 
@@ -12403,26 +12802,50 @@ btnSetupPin?.addEventListener("click", setupCirclePin);
 btnSwitchArc?.addEventListener("click", switchArc);
 
 // Pay Invoice button opens wallet modal in pay mode
-btnPay?.addEventListener("click", async () => {
-  if (metamaskWallet) {
-    await payWithMetaMask();
-    return;
+btnPay?.addEventListener(
+  "click",
+  async () => {
+    const activeWallet =
+      getActivePaymentWallet();
+
+    if (!activeWallet) {
+      setStatus(
+        "Please connect an active Web3 or Circle Wallet first.",
+        "error"
+      );
+      return;
+    }
+
+    if (
+      activeWallet.type ===
+      "circle"
+    ) {
+      await payWithCircleWallet();
+      return;
+    }
+
+    if (
+      activeWallet.type ===
+      "web3"
+    ) {
+      if (
+        activeWallet.source ===
+        "metamask"
+      ) {
+        await payWithMetaMask();
+        return;
+      }
+
+      await payWithAppKit();
+      return;
+    }
+
+    setStatus(
+      "No active payment wallet is available.",
+      "error"
+    );
   }
-
-const appKitAccount = getAccount(wagmiAdapter.wagmiConfig);
-if (appKitAccount?.address) {
-  await payWithAppKit();
-  return;
-}
-
-  const circleAddress = circleWalletEl?.textContent?.trim();
-  if (circleAddress && circleAddress.startsWith("0x")) {
-    await payWithCircleWallet();
-    return;
-  }
-
-  setStatus("Please connect Web3 wallet or Circle Wallet first.", "error");
-});
+);
 
 btnPayCircle?.addEventListener("click", payWithCircleWallet);
 btnCreateInvoice?.addEventListener("click", createInvoice);

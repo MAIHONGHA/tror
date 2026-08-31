@@ -493,16 +493,22 @@ async function viewBatchItems(batchId) {
       Backend must never choose a payer wallet.
     */
     const account =
-      getAccount(
-        wagmiAdapter.wagmiConfig
-      );
+  getAccount(
+    wagmiAdapter.wagmiConfig
+  );
 
-    const circleWallet =
-      getCirclePayrollWallet();
+const circleWallet =
+  getCirclePayrollWallet();
 
-    if (!account?.address && !circleWallet) {
+const activeWallet =
+  typeof window.getActivePaymentWallet ===
+  "function"
+    ? window.getActivePaymentWallet()
+    : null;
+
+if (!activeWallet) {
   alert(
-    "Connect a Web3 wallet or Circle Wallet before executing payroll."
+    "Connect an active Web3 or Circle Wallet before executing payroll."
   );
   return;
 }
@@ -511,9 +517,9 @@ async function viewBatchItems(batchId) {
       Payroll v1 runs on Arc Testnet.
     */
     if (
-  account?.address &&
-  Number(account.chainId) !==
-  5042002
+  activeWallet.type === "web3" &&
+  Number(account?.chainId) !==
+    ARC_CHAIN_ID
 ) {
       alert(
         "Switch your connected wallet to Arc Testnet before executing payroll."
@@ -570,12 +576,10 @@ async function viewBatchItems(batchId) {
     */
 
       const useWeb3 =
-  Boolean(account?.address);
+  activeWallet.type === "web3";
 
 const payerAddress =
-  useWeb3
-    ? account.address
-    : circleWallet.address;
+  activeWallet.address;
 
 const payerType =
   useWeb3
@@ -584,7 +588,7 @@ const payerType =
 
 const payerChainId =
   useWeb3
-    ? account.chainId
+    ? Number(account?.chainId)
     : ARC_CHAIN_ID;
 
     window.pendingPayrollPayment = {

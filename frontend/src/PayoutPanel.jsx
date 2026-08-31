@@ -7,6 +7,7 @@ import {
 } from "@wagmi/core";
 
 import { ethers } from "ethers";
+import { W3SSdk } from "@circle-fin/w3s-pw-web-sdk";
 
 import {
   wagmiAdapter
@@ -77,6 +78,102 @@ function getCurrentWorkspace() {
   } catch {
     return null;
   }
+}
+
+function getCirclePayoutWallet() {
+  const wallet =
+    window.trorActiveCircleWallet;
+
+  if (!wallet?.address) {
+    return null;
+  }
+
+  const walletId =
+    wallet.walletId ||
+    wallet.id ||
+    null;
+
+  if (!walletId) {
+    return null;
+  }
+
+  if (
+    String(
+      wallet.blockchain || ""
+    ).toUpperCase() !==
+    "ARC-TESTNET"
+  ) {
+    return null;
+  }
+
+  return {
+    ...wallet,
+    walletId
+  };
+}
+
+async function executeCirclePayoutChallenge(
+  challengeId,
+  userToken,
+  encryptionKey
+) {
+  if (!challengeId) {
+    throw new Error(
+      "Missing Circle challengeId."
+    );
+  }
+
+  const configRes =
+    await fetch(
+      `${API_BASE}/api/circle/config`
+    );
+
+  const configData =
+    await configRes.json();
+
+  if (!configRes.ok) {
+    throw new Error(
+      configData?.error ||
+      "Failed to load Circle config."
+    );
+  }
+
+  const appId =
+    configData?.config?.circleAppId;
+
+  if (!appId) {
+    throw new Error(
+      "Missing CIRCLE_APP_ID."
+    );
+  }
+
+  const sdk =
+    new W3SSdk({
+      appSettings: {
+        appId
+      }
+    });
+
+  sdk.setAuthentication({
+    userToken,
+    encryptionKey
+  });
+
+  return await new Promise(
+    (resolve, reject) => {
+      sdk.execute(
+        challengeId,
+        (error, result) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve(result);
+        }
+      );
+    }
+  );
 }
 
 export default function PayoutPanel() {
@@ -292,21 +389,66 @@ if (mode === "scheduled") {
       Backend never selects a private-key wallet.
     */
     const account =
-      getAccount(
-        wagmiAdapter.wagmiConfig
-      );
+  getAccount(
+    wagmiAdapter.wagmiConfig
+  );
 
-    if (!account?.address) {
-      alert(
-        "Connect your Web3 wallet before sending payout."
-      );
-      return;
-    }
+const activeWallet =
+  typeof window.getActivePaymentWallet ===
+  "function"
+    ? window.getActivePaymentWallet()
+    : null;
+
+if (!activeWallet) {
+  alert(
+    "Connect an active payment wallet before sending payout."
+  );
+  return;
+}
+
+const useWeb3 =
+  activeWallet.type === "web3";
+
+const circleWallet =
+  !useWeb3
+    ? getCirclePayoutWallet()
+    : null;
+
+if (useWeb3) {
+  if (
+    !account?.address ||
+    account.address.toLowerCase() !==
+      activeWallet.address.toLowerCase()
+  ) {
+    alert(
+      "The active Web3 wallet does not match the connected signing wallet."
+    );
+    return;
+  }
+} else {
+  if (!circleWallet) {
+    alert(
+      "Active Circle Wallet is not ready on Arc Testnet."
+    );
+    return;
+  }
+
+  if (
+    circleWallet.address.toLowerCase() !==
+    activeWallet.address.toLowerCase()
+  ) {
+    alert(
+      "The active Circle Wallet does not match the connected Circle wallet."
+    );
+    return;
+  }
+}
 
     if (
-      Number(account.chainId) !==
-      ARC_CHAIN_ID
-    ) {
+  useWeb3 &&
+  Number(account?.chainId) !==
+    ARC_CHAIN_ID
+) {
       alert(
         "Switch your connected wallet to Arc Testnet."
       );
@@ -390,114 +532,456 @@ if (mode === "scheduled") {
         )
       );
 
-    const confirmed =
-      window.confirm(
-        `TROR Payout\n\n` +
-        `Payer:\n${account.address}\n\n` +
-        `Recipient:\n${payout.recipient}\n\n` +
-        `Amount: ${payout.amount} USDC\n\n` +
-        `Network: ${data.network?.chainName || "Arc Testnet"}\n\n` +
-        `Continue to wallet authorization?`
-      );
+    const payerAddress =
+  activeWallet.address;
 
-    if (!confirmed) {
-      return;
-    }
+const payerType =
+  useWeb3
+    ? "WEB3"
+    : "CIRCLE";
 
-    /*
-      Step 1:
-      Approve only this payout amount.
-    */
-    alert(
-      "Step 1/2: Approve USDC for TRORPayout."
+const confirmed =
+  window.confirm(
+    `TROR Payout\n\n` +
+    `Payer (${payerType}):\n${payerAddress}\n\n` +
+    `Recipient:\n${payout.recipient}\n\n` +
+    `Amount: ${payout.amount} USDC\n\n` +
+    `Network: ${data.network?.chainName || "Arc Testnet"}\n\n` +
+    `Continue to wallet authorization?`
+  );
+
+if (!confirmed) {
+  return;
+}
+
+let approveHash = "";
+let payoutHash = "";
+
+let circleUserToken = null;
+let circleEncryptionKey = null;
+
+if (useWeb3) {
+  /*
+    WEB3 PAYOUT
+  */
+
+  alert(
+    "Step 1/2: Approve USDC for TRORPayout."
+  );
+
+  approveHash =
+    await writeContract(
+      wagmiAdapter.wagmiConfig,
+      {
+        address:
+          USDC_ADDRESS,
+
+        abi:
+          ERC20_APPROVE_ABI,
+
+        functionName:
+          "approve",
+
+        args: [
+          TROR_PAYOUT_CONTRACT_ADDRESS,
+          amountUnits
+        ],
+
+        account:
+          account.address,
+
+        chainId:
+          ARC_CHAIN_ID
+      }
     );
 
-    const approveHash =
-      await writeContract(
-        wagmiAdapter.wagmiConfig,
-        {
-          address:
-            USDC_ADDRESS,
+  await waitForTransactionReceipt(
+    wagmiAdapter.wagmiConfig,
+    {
+      hash:
+        approveHash
+    }
+  );
 
-          abi:
-            ERC20_APPROVE_ABI,
+  alert(
+    "Step 2/2: Confirm payout execution in your wallet."
+  );
 
-          functionName:
-            "approve",
+  payoutHash =
+    await writeContract(
+      wagmiAdapter.wagmiConfig,
+      {
+        address:
+          TROR_PAYOUT_CONTRACT_ADDRESS,
 
-          args: [
-            TROR_PAYOUT_CONTRACT_ADDRESS,
-            amountUnits
-          ],
+        abi:
+          TROR_PAYOUT_ABI,
 
-          account:
-            account.address,
+        functionName:
+          "executePayout",
 
-          chainId:
-            ARC_CHAIN_ID
-        }
-      );
+        args: [
+          payoutId,
+          payout.recipient,
+          amountUnits
+        ],
 
+        account:
+          account.address,
+
+        chainId:
+          ARC_CHAIN_ID
+      }
+    );
+
+  const receipt =
     await waitForTransactionReceipt(
       wagmiAdapter.wagmiConfig,
       {
         hash:
-          approveHash
+          payoutHash
       }
     );
 
-    /*
-      Step 2:
-      Execute the real payout.
-    */
-    alert(
-      "Step 2/2: Confirm payout execution in your wallet."
+  if (
+    !receipt ||
+    receipt.status !== "success"
+  ) {
+    throw new Error(
+      "Payout transaction failed."
+    );
+  }
+
+} else {
+  /*
+    CIRCLE PAYOUT
+  */
+
+  if (
+    typeof window.getCircleAuth !==
+    "function"
+  ) {
+    throw new Error(
+      "Circle authentication is not available."
+    );
+  }
+
+  const circleAuth =
+  await window.getCircleAuth();
+
+circleUserToken =
+  circleAuth?.userToken || null;
+
+circleEncryptionKey =
+  circleAuth?.encryptionKey || null;
+
+  if (
+  !circleUserToken ||
+  !circleEncryptionKey
+  ) {
+    throw new Error(
+      "Missing Circle authentication."
+    );
+  }
+
+  /*
+    STEP 1
+    Circle approve USDC
+  */
+
+  alert(
+    "Step 1/2: Approve USDC in Circle Wallet."
+  );
+
+  const approveRes =
+    await fetch(
+      `${API_BASE}/api/circle/contract-execution`,
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
+
+        body: JSON.stringify({
+          circleUserToken,
+
+          walletId:
+            circleWallet.walletId,
+
+          contractAddress:
+            USDC_ADDRESS,
+
+          abiFunctionSignature:
+            "approve(address,uint256)",
+
+          abiParameters: [
+            TROR_PAYOUT_CONTRACT_ADDRESS,
+            amountUnits.toString()
+          ]
+        })
+      }
     );
 
-    const payoutHash =
-      await writeContract(
-        wagmiAdapter.wagmiConfig,
-        {
-          address:
+  const approveData =
+    await approveRes.json();
+
+  if (!approveRes.ok) {
+    throw new Error(
+      approveData?.error ||
+      "Circle USDC approve failed."
+    );
+  }
+
+  const approveChallengeId =
+    approveData?.data?.challengeId ||
+    approveData?.challengeId;
+
+  if (!approveChallengeId) {
+    throw new Error(
+      "Circle approve challengeId was not returned."
+    );
+  }
+
+  await executeCirclePayoutChallenge(
+    approveChallengeId,
+    circleUserToken,
+    circleEncryptionKey
+  );
+
+  /*
+    Give Circle time to submit
+    the approve transaction.
+  */
+  await new Promise(
+    (resolve) =>
+      setTimeout(resolve, 6000)
+  );
+
+  /*
+    Snapshot Circle transactions
+    BEFORE executePayout.
+
+    This prevents an old completed
+    transaction from being mistaken
+    for this payout.
+  */
+  const beforeTxRes =
+    await fetch(
+      `${API_BASE}/api/circle/transactions`,
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
+
+        body: JSON.stringify({
+          circleUserToken
+        })
+      }
+    );
+
+  const beforeTxData =
+    await beforeTxRes.json();
+
+  if (!beforeTxRes.ok) {
+    throw new Error(
+      beforeTxData?.error ||
+      "Failed to snapshot Circle transactions."
+    );
+  }
+
+  const existingTransactionIds =
+    new Set(
+      (
+        beforeTxData?.data
+          ?.transactions ||
+        []
+      )
+        .map(
+          (item) =>
+            String(
+              item?.id || ""
+            )
+        )
+        .filter(Boolean)
+    );
+
+  /*
+    STEP 2
+    Circle executePayout
+  */
+
+  alert(
+    "Step 2/2: Confirm payout execution in Circle Wallet."
+  );
+
+  const executeRes =
+    await fetch(
+      `${API_BASE}/api/circle/contract-execution`,
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
+
+        body: JSON.stringify({
+          circleUserToken,
+
+          walletId:
+            circleWallet.walletId,
+
+          contractAddress:
             TROR_PAYOUT_CONTRACT_ADDRESS,
 
-          abi:
-            TROR_PAYOUT_ABI,
+          abiFunctionSignature:
+            "executePayout(bytes32,address,uint256)",
 
-          functionName:
-            "executePayout",
-
-          args: [
+          abiParameters: [
             payoutId,
             payout.recipient,
-            amountUnits
-          ],
+            amountUnits.toString()
+          ]
+        })
+      }
+    );
 
-          account:
-            account.address,
+  const executeData =
+    await executeRes.json();
 
-          chainId:
-            ARC_CHAIN_ID
-        }
-      );
+  if (!executeRes.ok) {
+    throw new Error(
+      executeData?.error ||
+      "Circle payout execution failed."
+    );
+  }
 
-    const receipt =
-      await waitForTransactionReceipt(
-        wagmiAdapter.wagmiConfig,
+  const executeChallengeId =
+    executeData?.data?.challengeId ||
+    executeData?.challengeId;
+
+  if (!executeChallengeId) {
+    throw new Error(
+      "Circle payout challengeId was not returned."
+    );
+  }
+
+  await executeCirclePayoutChallenge(
+    executeChallengeId,
+    circleUserToken,
+    circleEncryptionKey
+  );
+
+  /*
+    Find the NEW Circle transaction
+    created after executePayout.
+  */
+  for (
+    let attempt = 0;
+    attempt < 30;
+    attempt++
+  ) {
+    await new Promise(
+      (resolve) =>
+        setTimeout(resolve, 3000)
+    );
+
+    const txRes =
+      await fetch(
+        `${API_BASE}/api/circle/transactions`,
         {
-          hash:
-            payoutHash
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body: JSON.stringify({
+            circleUserToken
+          })
         }
       );
 
-    if (
-      !receipt ||
-      receipt.status !== "success"
-    ) {
-      throw new Error(
-        "Payout transaction failed."
-      );
+    const txData =
+      await txRes.json();
+
+    if (!txRes.ok) {
+      continue;
     }
+
+    const transactions =
+      txData?.data
+        ?.transactions ||
+      [];
+
+    const transaction =
+      transactions.find(
+        (item) => {
+          const transactionId =
+            String(
+              item?.id || ""
+            );
+
+          const state =
+            String(
+              item?.state ||
+              item?.status ||
+              ""
+            ).toUpperCase();
+
+          const walletId =
+            String(
+              item?.walletId || ""
+            );
+
+          const hash =
+            item?.blockchainTxHash ||
+            item?.txHash ||
+            item?.transactionHash ||
+            "";
+
+          return (
+            transactionId &&
+            !existingTransactionIds.has(
+              transactionId
+            ) &&
+            walletId ===
+              String(
+                circleWallet.walletId
+              ) &&
+            state === "COMPLETE" &&
+            String(hash).startsWith(
+              "0x"
+            )
+          );
+        }
+      );
+
+    payoutHash =
+      transaction
+        ?.blockchainTxHash ||
+      transaction?.txHash ||
+      transaction
+        ?.transactionHash ||
+      "";
+
+    if (payoutHash) {
+      break;
+    }
+  }
+
+  if (!payoutHash) {
+    throw new Error(
+      "Circle payout was authorized, but the Arc transaction is still confirming."
+    );
+  }
+}
 
 const verifyRes =
   await fetch(
@@ -509,13 +993,28 @@ const verifyRes =
           "application/json"
       },
       body: JSON.stringify({
-        workspaceId:
-          currentWorkspace.id,
-        txHash:
-          payoutHash,
-        payerAddress:
-          account.address
-      })
+  workspaceId:
+    currentWorkspace.id,
+
+  txHash:
+    payoutHash,
+
+  payerAddress:
+    payerAddress,
+
+  walletType:
+    activeWallet.type,
+
+  circleUserToken:
+    activeWallet.type === "circle"
+      ? circleUserToken
+      : null,
+
+  circleWalletId:
+    activeWallet.type === "circle"
+      ? circleWallet.walletId
+      : null
+})
     }
   );
 
@@ -541,7 +1040,7 @@ await loadPayouts();
       workspaceId:
         currentWorkspace.id,
       payerAddress:
-        account.address,
+        payerAddress,
       recipient:
         payout.recipient,
       amount:

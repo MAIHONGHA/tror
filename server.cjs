@@ -867,6 +867,99 @@ res.json({
   }
 });
 
+app.get(
+  "/api/users/:userId/wallets",
+  (req, res) => {
+    try {
+      const userId = String(
+        req.params.userId || ""
+      ).trim();
+
+      if (!userId) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "TROR user ID is required"
+        });
+      }
+
+      const user = db.prepare(`
+        SELECT id
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `).get(userId);
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "TROR profile was not found"
+        });
+      }
+
+      const wallets = db.prepare(`
+        SELECT
+          uw.id,
+          uw.user_id,
+          uw.wallet_type,
+          uw.provider,
+          uw.address,
+          uw.chain_id,
+          uw.circle_wallet_id,
+          uw.is_primary,
+          uw.is_active,
+          uw.created_at,
+          uw.updated_at,
+
+          CASE
+            WHEN ui.verified_at IS NOT NULL
+            THEN 1
+            ELSE 0
+          END AS verified
+
+        FROM user_wallets uw
+
+        LEFT JOIN user_identities ui
+          ON ui.user_id = uw.user_id
+          AND ui.identity_type =
+            CASE
+              WHEN uw.wallet_type = 'WEB3'
+              THEN 'WEB3'
+              ELSE NULL
+            END
+          AND lower(ui.identity_value) =
+            lower(uw.address)
+
+        WHERE uw.user_id = ?
+          AND uw.is_active = 1
+
+        ORDER BY
+          uw.is_primary DESC,
+          uw.created_at ASC
+      `).all(userId);
+
+      return res.json({
+        success: true,
+        userId,
+        wallets
+      });
+
+    } catch (err) {
+      console.error(
+        "Load TROR user wallets error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          "Failed to load TROR user wallets"
+      });
+    }
+  }
+);
+
 app.post("/api/users", (req, res) => {
   try {
     const fullName = String(req.body.fullName || "").trim();
@@ -7229,6 +7322,65 @@ app.post("/api/circle/initialize-user", async (req, res) => {
   }
 });
 
+app.post(
+  "/api/circle/restore-pin",
+  async (req, res) => {
+    try {
+      if (!requireCircle(res)) return;
+
+      const { userToken } = req.body;
+
+      if (!userToken) {
+        return res.status(400).json({
+          error: "Missing userToken"
+        });
+      }
+
+      const response = await fetch(
+        "https://api.circle.com/v1/w3s/user/pin/restore",
+        {
+          method: "POST",
+
+          headers: {
+            Authorization:
+              `Bearer ${CIRCLE_API_KEY}`,
+
+            "X-User-Token":
+              userToken,
+
+            "Content-Type":
+              "application/json"
+          },
+
+          body: JSON.stringify({
+            idempotencyKey:
+              crypto.randomUUID()
+          })
+        }
+      );
+
+      const data =
+        await response.json();
+
+      return res
+        .status(response.status)
+        .json(data);
+
+    } catch (err) {
+      console.error(
+        "Circle restore PIN error:",
+        err
+      );
+
+      return res.status(500).json({
+        error:
+          err?.message ||
+          "Failed to create PIN recovery challenge"
+      });
+    }
+  }
+);
+
 /* =========================
    CIRCLE WALLETS
 ========================= */
@@ -9505,6 +9657,20 @@ app.post("/api/payouts/:id/verify", async (req, res) => {
       req.body.payerAddress || ""
     ).trim();
 
+    const walletType = String(
+      req.body.walletType || "web3"
+    )
+      .trim()
+      .toLowerCase();
+
+    const circleUserToken = String(
+      req.body.circleUserToken || ""
+    ).trim();
+
+    const circleWalletId = String(
+      req.body.circleWalletId || ""
+    ).trim();
+
     if (!workspaceId) {
       return res.status(400).json({
         error: "Workspace is required"
@@ -9513,7 +9679,8 @@ app.post("/api/payouts/:id/verify", async (req, res) => {
 
     if (!txHash.startsWith("0x")) {
       return res.status(400).json({
-        error: "Valid transaction hash is required"
+        error:
+          "Valid transaction hash is required"
       });
     }
 
@@ -9522,7 +9689,17 @@ app.post("/api/payouts/:id/verify", async (req, res) => {
       !ethers.isAddress(payerAddress)
     ) {
       return res.status(400).json({
-        error: "Valid payer address is required"
+        error:
+          "Valid payer address is required"
+      });
+    }
+
+    if (
+      walletType !== "web3" &&
+      walletType !== "circle"
+    ) {
+      return res.status(400).json({
+        error: "Invalid wallet type"
       });
     }
 
@@ -9538,7 +9715,8 @@ app.post("/api/payouts/:id/verify", async (req, res) => {
 
     if (!payout) {
       return res.status(404).json({
-        error: "Payout not found in this workspace"
+        error:
+          "Payout not found in this workspace"
       });
     }
 
@@ -9570,78 +9748,9 @@ app.post("/api/payouts/:id/verify", async (req, res) => {
       });
     }
 
-    const transaction =
-      await provider.getTransaction(
-        txHash
-      );
-
-    if (!transaction) {
-      return res.status(400).json({
-        error:
-          "Payout transaction could not be loaded"
-      });
-    }
-
     const TROR_PAYOUT_CONTRACT_ADDRESS =
       "0xaD91ad41D59cACA639D3Da3123d14DA009b8f3f5";
 
-    if (
-      String(transaction.to || "")
-        .toLowerCase() !==
-      TROR_PAYOUT_CONTRACT_ADDRESS
-        .toLowerCase()
-    ) {
-      return res.status(400).json({
-        error:
-          "Transaction was not sent to TRORPayout"
-      });
-    }
-
-    if (
-      String(transaction.from || "")
-        .toLowerCase() !==
-      payerAddress.toLowerCase()
-    ) {
-      return res.status(400).json({
-        error:
-          "Payout transaction payer does not match"
-      });
-    }
-
-    const payoutInterface =
-      new ethers.Interface([
-        "function executePayout(bytes32 payoutId,address recipient,uint256 amount)"
-      ]);
-
-    let parsed;
-
-    try {
-      parsed =
-        payoutInterface.parseTransaction({
-          data: transaction.data,
-          value: transaction.value
-        });
-    } catch {
-      return res.status(400).json({
-        error:
-          "Transaction is not a TRORPayout execution"
-      });
-    }
-
-    if (
-      parsed?.name !==
-      "executePayout"
-    ) {
-      return res.status(400).json({
-        error:
-          "Invalid TRORPayout function"
-      });
-    }
-
-    /*
-      Must match frontend:
-      keccak256("tror-payout-" + id)
-    */
     const expectedPayoutId =
       ethers.keccak256(
         ethers.toUtf8Bytes(
@@ -9649,36 +9758,13 @@ app.post("/api/payouts/:id/verify", async (req, res) => {
         )
       );
 
-    if (
-      String(parsed.args[0])
-        .toLowerCase() !==
-      expectedPayoutId.toLowerCase()
-    ) {
+    if (!ethers.isAddress(payout.recipient)) {
       return res.status(400).json({
         error:
-          "Payout ID does not match"
+          "Invalid payout recipient"
       });
     }
 
-    const txRecipient =
-      String(parsed.args[1]);
-
-    if (
-      !ethers.isAddress(payout.recipient) ||
-      txRecipient.toLowerCase() !==
-        String(payout.recipient)
-          .toLowerCase()
-    ) {
-      return res.status(400).json({
-        error:
-          "Payout recipient does not match"
-      });
-    }
-
-    /*
-      DB amount is USDC decimal.
-      Contract amount uses 6 decimals.
-    */
     const expectedAmount =
       ethers.parseUnits(
         Number(payout.amount)
@@ -9686,18 +9772,433 @@ app.post("/api/payouts/:id/verify", async (req, res) => {
         6
       );
 
-    const txAmount =
-      BigInt(parsed.args[2]);
+    /*
+      ==================================================
+      CIRCLE SCA VERIFICATION
+      ==================================================
 
-    if (
-      txAmount !== expectedAmount
-    ) {
-      return res.status(400).json({
-        error:
-          "Payout amount does not match"
-      });
+      Circle SCA outer transaction may not have:
+        transaction.to === TRORPayout
+        transaction.from === Circle wallet
+
+      Therefore verify:
+        1. Circle transaction metadata
+        2. Arc receipt
+        3. PayoutExecuted event emitted by TRORPayout
+    */
+    if (walletType === "circle") {
+      if (!circleUserToken) {
+        return res.status(400).json({
+          error:
+            "Circle user token is required"
+        });
+      }
+
+      if (!circleWalletId) {
+        return res.status(400).json({
+          error:
+            "Circle wallet ID is required"
+        });
+      }
+
+      if (!requireCircle(res)) {
+        return;
+      }
+
+      const circleResponse =
+        await fetch(
+          "https://api.circle.com/v1/w3s/transactions",
+          {
+            method: "GET",
+            headers: {
+              Authorization:
+                `Bearer ${CIRCLE_API_KEY}`,
+              "X-User-Token":
+                circleUserToken,
+              "Content-Type":
+                "application/json"
+            }
+          }
+        );
+
+      const circleData =
+        await circleResponse.json();
+
+      if (!circleResponse.ok) {
+        return res
+          .status(circleResponse.status)
+          .json({
+            error:
+              circleData?.message ||
+              circleData?.error ||
+              "Failed to verify Circle transaction"
+          });
+      }
+
+      const circleTransactions =
+        circleData?.data
+          ?.transactions ||
+        [];
+
+      const circleTransaction =
+        circleTransactions.find(
+          (item) => {
+            const hash =
+              item?.blockchainTxHash ||
+              item?.txHash ||
+              item?.transactionHash ||
+              "";
+
+            return (
+              String(hash).toLowerCase() ===
+              txHash.toLowerCase()
+            );
+          }
+        );
+
+      if (!circleTransaction) {
+        return res.status(400).json({
+          error:
+            "Circle transaction was not found"
+        });
+      }
+
+      const circleState =
+        String(
+          circleTransaction?.state ||
+          circleTransaction?.status ||
+          ""
+        ).toUpperCase();
+
+      if (circleState !== "COMPLETE") {
+        return res.status(400).json({
+          error:
+            "Circle payout transaction is not complete"
+        });
+      }
+
+      const circleOperation =
+        String(
+          circleTransaction?.operation ||
+          ""
+        ).toUpperCase();
+
+      if (
+        circleOperation !==
+        "CONTRACT_EXECUTION"
+      ) {
+        return res.status(400).json({
+          error:
+            "Circle transaction is not a contract execution"
+        });
+      }
+
+      const transactionWalletId =
+        String(
+          circleTransaction?.walletId ||
+          ""
+        );
+
+      if (
+        transactionWalletId !==
+        circleWalletId
+      ) {
+        return res.status(400).json({
+          error:
+            "Circle payout wallet does not match"
+        });
+      }
+
+      const circleBlockchain =
+        String(
+          circleTransaction?.blockchain ||
+          ""
+        ).toUpperCase();
+
+      if (
+        circleBlockchain !==
+        "ARC-TESTNET"
+      ) {
+        return res.status(400).json({
+          error:
+            "Circle payout is not on Arc Testnet"
+        });
+      }
+
+      const circleContractAddress =
+        String(
+          circleTransaction
+            ?.contractAddress ||
+          ""
+        ).toLowerCase();
+
+      if (
+        circleContractAddress !==
+        TROR_PAYOUT_CONTRACT_ADDRESS
+          .toLowerCase()
+      ) {
+        return res.status(400).json({
+          error:
+            "Circle transaction was not sent to TRORPayout"
+        });
+      }
+
+      const circleSourceAddress =
+        String(
+          circleTransaction
+            ?.sourceAddress ||
+          ""
+        ).toLowerCase();
+
+      if (
+        circleSourceAddress !==
+        payerAddress.toLowerCase()
+      ) {
+        return res.status(400).json({
+          error:
+            "Circle payout payer does not match"
+        });
+      }
+
+      /*
+        Verify actual TRORPayout event
+        from Arc receipt.
+
+        This confirms that executePayout()
+        completed successfully and USDC
+        transferFrom succeeded.
+      */
+      const payoutEventInterface =
+        new ethers.Interface([
+          "event PayoutExecuted(bytes32 indexed payoutId,address indexed payer,address indexed recipient,uint256 amount)"
+        ]);
+
+      let payoutEvent = null;
+
+      for (const log of receipt.logs || []) {
+        if (
+          String(log?.address || "")
+            .toLowerCase() !==
+          TROR_PAYOUT_CONTRACT_ADDRESS
+            .toLowerCase()
+        ) {
+          continue;
+        }
+
+        try {
+          const parsedLog =
+            payoutEventInterface.parseLog({
+              topics: log.topics,
+              data: log.data
+            });
+
+          if (
+            parsedLog?.name ===
+            "PayoutExecuted"
+          ) {
+            payoutEvent =
+              parsedLog;
+            break;
+          }
+        } catch {
+          // Ignore unrelated logs.
+        }
+      }
+
+      if (!payoutEvent) {
+        return res.status(400).json({
+          error:
+            "TRORPayout execution event was not found"
+        });
+      }
+
+      const eventPayoutId =
+        String(
+          payoutEvent.args[0]
+        ).toLowerCase();
+
+      const eventPayer =
+        String(
+          payoutEvent.args[1]
+        ).toLowerCase();
+
+      const eventRecipient =
+        String(
+          payoutEvent.args[2]
+        ).toLowerCase();
+
+      const eventAmount =
+        BigInt(
+          payoutEvent.args[3]
+        );
+
+      if (
+        eventPayoutId !==
+        expectedPayoutId.toLowerCase()
+      ) {
+        return res.status(400).json({
+          error:
+            "Payout ID does not match"
+        });
+      }
+
+      if (
+        eventPayer !==
+        payerAddress.toLowerCase()
+      ) {
+        return res.status(400).json({
+          error:
+            "Payout event payer does not match"
+        });
+      }
+
+      if (
+        eventRecipient !==
+        String(
+          payout.recipient
+        ).toLowerCase()
+      ) {
+        return res.status(400).json({
+          error:
+            "Payout recipient does not match"
+        });
+      }
+
+      if (
+        eventAmount !==
+        expectedAmount
+      ) {
+        return res.status(400).json({
+          error:
+            "Payout amount does not match"
+        });
+      }
     }
 
+    /*
+      ==================================================
+      WEB3 / EOA VERIFICATION
+      ==================================================
+    */
+    else {
+      const transaction =
+        await provider.getTransaction(
+          txHash
+        );
+
+      if (!transaction) {
+        return res.status(400).json({
+          error:
+            "Payout transaction could not be loaded"
+        });
+      }
+
+      if (
+        String(transaction.to || "")
+          .toLowerCase() !==
+        TROR_PAYOUT_CONTRACT_ADDRESS
+          .toLowerCase()
+      ) {
+        return res.status(400).json({
+          error:
+            "Transaction was not sent to TRORPayout"
+        });
+      }
+
+      if (
+        String(transaction.from || "")
+          .toLowerCase() !==
+        payerAddress.toLowerCase()
+      ) {
+        return res.status(400).json({
+          error:
+            "Payout transaction payer does not match"
+        });
+      }
+
+      const payoutInterface =
+        new ethers.Interface([
+          "function executePayout(bytes32 payoutId,address recipient,uint256 amount)"
+        ]);
+
+      let parsed;
+
+      try {
+        parsed =
+          payoutInterface
+            .parseTransaction({
+              data:
+                transaction.data,
+              value:
+                transaction.value
+            });
+      } catch {
+        return res.status(400).json({
+          error:
+            "Transaction is not a TRORPayout execution"
+        });
+      }
+
+      if (
+        parsed?.name !==
+        "executePayout"
+      ) {
+        return res.status(400).json({
+          error:
+            "Invalid TRORPayout function"
+        });
+      }
+
+      if (
+        String(parsed.args[0])
+          .toLowerCase() !==
+        expectedPayoutId
+          .toLowerCase()
+      ) {
+        return res.status(400).json({
+          error:
+            "Payout ID does not match"
+        });
+      }
+
+      const txRecipient =
+        String(
+          parsed.args[1]
+        );
+
+      if (
+        txRecipient.toLowerCase() !==
+        String(
+          payout.recipient
+        ).toLowerCase()
+      ) {
+        return res.status(400).json({
+          error:
+            "Payout recipient does not match"
+        });
+      }
+
+      const txAmount =
+        BigInt(
+          parsed.args[2]
+        );
+
+      if (
+        txAmount !==
+        expectedAmount
+      ) {
+        return res.status(400).json({
+          error:
+            "Payout amount does not match"
+        });
+      }
+    }
+
+    /*
+      ==================================================
+      VERIFIED — UPDATE DATABASE
+      ==================================================
+    */
     const result =
       db.prepare(`
         UPDATE payouts
@@ -9724,7 +10225,10 @@ app.post("/api/payouts/:id/verify", async (req, res) => {
           workspaceId
         );
 
-      if (current?.status !== "PAID") {
+      if (
+        current?.status !==
+        "PAID"
+      ) {
         return res.status(409).json({
           error:
             "Payout status changed. Please refresh."
