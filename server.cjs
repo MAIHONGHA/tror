@@ -8541,6 +8541,14 @@ if (!workspaceId) {
       return res.status(400).json({ error: "Invalid withdrawal status" });
     }
 
+if (status === "COMPLETED") {
+  return res.status(409).json({
+    success: false,
+    error:
+      "Withdrawal cannot be completed until off-ramp settlement is verified."
+  });
+}
+
     const timestampColumn = {
   REVIEW: "reviewed_at",
   APPROVED: "approved_at",
