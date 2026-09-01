@@ -12113,11 +12113,17 @@ const circleClaimButton =
   document.getElementById("btnClaimCircle");
 
     const statusOrder = [
-      "PENDING",
-      "REVIEW",
-      "APPROVED",
-      "COMPLETED"
-    ];
+  "PENDING",
+  "REVIEW",
+  "APPROVED",
+  "AWAITING_PROVIDER",
+  "KYC_REQUIRED",
+  "REVIEW_REQUIRED",
+  "AWAITING_CRYPTO",
+  "PROCESSING",
+  "SETTLED",
+  "COMPLETED"
+];
 
     const currentStatusIndex = statusOrder.indexOf(data.status);
 
@@ -12125,6 +12131,12 @@ const withdrawalBlocksWalletClaim = [
   "PENDING",
   "REVIEW",
   "APPROVED",
+  "AWAITING_PROVIDER",
+  "KYC_REQUIRED",
+  "REVIEW_REQUIRED",
+  "AWAITING_CRYPTO",
+  "PROCESSING",
+  "SETTLED",
   "COMPLETED"
 ].includes(
   String(data.status || "").toUpperCase()
@@ -12168,55 +12180,129 @@ const formatStatusTime = (value) => {
   return date.toLocaleString();
 };
 
-    const timelineSteps = [
-  {
-    status: "PENDING",
-    title: "Withdrawal Requested",
-    description: "Your bank withdrawal request has been submitted.",
-    time: data.created_at
-  },
-  {
-    status: "REVIEW",
-    title: "Under Review",
-    description: "TROR is reviewing your withdrawal request.",
-    time: data.reviewed_at
-  },
-  {
-    status: "APPROVED",
-    title: "Approved",
-    description: "Your withdrawal has been approved for processing.",
-    time: data.approved_at
-  },
-  {
-    status: "COMPLETED",
-    title: "Completed",
-    description: "Your bank withdrawal has been completed.",
-    time: data.completed_at
-  }
-];
+    const normalizedWithdrawalStatus =
+  String(data.status || "").trim().toUpperCase();
+
+const isLegacyWithdrawal =
+  ["PENDING", "REVIEW", "APPROVED"].includes(
+    normalizedWithdrawalStatus
+  );
+
+const timelineSteps =
+  isLegacyWithdrawal
+    ? [
+        {
+          status: "PENDING",
+          title: "Withdrawal Requested",
+          description:
+            "Your bank withdrawal request has been submitted.",
+          time: data.created_at
+        },
+        {
+          status: "REVIEW",
+          title: "Under Review",
+          description:
+            "This legacy withdrawal is under review.",
+          time: data.reviewed_at
+        },
+        {
+          status: "APPROVED",
+          title: "Approved",
+          description:
+            "This legacy withdrawal is waiting for off-ramp settlement.",
+          time: data.approved_at
+        },
+        {
+          status: "COMPLETED",
+          title: "Completed",
+          description:
+            "The off-ramp provider confirmed settlement.",
+          time: data.completed_at
+        }
+      ]
+    : [
+        {
+          status: "AWAITING_PROVIDER",
+          title: "Finding Off-ramp Provider",
+          description:
+            "TROR is checking for an available off-ramp provider.",
+          time: data.created_at
+        },
+        {
+          status: "AWAITING_CRYPTO",
+          title: "Awaiting Crypto",
+          description:
+            "The provider is waiting to receive the required USDC.",
+          time: null
+        },
+        {
+          status: "PROCESSING",
+          title: "Processing Fiat Payout",
+          description:
+            "The off-ramp provider is processing the fiat payout.",
+          time: data.processing_at
+        },
+        {
+          status: "SETTLED",
+          title: "Settlement Confirmed",
+          description:
+            "The provider has confirmed fiat settlement.",
+          time: data.settled_at
+        },
+        {
+          status: "COMPLETED",
+          title: "Completed",
+          description:
+            "Your bank withdrawal has been completed.",
+          time: data.completed_at
+        }
+      ];
+
+const effectiveStatusOrder =
+  timelineSteps.map((step) => step.status);
+
+const effectiveStatusIndex =
+  effectiveStatusOrder.indexOf(
+    normalizedWithdrawalStatus
+  );
 
     if (button) {
-      button.disabled = true;
+  button.disabled =
+    !["REJECTED", "FAILED"].includes(
+      normalizedWithdrawalStatus
+    );
 
-      if (data.status === "PENDING") {
-        button.textContent = "Withdrawal Requested";
-      } else if (data.status === "REVIEW") {
-        button.textContent = "Under Review";
-      } else if (data.status === "APPROVED") {
-        button.textContent = "Withdrawal Approved";
-      } else if (data.status === "COMPLETED") {
-        button.textContent = "Withdrawal Completed";
-      } else if (data.status === "REJECTED") {
-        button.textContent = "Withdrawal Rejected";
-      }
-    }
+  const withdrawalButtonLabels = {
+    PENDING: "Withdrawal Requested",
+    REVIEW: "Under Review",
+    APPROVED: "Awaiting Settlement",
+    AWAITING_PROVIDER: "Finding Off-ramp Provider",
+    KYC_REQUIRED: "KYC Required",
+    REVIEW_REQUIRED: "Provider Review Required",
+    AWAITING_CRYPTO: "Awaiting Crypto",
+    PROCESSING: "Processing Withdrawal",
+    SETTLED: "Settlement Confirmed",
+    COMPLETED: "Withdrawal Completed",
+    REJECTED: "Withdrawal Rejected",
+    FAILED: "Withdrawal Failed"
+  };
+
+  button.textContent =
+    withdrawalButtonLabels[
+      normalizedWithdrawalStatus
+    ] || "Withdrawal Requested";
+}
 
     if (data.status === "COMPLETED" && bankForm) {
       bankForm.style.display = "none";
     }
 
     if (statusEl) {
-      if (data.status === "REJECTED") {
+  if (
+    ["REJECTED", "FAILED"].includes(
+      normalizedWithdrawalStatus
+    )
+  ) {
         statusEl.innerHTML = `
           <div style="
             padding:16px;
@@ -12226,7 +12312,11 @@ const formatStatusTime = (value) => {
             color:#fca5a5;
             font-weight:700;
           ">
-            ❌ Your bank withdrawal request was rejected.
+            ${
+  normalizedWithdrawalStatus === "FAILED"
+    ? "The off-ramp provider could not complete this withdrawal."
+    : "Your bank withdrawal request was rejected."
+}
           </div>
         `;
       } else {
@@ -12250,8 +12340,8 @@ const formatStatusTime = (value) => {
             ${timelineSteps
               .map((step, index) => {
                 const isCompleted =
-                  currentStatusIndex >= index &&
-                  currentStatusIndex !== -1;
+                  effectiveStatusIndex >= index &&
+                  effectiveStatusIndex !== -1;
 
                 const isCurrent =
                   data.status === step.status;
@@ -12303,7 +12393,7 @@ const formatStatusTime = (value) => {
                               flex:1;
                               min-height:34px;
                               background:${
-                                currentStatusIndex > index
+                                effectiveStatusIndex > index
                                   ? "rgba(34,197,94,0.45)"
                                   : "rgba(148,163,184,0.18)"
                               };
@@ -14809,15 +14899,40 @@ if (!currentWorkspace?.id) {
       <div style="padding:12px;margin:10px 0;background:#111827;border-radius:10px;">
         <div><b>${w.account_holder || "-"}</b></div>
         <div>${w.bank_name || "-"}</div>
-        <div>${w.account_number || "-"}</div>
+        <div>${w.destination_masked || "Bank destination"}</div>
         <div>${w.amount || 0} USDC</div>
         <div>Status: ${w.status || "PENDING"}</div>
-        ${w.status === "PENDING" ? `<button onclick="updateWithdrawalStatus('${w.id}','REVIEW')">Review</button>` : ""}
-        ${w.status === "REVIEW" ? `
-          <button onclick="updateWithdrawalStatus('${w.id}','APPROVED')">Approve</button>
-          <button onclick="updateWithdrawalStatus('${w.id}','REJECTED')">Reject</button>
-        ` : ""}
-        ${w.status === "APPROVED" ? `<div style="margin-top:8px;color:#fbbf24;font-size:13px;">Awaiting off-ramp settlement</div>` : ""}
+        ${
+  w.status === "AWAITING_PROVIDER"
+    ? `<div style="margin-top:8px;color:#fbbf24;font-size:13px;">
+         Waiting for an available off-ramp provider
+       </div>`
+    : ""
+}
+
+${
+  ["AWAITING_CRYPTO", "PROCESSING"].includes(w.status)
+    ? `<div style="margin-top:8px;color:#fbbf24;font-size:13px;">
+         Off-ramp processing
+       </div>`
+    : ""
+}
+
+${
+  ["SETTLED", "COMPLETED"].includes(w.status)
+    ? `<div style="margin-top:8px;color:#86efac;font-size:13px;">
+         Settlement confirmed
+       </div>`
+    : ""
+}
+
+${
+  ["FAILED", "REJECTED"].includes(w.status)
+    ? `<div style="margin-top:8px;color:#fca5a5;font-size:13px;">
+         Off-ramp unavailable or failed
+       </div>`
+    : ""
+}
       </div>
     `).join("");
   } catch (err) {

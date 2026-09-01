@@ -6240,8 +6240,8 @@ const bankWithdrawal = db.prepare(`
 
 if (
   bankWithdrawal &&
-  ["PENDING", "REVIEW", "APPROVED", "COMPLETED"].includes(
-    String(bankWithdrawal.status || "").toUpperCase()
+  withdrawalBlocksWalletClaim(
+    bankWithdrawal.status
   )
 ) {
   return res.status(409).json({
@@ -8401,6 +8401,56 @@ app.post("/api/circle/transactions", async (req, res) => {
   }
 });
 
+const ACTIVE_OFFRAMP_STATUSES = new Set([
+  "PENDING",
+  "REVIEW",
+  "APPROVED",
+  "AWAITING_PROVIDER",
+  "KYC_REQUIRED",
+  "REVIEW_REQUIRED",
+  "AWAITING_CRYPTO",
+  "PROCESSING",
+  "SETTLED",
+  "COMPLETED"
+]);
+
+function withdrawalBlocksWalletClaim(status) {
+  return ACTIVE_OFFRAMP_STATUSES.has(
+    String(status || "").trim().toUpperCase()
+  );
+}
+
+function maskBankAccount(value) {
+  const account = String(value || "").trim();
+
+  if (!account) return null;
+
+  const visible = account.slice(-4);
+
+  return `${"*".repeat(
+    Math.max(4, account.length - visible.length)
+  )}${visible}`;
+}
+
+function selectOffRampProvider({ country }) {
+  const normalizedCountry =
+    String(country || "").trim().toUpperCase();
+
+  /*
+    Provider adapters will be connected here.
+
+    Do not pretend that a provider order exists until
+    TROR has real provider credentials and receives
+    a successful provider API response.
+  */
+  return {
+    provider: null,
+    status: "AWAITING_PROVIDER",
+    providerStatus: "NOT_CONFIGURED",
+    country: normalizedCountry
+  };
+}
+
 app.post("/api/withdrawals", async (req, res) => {
   try {
     const {
@@ -8467,52 +8517,70 @@ if (String(claim.status || "").toUpperCase() === "CLAIMED") {
       });
     }
 
+const offRamp = selectOffRampProvider({
+  country
+});
+
+const destinationMasked =
+  maskBankAccount(accountNumber);
+
     const id = crypto.randomUUID();
 
     db.prepare(`
-      INSERT INTO withdrawals (
-        id,
-        workspace_id,
-        email,
-        amount,
-        country,
-        bank_name,
-        account_holder,
-        account_number,
-        claim_id,
-        status,
-        created_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id,
-      claim.workspace_id || null,
-      googleUser.email,
-      claim.amount,
-      country,
-      bankName,
-      accountHolder,
-      accountNumber,
-      String(claimId),
-      "PENDING",
-      new Date().toISOString()
-    );
+  INSERT INTO withdrawals (
+    id,
+    workspace_id,
+    email,
+    amount,
+    country,
+    bank_name,
+    account_holder,
+    account_number,
+    claim_id,
+    status,
+    created_at,
+    provider,
+    provider_status,
+    fiat_currency,
+    destination_masked
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`).run(
+  id,
+  claim.workspace_id || null,
+  googleUser.email,
+  claim.amount,
+  country,
+  bankName,
+  accountHolder,
+  accountNumber,
+  String(claimId),
+  offRamp.status,
+  new Date().toISOString(),
+  offRamp.provider,
+  offRamp.providerStatus,
+  null,
+  destinationMasked
+);
 
-    return res.json({
-      success: true,
-      withdrawalId: id,
-      status: "PENDING"
-    });
+return res.json({
+  success: true,
+  withdrawalId: id,
+  status: offRamp.status,
+  provider: offRamp.provider,
+  providerStatus: offRamp.providerStatus
+});
+
   } catch (err) {
     console.error(
       "Create claim withdrawal error:",
       err
     );
 
-    return res.status(403).json({
+    return res.status(500).json({
       success: false,
       error:
-        err.message ||
+        err?.message ||
         "Failed to create bank withdrawal request"
     });
   }
@@ -9405,9 +9473,9 @@ const bankWithdrawal = db.prepare(`
 
 if (
   bankWithdrawal &&
-  ["PENDING", "REVIEW", "APPROVED", "COMPLETED"].includes(
-    String(bankWithdrawal.status || "").toUpperCase()
-  )
+withdrawalBlocksWalletClaim(
+  bankWithdrawal.status
+)
 ) {
   return res.status(409).json({
     success: false,
