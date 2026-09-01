@@ -12106,6 +12106,12 @@ async function loadClaimWithdrawalStatus(claimId) {
     const statusEl = document.getElementById("claimStatus");
     const bankForm = document.getElementById("bankWithdrawForm");
 
+const web3ClaimButton =
+  document.getElementById("btnClaim");
+
+const circleClaimButton =
+  document.getElementById("btnClaimCircle");
+
     const statusOrder = [
       "PENDING",
       "REVIEW",
@@ -12114,6 +12120,41 @@ async function loadClaimWithdrawalStatus(claimId) {
     ];
 
     const currentStatusIndex = statusOrder.indexOf(data.status);
+
+const withdrawalBlocksWalletClaim = [
+  "PENDING",
+  "REVIEW",
+  "APPROVED",
+  "COMPLETED"
+].includes(
+  String(data.status || "").toUpperCase()
+);
+
+if (web3ClaimButton) {
+  web3ClaimButton.disabled =
+    withdrawalBlocksWalletClaim;
+
+  web3ClaimButton.style.opacity =
+    withdrawalBlocksWalletClaim ? "0.55" : "1";
+
+  web3ClaimButton.style.cursor =
+    withdrawalBlocksWalletClaim
+      ? "not-allowed"
+      : "pointer";
+}
+
+if (circleClaimButton) {
+  circleClaimButton.disabled =
+    withdrawalBlocksWalletClaim;
+
+  circleClaimButton.style.opacity =
+    withdrawalBlocksWalletClaim ? "0.55" : "1";
+
+  circleClaimButton.style.cursor =
+    withdrawalBlocksWalletClaim
+      ? "not-allowed"
+      : "pointer";
+}
 
 const formatStatusTime = (value) => {
   if (!value) return "";
