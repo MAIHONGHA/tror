@@ -12353,7 +12353,7 @@ async function loadClaimPage() {
         padding:40px 20px;
         max-width:560px;
         margin:auto;
-        color:white;
+        color:#0f172a;
         font-family:sans-serif;
       "
     >
@@ -12377,7 +12377,7 @@ async function loadClaimPage() {
           Verify your Gmail
         </h3>
 
-        <p style="color:#cbd5e1;line-height:1.5;">
+        <p style="color:#475569;line-height:1.5;">
           Sign in with the Google account that received
           this TROR claim.
         </p>
@@ -12416,7 +12416,7 @@ async function loadClaimPage() {
         <h3
           style="
             margin-bottom:8px;
-            color:#ffffff;
+            color:#0f172a;
             font-weight:800;
           "
         >
@@ -12425,7 +12425,7 @@ async function loadClaimPage() {
 
         <p
           style="
-            color:#e2e8f0;
+            color:#334155;
             margin-top:0;
             line-height:1.5;
           "
@@ -12567,13 +12567,13 @@ async function loadClaimPage() {
           border-radius:18px;
           border:1px solid rgba(255,255,255,0.12);
           background:rgba(255,255,255,0.08);
-          color:#ffffff;
+          color:#0f172a;
         "
       >
         <h3
           style="
             margin-top:0;
-            color:#ffffff;
+            color:#0f172a;
           "
         >
           Receive with Web3 Wallet
@@ -12581,7 +12581,7 @@ async function loadClaimPage() {
 
         <p
           style="
-            color:#e2e8f0;
+            color:#475569;
             line-height:1.5;
           "
         >
@@ -12638,7 +12638,7 @@ async function loadClaimPage() {
           style="
             margin-top:0;
             margin-bottom:8px;
-            color:#ffffff;
+            color:#0f172a;
           "
         >
           Receive with Google / Circle
@@ -12649,7 +12649,7 @@ async function loadClaimPage() {
           style="
             margin-top:0;
             margin-bottom:16px;
-            color:#e2e8f0;
+            color:#475569;
             line-height:1.55;
           "
         >
@@ -12694,7 +12694,7 @@ async function loadClaimPage() {
           style="
             margin-top:14px;
             margin-bottom:0;
-            color:#e2e8f0;
+            color:#334155;
             line-height:1.5;
           "
         ></p>
@@ -12710,13 +12710,13 @@ async function loadClaimPage() {
     border-radius:18px;
     border:1px solid rgba(255,255,255,0.12);
     background:rgba(255,255,255,0.08);
-    color:#ffffff;
+    color:#0f172a;
   "
 >
   <h3
     style="
       margin-top:0;
-      color:#ffffff;
+      color:#0f172a;
     "
   >
     Withdraw to Bank
