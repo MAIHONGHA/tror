@@ -738,6 +738,70 @@ try {
   `).run();
 } catch {}
 
+// Off-ramp provider fields
+try {
+  db.prepare(`
+    ALTER TABLE withdrawals
+    ADD COLUMN provider TEXT
+  `).run();
+} catch {}
+
+try {
+  db.prepare(`
+    ALTER TABLE withdrawals
+    ADD COLUMN provider_order_id TEXT
+  `).run();
+} catch {}
+
+try {
+  db.prepare(`
+    ALTER TABLE withdrawals
+    ADD COLUMN provider_status TEXT
+  `).run();
+} catch {}
+
+try {
+  db.prepare(`
+    ALTER TABLE withdrawals
+    ADD COLUMN provider_reference TEXT
+  `).run();
+} catch {}
+
+try {
+  db.prepare(`
+    ALTER TABLE withdrawals
+    ADD COLUMN fiat_currency TEXT
+  `).run();
+} catch {}
+
+try {
+  db.prepare(`
+    ALTER TABLE withdrawals
+    ADD COLUMN destination_masked TEXT
+  `).run();
+} catch {}
+
+try {
+  db.prepare(`
+    ALTER TABLE withdrawals
+    ADD COLUMN processing_at TEXT
+  `).run();
+} catch {}
+
+try {
+  db.prepare(`
+    ALTER TABLE withdrawals
+    ADD COLUMN settled_at TEXT
+  `).run();
+} catch {}
+
+try {
+  db.prepare(`
+    ALTER TABLE withdrawals
+    ADD COLUMN failed_at TEXT
+  `).run();
+} catch {}
+
 db.prepare(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_withdrawals_claim_id
   ON withdrawals(claim_id)
