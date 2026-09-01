@@ -12357,7 +12357,7 @@ async function loadClaimPage() {
         font-family:sans-serif;
       "
     >
-      <h2 style="margin-bottom:8px;">
+      <h2 style="margin-bottom:8px;color:#0f172a;">
         Claim your USDC
       </h2>
 
@@ -12373,7 +12373,7 @@ async function loadClaimPage() {
           background:rgba(255,255,255,0.08);
         "
       >
-        <h3 style="margin-top:0;">
+        <h3 style="margin-top:0;color:#0f172a;">
           Verify your Gmail
         </h3>
 
