@@ -6167,6 +6167,26 @@ app.post(
         });
       }
 
+const bankWithdrawal = db.prepare(`
+  SELECT id, status
+  FROM withdrawals
+  WHERE claim_id = ?
+  LIMIT 1
+`).get(String(req.params.id));
+
+if (
+  bankWithdrawal &&
+  ["PENDING", "REVIEW", "APPROVED", "COMPLETED"].includes(
+    String(bankWithdrawal.status || "").toUpperCase()
+  )
+) {
+  return res.status(409).json({
+    success: false,
+    error:
+      "This claim already has an active bank withdrawal request."
+  });
+}
+
       const recipientEmail =
         String(
           googleUser.email || ""
@@ -8317,78 +8337,121 @@ app.post("/api/circle/transactions", async (req, res) => {
   }
 });
 
-app.post("/api/withdrawals", (req, res) => {
-  const {
-    workspaceId,
-    email,
-    amount,
-    country,
-    bankName,
-    accountHolder,
-    accountNumber,
-    claimId
-  } = req.body;
-
-  const id = crypto.randomUUID();
-
-if (!workspaceId) {
-  return res.status(400).json({
-    error: "Workspace is required"
-  });
-}
-
-if (!claimId) {
-  return res.status(409).json({
-    error: "Missing claimId"
-  });
-}
-
-const existing = db.prepare(`
-  SELECT id
-  FROM withdrawals
-  WHERE claim_id = ?
-    AND workspace_id = ?
-`).get(claimId, workspaceId);
-
-if (existing) {
-  return res.status(400).json({
-    error: "This claim has already been withdrawn."
-  });
-}
-
-  db.prepare(`
-    INSERT INTO withdrawals (
-      id,
-      workspace_id,
-      email,
-      amount,
+app.post("/api/withdrawals", async (req, res) => {
+  try {
+    const {
+      googleAccessToken,
       country,
-      bank_name,
-      account_holder,
-      account_number,
-      claim_id,
-      status,
-      created_at
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    id,
-    workspaceId,
-    email,
-    amount,
-    country,
-    bankName,
-    accountHolder,
-    accountNumber,
-    claimId,
-    "PENDING",
-    new Date().toISOString()
-  );
+      bankName,
+      accountHolder,
+      accountNumber,
+      claimId
+    } = req.body;
 
-  res.json({
-    success: true,
-    withdrawalId: id
+    if (!claimId) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing claimId"
+      });
+    }
+
+    if (!googleAccessToken) {
+      return res.status(403).json({
+        success: false,
+        error: "Google verification is required"
+      });
+    }
+
+    const { claim, googleUser } =
+      await verifyClaimRecipient(
+        claimId,
+        googleAccessToken
+      );
+
+if (String(claim.status || "").toUpperCase() === "CLAIMED") {
+  return res.status(409).json({
+    success: false,
+    error:
+      "This claim has already been claimed to a wallet."
   });
+}
+
+    if (
+      !country ||
+      !bankName ||
+      !accountHolder ||
+      !accountNumber
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "Bank information is required"
+      });
+    }
+
+    const existing = db.prepare(`
+      SELECT id
+      FROM withdrawals
+      WHERE claim_id = ?
+      LIMIT 1
+    `).get(String(claimId));
+
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        error:
+          "This claim already has a bank withdrawal request."
+      });
+    }
+
+    const id = crypto.randomUUID();
+
+    db.prepare(`
+      INSERT INTO withdrawals (
+        id,
+        workspace_id,
+        email,
+        amount,
+        country,
+        bank_name,
+        account_holder,
+        account_number,
+        claim_id,
+        status,
+        created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      claim.workspace_id || null,
+      googleUser.email,
+      claim.amount,
+      country,
+      bankName,
+      accountHolder,
+      accountNumber,
+      String(claimId),
+      "PENDING",
+      new Date().toISOString()
+    );
+
+    return res.json({
+      success: true,
+      withdrawalId: id,
+      status: "PENDING"
+    });
+  } catch (err) {
+    console.error(
+      "Create claim withdrawal error:",
+      err
+    );
+
+    return res.status(403).json({
+      success: false,
+      error:
+        err.message ||
+        "Failed to create bank withdrawal request"
+    });
+  }
 });
 
 app.get("/api/withdrawals/claim/:claimId", (req, res) => {
@@ -9260,6 +9323,26 @@ app.post("/api/claims/:id/claim", async (req, res) => {
         error: "Claim already claimed"
       });
     }
+
+const bankWithdrawal = db.prepare(`
+  SELECT id, status
+  FROM withdrawals
+  WHERE claim_id = ?
+  LIMIT 1
+`).get(String(id));
+
+if (
+  bankWithdrawal &&
+  ["PENDING", "REVIEW", "APPROVED", "COMPLETED"].includes(
+    String(bankWithdrawal.status || "").toUpperCase()
+  )
+) {
+  return res.status(409).json({
+    success: false,
+    error:
+      "This claim already has an active bank withdrawal request."
+  });
+}
 
     const amount =
       Number(claim.amount);

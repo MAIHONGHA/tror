@@ -13611,6 +13611,18 @@ if (!confirmResult?.success) {
   document.getElementById(
     "btnRequestWithdraw"
   ).onclick = async () => {
+    const googleAccessToken =
+  localStorage.getItem("googleToken");
+
+  if (!googleAccessToken) {
+  document.getElementById(
+    "claimStatus"
+  ).innerText =
+    "Please verify your Gmail first.";
+
+  return;
+}
+
     if (!googleVerified) {
       document.getElementById(
         "claimStatus"
@@ -13656,22 +13668,12 @@ if (!confirmResult?.success) {
 
     try {
 
-const currentWorkspace = getCurrentWorkspace();
-
-if (!currentWorkspace?.id) {
-  throw new Error("Please select a workspace.");
-}
-
       const result = await api(
         "/api/withdrawals",
         {
           method: "POST",
           body: JSON.stringify({
-            workspaceId: currentWorkspace.id,
-            email:
-              claimData?.recipientEmail || "",
-            amount:
-              claimData?.amount || 0,
+            googleAccessToken,
             country,
             bankName,
             accountHolder: holder,
