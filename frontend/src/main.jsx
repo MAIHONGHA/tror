@@ -14817,7 +14817,7 @@ if (!currentWorkspace?.id) {
           <button onclick="updateWithdrawalStatus('${w.id}','APPROVED')">Approve</button>
           <button onclick="updateWithdrawalStatus('${w.id}','REJECTED')">Reject</button>
         ` : ""}
-        ${w.status === "APPROVED" ? `<button onclick="updateWithdrawalStatus('${w.id}','COMPLETED')">Complete</button>` : ""}
+        ${w.status === "APPROVED" ? `<div style="margin-top:8px;color:#fbbf24;font-size:13px;">Awaiting off-ramp settlement</div>` : ""}
       </div>
     `).join("");
   } catch (err) {
