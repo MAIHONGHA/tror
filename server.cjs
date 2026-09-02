@@ -3523,10 +3523,21 @@ app.post("/api/workspaces", (req, res) => {
     }
 
     const user = db.prepare(`
-      SELECT *
-      FROM users
-      WHERE lower(primary_wallet_address) = ?
-    `).get(walletAddress);
+  SELECT DISTINCT u.*
+  FROM users u
+  LEFT JOIN user_wallets uw
+    ON uw.user_id = u.id
+  WHERE
+    lower(u.primary_wallet_address) = ?
+    OR (
+      lower(uw.address) = ?
+      AND uw.is_active = 1
+    )
+  LIMIT 1
+`).get(
+  walletAddress,
+  walletAddress
+);
 
     if (!user) {
       return res.status(404).json({

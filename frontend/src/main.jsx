@@ -6914,24 +6914,22 @@ if (!currentWorkspace?.id) {
 }
 
   try {
-    const appKitAccount = getAccount(wagmiAdapter.wagmiConfig);
-    const appKitWallet = appKitAccount?.address || null;
+    const paymentWallet =
+  getActivePaymentWallet();
 
-    const circleWallet =
-      circleWalletEl?.textContent &&
-      circleWalletEl.textContent.startsWith("0x")
-        ? circleWalletEl.textContent.trim()
-        : null;
+if (!paymentWallet?.address) {
+  setStatus(
+    "Please connect an active Web3 wallet or Circle Wallet before creating invoice.",
+    "error"
+  );
+  return;
+}
 
-    const recipientAddress =
-      recipientEl.value && recipientEl.value.trim() !== ""
-        ? recipientEl.value.trim()
-        : (metamaskWallet || appKitWallet || circleWallet);
-
-    if (!recipientAddress) {
-      setStatus("Please connect MetaMask or Circle Wallet before creating invoice.", "error");
-      return;
-    }
+const recipientAddress =
+  recipientEl.value &&
+  recipientEl.value.trim() !== ""
+    ? recipientEl.value.trim()
+    : paymentWallet.address;
 
     const recipientEmail = document.getElementById("invoiceEmail").value;
 
@@ -6949,7 +6947,11 @@ if (!currentWorkspace?.id) {
     // =========================
     // CASE 1: MetaMask create invoice
     // =========================
-    if (metamaskWallet && window.ethereum) {
+    if (
+  paymentWallet.type === "web3" &&
+  paymentWallet.source === "metamask" &&
+  window.ethereum
+) {
   setStatus("Checking Arc Testnet network...");
 
   await switchArc();
@@ -7004,7 +7006,10 @@ if (!currentWorkspace?.id) {
       body.onchainId = onchainId;
     }
 
-else if (appKitWallet) {
+else if (
+  paymentWallet.type === "web3" &&
+  paymentWallet.source === "appkit"
+) {
   setStatus("AppKit: creating invoice on contract...");
 
   const nextId = await readContract(wagmiAdapter.wagmiConfig, {
@@ -7033,7 +7038,7 @@ else if (appKitWallet) {
     // =========================
     // CASE 2: Circle create invoice
     // =========================
-    else if (circleWallet) {
+    else if (paymentWallet.type === "circle") {
       const cfg = await api("/api/circle/config");
       const appId = cfg?.config?.circleAppId;
 
@@ -7909,23 +7914,11 @@ console.log("LOADING WORKSPACES FOR:", walletAddress);
 }
 
 async function createBusinessWorkspace() {
-  const appKitAccount = getAccount(
-    wagmiAdapter.wagmiConfig
-  );
+  const paymentWallet =
+  getActivePaymentWallet();
 
-  const appKitWallet =
-    appKitAccount?.address || null;
-
-  const circleWallet =
-    circleWalletEl?.textContent &&
-    circleWalletEl.textContent.trim().startsWith("0x")
-      ? circleWalletEl.textContent.trim()
-      : null;
-
-  const wallet =
-    metamaskWallet ||
-    appKitWallet ||
-    circleWallet;
+const wallet =
+  paymentWallet?.address || null;
 
   if (!wallet) {
     alert(

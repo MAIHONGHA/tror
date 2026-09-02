@@ -705,7 +705,7 @@ circleEncryptionKey =
         },
 
         body: JSON.stringify({
-          circleUserToken,
+          userToken: circleUserToken,
 
           walletId:
             circleWallet.walletId,
@@ -779,7 +779,7 @@ circleEncryptionKey =
         },
 
         body: JSON.stringify({
-          circleUserToken
+          userToken: circleUserToken
         })
       }
     );
@@ -831,7 +831,7 @@ circleEncryptionKey =
         },
 
         body: JSON.stringify({
-          circleUserToken,
+          userToken: circleUserToken,
 
           walletId:
             circleWallet.walletId,
@@ -903,7 +903,7 @@ circleEncryptionKey =
           },
 
           body: JSON.stringify({
-            circleUserToken
+            userToken: circleUserToken
           })
         }
       );
