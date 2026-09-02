@@ -16330,8 +16330,28 @@ document
   ?.classList.add("hidden");
 
 // Normal Connect flow -> stay on Dashboard.
-// Invoice payment flow -> keep invoice page open.
-if (!isInvoicePaymentMode()) {
+// Invoice payment flow -> restore and reopen invoice.
+if (isInvoicePaymentMode()) {
+  try {
+    await restoreInvoiceAfterConnect();
+
+    setStatus(
+      "Web3 wallet connected. Ready to pay invoice.",
+      "success"
+    );
+  } catch (err) {
+    console.error(
+      "Restore invoice after Web3 connect failed:",
+      err
+    );
+
+    setStatus(
+      err?.message ||
+        "Wallet connected, but invoice could not be reopened.",
+      "error"
+    );
+  }
+} else {
   showTab("dashboard");
   updateTopbarTitle("dashboard");
   window.location.hash = "dashboard";
