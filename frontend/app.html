@@ -29,6 +29,7 @@
 
         <div class="sidebar-menu">
           <a href="#dashboard" data-tab="dashboard">Dashboard</a>
+          <a href="#move-money" data-tab="move-money">Move Money</a>
           <a href="#invoices" data-tab="invoices">Invoices</a>
           <a href="#customers" data-tab="customers">Customers</a>
           <a href="#gmail-claim" data-tab="gmail-claim">Gmail Claim</a>
@@ -328,6 +329,77 @@
           </div>
         </section>
 
+
+        <section id="move-money" class="panel app-section hidden-section">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Money Router</p>
+              <h2>Move Money</h2>
+              <p class="muted">
+                Use the existing TROR USDC rail for wallet transfers, or discover a provider-hosted fiat route when available.
+              </p>
+            </div>
+          </div>
+
+          <div class="split-grid" style="margin-top:20px;">
+            <div class="mini-box">
+              <span>Add Money</span>
+              <h3 style="margin:8px 0;">Fiat → USDC</h3>
+              <p class="muted">
+                TROR selects a provider route. KYC and fiat payment details stay with the provider.
+              </p>
+
+              <label for="moveMoneyAddAmount">Fiat Amount</label>
+              <input id="moveMoneyAddAmount" type="number" min="0" step="0.01" placeholder="100" />
+
+              <label for="moveMoneyAddCurrency">Fiat Currency</label>
+              <input id="moveMoneyAddCurrency" value="USD" maxlength="3" placeholder="USD" />
+
+              <label for="moveMoneyAddCountry">Country</label>
+              <input id="moveMoneyAddCountry" value="VN" maxlength="2" placeholder="VN" />
+
+              <button id="btnMoveMoneyAddFiat" type="button" style="margin-top:12px;">
+                Find Fiat Route
+              </button>
+            </div>
+
+            <div class="mini-box">
+              <span>Send</span>
+              <h3 style="margin:8px 0;">USDC → Wallet</h3>
+              <p class="muted">
+                Uses the active Web3 or Circle Wallet and the existing TROR USDC transfer rail.
+              </p>
+              <button id="btnMoveMoneySendUsdc" type="button">Send USDC</button>
+            </div>
+
+            <div class="mini-box">
+              <span>Withdraw</span>
+              <h3 style="margin:8px 0;">USDC → Bank</h3>
+              <p class="muted">
+                TROR discovers an off-ramp route. Bank/KYC data is entered on the provider-hosted flow, not in TROR Core.
+              </p>
+
+              <label for="moveMoneyWithdrawAmount">USDC Amount</label>
+              <input id="moveMoneyWithdrawAmount" type="number" min="0" step="0.000001" placeholder="25" />
+
+              <label for="moveMoneyWithdrawCurrency">Receive Currency</label>
+              <input id="moveMoneyWithdrawCurrency" value="VND" maxlength="3" placeholder="VND" />
+
+              <label for="moveMoneyWithdrawCountry">Country</label>
+              <input id="moveMoneyWithdrawCountry" value="VN" maxlength="2" placeholder="VN" />
+
+              <button id="btnMoveMoneyWithdrawBank" type="button" style="margin-top:12px;">
+                Find Bank Route
+              </button>
+            </div>
+          </div>
+
+          <div id="moveMoneyStatus" class="mini-box" style="margin-top:20px;">
+            <span>Status</span>
+            <div style="margin-top:8px;">Ready to route a transfer.</div>
+          </div>
+        </section>
+
         <section id="invoices" class="panel app-section hidden-section">
           <div class="mini-box" style="margin-bottom:24px;">
             <p class="eyebrow">AI</p>
@@ -409,7 +481,7 @@
           <input id="claimAmount" placeholder="Amount USDC" />
           <textarea id="claimMessage" placeholder="Message"></textarea>
           <button id="btnSendClaimEmail">Send Claim Email</button>
-          <button onclick="openCardPayment()">💳 Send Payment</button>
+          <button id="btnOpenMoveMoneyFromClaim" type="button">Fiat / Card via Move Money</button>
           <pre id="claimResult"></pre>
         </section>
 

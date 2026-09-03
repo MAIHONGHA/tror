@@ -130,6 +130,7 @@ window.testTrorGasExecutor =
 function updateTopbarTitle(tabId) {
   const titles = {
     dashboard:    "Dashboard",
+    "move-money": "Move Money",
     invoices:     "Invoices",
     customers:    "Customers",
     "gmail-claim":"Gmail Claim",
@@ -13828,6 +13829,199 @@ if (!confirmResult?.success) {
 }
   };
 }
+
+
+/* =========================
+   MOVE MONEY — MONEY ROUTER
+
+   Provider-neutral routing only.
+   TROR does not collect raw card credentials or bank-account
+   credentials for this general Move Money flow.
+========================= */
+
+function setMoveMoneyStatus(message, type = "") {
+  const el = document.getElementById("moveMoneyStatus");
+
+  if (el) {
+    el.innerHTML = `
+      <span>Status</span>
+      <div style="margin-top:8px;">${escapeHtml(message)}</div>
+    `;
+  }
+
+  if (message) {
+    setStatus(message, type);
+  }
+}
+
+function normalizeMoveMoneyCode(value, maxLength) {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z]/g, "")
+    .slice(0, maxLength);
+}
+
+async function requestTrorMoneyRoute(direction) {
+  const activeWallet = getActivePaymentWallet();
+  const workspaceId = getCurrentWorkspace()?.id || null;
+
+  if (!activeWallet?.address) {
+    throw new Error(
+      "Connect a Web3 or Circle Wallet before requesting a fiat route."
+    );
+  }
+
+  if (!workspaceId) {
+    throw new Error("Select a TROR workspace first.");
+  }
+
+  const isFiatIn = direction === "FIAT_IN";
+
+  const amountEl = document.getElementById(
+    isFiatIn
+      ? "moveMoneyAddAmount"
+      : "moveMoneyWithdrawAmount"
+  );
+
+  const currencyEl = document.getElementById(
+    isFiatIn
+      ? "moveMoneyAddCurrency"
+      : "moveMoneyWithdrawCurrency"
+  );
+
+  const countryEl = document.getElementById(
+    isFiatIn
+      ? "moveMoneyAddCountry"
+      : "moveMoneyWithdrawCountry"
+  );
+
+  const amount = Number(amountEl?.value || 0);
+  const fiatCurrency = normalizeMoveMoneyCode(
+    currencyEl?.value,
+    3
+  );
+  const country = normalizeMoveMoneyCode(
+    countryEl?.value,
+    2
+  );
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Enter an amount greater than 0.");
+  }
+
+  if (fiatCurrency.length !== 3) {
+    throw new Error("Enter a 3-letter fiat currency code, for example USD or VND.");
+  }
+
+  if (country.length !== 2) {
+    throw new Error("Enter a 2-letter country code, for example VN or US.");
+  }
+
+  return api("/api/money/routes", {
+    method: "POST",
+    body: JSON.stringify({
+      direction,
+      asset: "USDC",
+      amount,
+      country,
+      fiatCurrency,
+      walletType: activeWallet.type || null,
+      walletAddress: activeWallet.address,
+      workspaceId
+    })
+  });
+}
+
+window.requestTrorMoneyRoute = requestTrorMoneyRoute;
+
+document
+  .getElementById("btnMoveMoneySendUsdc")
+  ?.addEventListener("click", () => {
+    const activeWallet = getActivePaymentWallet();
+
+    if (!activeWallet) {
+      setMoveMoneyStatus(
+        "Connect a Web3 or Circle Wallet before sending USDC.",
+        "error"
+      );
+      return;
+    }
+
+    const sendButton = document.getElementById("btnWalletSend");
+
+    if (!sendButton) {
+      setMoveMoneyStatus(
+        "The TROR USDC send rail is unavailable.",
+        "error"
+      );
+      return;
+    }
+
+    sendButton.click();
+  });
+
+document
+  .getElementById("btnMoveMoneyAddFiat")
+  ?.addEventListener("click", async () => {
+    try {
+      setMoveMoneyStatus("Checking available fiat-in routes...");
+
+      const result = await requestTrorMoneyRoute("FIAT_IN");
+
+      if (!result?.available) {
+        setMoveMoneyStatus(
+          result?.message ||
+            "No fiat-in provider is configured for this route yet."
+        );
+        return;
+      }
+
+      setMoveMoneyStatus(
+        `Route available through ${result.provider || "provider"}.`
+      );
+    } catch (error) {
+      setMoveMoneyStatus(
+        error?.message || "Unable to discover a fiat-in route.",
+        "error"
+      );
+    }
+  });
+
+document
+  .getElementById("btnMoveMoneyWithdrawBank")
+  ?.addEventListener("click", async () => {
+    try {
+      setMoveMoneyStatus("Checking available fiat-out routes...");
+
+      const result = await requestTrorMoneyRoute("FIAT_OUT");
+
+      if (!result?.available) {
+        setMoveMoneyStatus(
+          result?.message ||
+            "No fiat-out provider is configured for this route yet."
+        );
+        return;
+      }
+
+      setMoveMoneyStatus(
+        `Route available through ${result.provider || "provider"}.`
+      );
+    } catch (error) {
+      setMoveMoneyStatus(
+        error?.message || "Unable to discover a fiat-out route.",
+        "error"
+      );
+    }
+  });
+
+document
+  .getElementById("btnOpenMoveMoneyFromClaim")
+  ?.addEventListener("click", () => {
+    window.location.hash = "move-money";
+    showTab("move-money");
+    updateTopbarTitle("move-money");
+  });
 
 /* =========================
    EVENT LISTENERS + INIT

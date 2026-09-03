@@ -567,6 +567,37 @@ CREATE INDEX IF NOT EXISTS idx_withdrawals_workspace_id
 ON withdrawals(workspace_id)
 `).run();
 
+db.prepare(`
+CREATE TABLE IF NOT EXISTS money_orders (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  direction TEXT NOT NULL,
+  asset TEXT NOT NULL DEFAULT 'USDC',
+  amount REAL NOT NULL,
+  country TEXT NOT NULL,
+  fiat_currency TEXT NOT NULL,
+  wallet_type TEXT,
+  wallet_address TEXT,
+  provider TEXT,
+  provider_order_id TEXT,
+  provider_status TEXT,
+  status TEXT NOT NULL,
+  checkout_url TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+)
+`).run();
+
+db.prepare(`
+CREATE INDEX IF NOT EXISTS idx_money_orders_workspace_id
+ON money_orders(workspace_id)
+`).run();
+
+db.prepare(`
+CREATE INDEX IF NOT EXISTS idx_money_orders_provider_order_id
+ON money_orders(provider_order_id)
+`).run();
+
 // employees master table
 db.prepare(`
   CREATE TABLE IF NOT EXISTS employees (
@@ -8461,6 +8492,267 @@ function selectOffRampProvider({ country }) {
     country: normalizedCountry
   };
 }
+
+
+/* =========================
+   MONEY ROUTER
+
+   Provider-neutral fiat route discovery.
+   Provider-hosted checkout/KYC is required for fiat rails.
+   TROR never invents a provider order when no provider is configured.
+========================= */
+
+const MONEY_DIRECTIONS = new Set([
+  "FIAT_IN",
+  "FIAT_OUT"
+]);
+
+function normalizeMoneyCode(value, length) {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z]/g, "")
+    .slice(0, length);
+}
+
+function selectMoneyProvider({
+  direction,
+  country,
+  fiatCurrency
+}) {
+  const normalizedDirection =
+    String(direction || "").trim().toUpperCase();
+
+  const normalizedCountry =
+    normalizeMoneyCode(country, 2);
+
+  const normalizedFiatCurrency =
+    normalizeMoneyCode(fiatCurrency, 3);
+
+  /*
+    Connect audited provider adapters here.
+
+    Expected adapter result when configured:
+    {
+      available: true,
+      provider: "provider-key",
+      providerStatus: "AVAILABLE",
+      checkoutUrl: "https://provider-hosted.example/...",
+      requiresKyc: true
+    }
+
+    Do not put card data, bank credentials or KYC documents
+    through TROR Core when a provider-hosted flow is available.
+  */
+  return {
+    available: false,
+    provider: null,
+    status: "AWAITING_PROVIDER",
+    providerStatus: "NOT_CONFIGURED",
+    checkoutUrl: null,
+    requiresKyc: null,
+    providerHostedFlow: true,
+    direction: normalizedDirection,
+    country: normalizedCountry,
+    fiatCurrency: normalizedFiatCurrency
+  };
+}
+
+function validateMoneyRouteRequest(body = {}) {
+  const direction =
+    String(body.direction || "").trim().toUpperCase();
+
+  const asset =
+    String(body.asset || "USDC").trim().toUpperCase();
+
+  const amount = Number(body.amount);
+  const country = normalizeMoneyCode(body.country, 2);
+  const fiatCurrency = normalizeMoneyCode(
+    body.fiatCurrency,
+    3
+  );
+
+  const workspaceId =
+    String(body.workspaceId || "").trim();
+
+  const walletType =
+    String(body.walletType || "").trim().toLowerCase();
+
+  const walletAddress =
+    String(body.walletAddress || "").trim();
+
+  if (!MONEY_DIRECTIONS.has(direction)) {
+    throw new Error("Invalid money route direction");
+  }
+
+  if (asset !== "USDC") {
+    throw new Error("TROR Money Router currently supports USDC only");
+  }
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Amount must be greater than 0");
+  }
+
+  if (country.length !== 2) {
+    throw new Error("Country must use a 2-letter code");
+  }
+
+  if (fiatCurrency.length !== 3) {
+    throw new Error("Fiat currency must use a 3-letter code");
+  }
+
+  if (!workspaceId) {
+    throw new Error("Workspace is required");
+  }
+
+  const workspace = db.prepare(`
+    SELECT id
+    FROM workspaces
+    WHERE id = ?
+      AND status = 'ACTIVE'
+    LIMIT 1
+  `).get(workspaceId);
+
+  if (!workspace) {
+    throw new Error("Active workspace was not found");
+  }
+
+  if (!walletAddress || !ethers.isAddress(walletAddress)) {
+    throw new Error("A valid active wallet address is required");
+  }
+
+  return {
+    direction,
+    asset,
+    amount,
+    country,
+    fiatCurrency,
+    workspaceId,
+    walletType: walletType || null,
+    walletAddress
+  };
+}
+
+function discoverMoneyRoute(input) {
+  const providerRoute = selectMoneyProvider(input);
+
+  return {
+    success: true,
+    available: Boolean(providerRoute.available),
+    direction: input.direction,
+    asset: input.asset,
+    amount: input.amount,
+    country: input.country,
+    fiatCurrency: input.fiatCurrency,
+    walletType: input.walletType,
+    walletAddress: input.walletAddress,
+    workspaceId: input.workspaceId,
+    provider: providerRoute.provider,
+    status: providerRoute.status,
+    providerStatus: providerRoute.providerStatus,
+    checkoutUrl: providerRoute.checkoutUrl,
+    requiresKyc: providerRoute.requiresKyc,
+    providerHostedFlow: providerRoute.providerHostedFlow,
+    message: providerRoute.available
+      ? "A provider route is available."
+      : "No fiat provider is configured for this route yet."
+  };
+}
+
+app.post("/api/money/routes", (req, res) => {
+  try {
+    const input = validateMoneyRouteRequest(req.body);
+    return res.json(discoverMoneyRoute(input));
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      error: err?.message || "Failed to discover money route"
+    });
+  }
+});
+
+async function startMoneyProviderSession(req, res, direction) {
+  try {
+    const input = validateMoneyRouteRequest({
+      ...req.body,
+      direction
+    });
+
+    const route = discoverMoneyRoute(input);
+
+    if (!route.available || !route.provider) {
+      return res.status(503).json({
+        ...route,
+        code: "PROVIDER_NOT_CONFIGURED"
+      });
+    }
+
+    /*
+      Future provider adapter call goes here.
+      Only create a money_orders row after the provider confirms
+      a real hosted session/order and returns its identifier.
+    */
+    return res.status(501).json({
+      success: false,
+      code: "PROVIDER_ADAPTER_NOT_IMPLEMENTED",
+      error: "The selected provider adapter is not implemented yet."
+    });
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      error: err?.message || "Failed to start money provider session"
+    });
+  }
+}
+
+app.post("/api/money/fiat-in", (req, res) =>
+  startMoneyProviderSession(req, res, "FIAT_IN")
+);
+
+app.post("/api/money/fiat-out", (req, res) =>
+  startMoneyProviderSession(req, res, "FIAT_OUT")
+);
+
+app.get("/api/money/orders/:id", (req, res) => {
+  try {
+    const id = String(req.params.id || "").trim();
+    const workspaceId = String(
+      req.query.workspaceId || ""
+    ).trim();
+
+    if (!id || !workspaceId) {
+      return res.status(400).json({
+        success: false,
+        error: "Order ID and workspace are required"
+      });
+    }
+
+    const order = db.prepare(`
+      SELECT *
+      FROM money_orders
+      WHERE id = ?
+        AND workspace_id = ?
+      LIMIT 1
+    `).get(id, workspaceId);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        error: "Money order not found"
+      });
+    }
+
+    return res.json({
+      success: true,
+      order
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      error: err?.message || "Failed to load money order"
+    });
+  }
+});
 
 app.post("/api/withdrawals", async (req, res) => {
   try {
