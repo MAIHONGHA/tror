@@ -6409,7 +6409,16 @@ const claimReturnPath = localStorage.getItem("claimReturnPath");
 
 if (claimReturnPath) {
   localStorage.removeItem("claimReturnPath");
-  window.location.href = claimReturnPath;
+
+  // Backward-compatible normalization for an older saved /claim/:id path.
+  // Always resume via app.html locally so Vite loads the application entry,
+  // then the claim-page initializer restores the clean URL without reloading.
+  const legacyClaimMatch = String(claimReturnPath).match(/^\/claim\/([^?#]+)/);
+  const safeClaimReturnPath = legacyClaimMatch
+    ? `/app.html?claim=${encodeURIComponent(decodeURIComponent(legacyClaimMatch[1]))}`
+    : claimReturnPath;
+
+  window.location.href = safeClaimReturnPath;
   return;
 }
 
@@ -12471,6 +12480,7 @@ async function loadClaimPage() {
 
   let claimData = null;
   let googleVerified = false;
+  let isPaymentIntentChoiceClaim = false;
 
   document.body.innerHTML = `
     <div
@@ -12528,6 +12538,20 @@ async function loadClaimPage() {
           id="googleVerifyStatus"
           style="margin-top:14px;"
         ></p>
+      </div>
+
+      <!-- PAYMENT INTENT RECIPIENT CHOICE -->
+      <div
+        id="paymentIntentChoiceBox"
+        style="display:none;margin-top:28px;padding:20px;border-radius:18px;background:rgba(255,255,255,.72);border:1px solid rgba(0,0,0,.08);"
+      >
+        <h3 style="margin-top:0;color:#0f172a;">Choose how to receive</h3>
+        <p id="paymentIntentChoiceInfo" style="color:#475569;line-height:1.5;"></p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:16px;">
+          <button id="btnPaymentIntentChoiceBank" type="button" style="padding:14px 18px;border:none;border-radius:12px;cursor:pointer;font-weight:700;">🏦 Receive to Bank</button>
+          <button id="btnPaymentIntentChoiceUsdc" type="button" style="padding:14px 18px;border:none;border-radius:12px;cursor:pointer;font-weight:700;">◉ Receive as USDC</button>
+        </div>
+        <p style="margin-top:14px;font-size:12px;color:#64748b;">This step records your verified choice only. It does not contact a bank or transfer USDC yet.</p>
       </div>
 
             <!-- RECEIVE OPTIONS -->
@@ -12948,10 +12972,28 @@ async function loadClaimPage() {
       return;
     }
 
-    document.getElementById("claimInfo").innerText =
-      `You received ${claimData.amount} USDC`;
+    isPaymentIntentChoiceClaim =
+      String(claimData.claim_type || "").toUpperCase() ===
+      "PAYMENT_INTENT_CHOICE";
 
-    if (claimData.status === "CLAIMED") {
+    if (isPaymentIntentChoiceClaim) {
+      const displayCurrency = String(claimData.display_currency || "").toUpperCase();
+      document.querySelector("h2").textContent = "Choose how to receive";
+      document.getElementById("claimInfo").innerText =
+        `Transfer ready: ${claimData.amount} ${displayCurrency || "fiat"}`;
+
+      if (String(claimData.status || "").toUpperCase() === "CHOICE_RECORDED") {
+        document.getElementById("googleVerifyBox").style.display = "none";
+        document.getElementById("claimStatus").innerText =
+          "Your delivery choice has already been recorded.";
+        return;
+      }
+    } else {
+      document.getElementById("claimInfo").innerText =
+        `You received ${claimData.amount} USDC`;
+    }
+
+    if (!isPaymentIntentChoiceClaim && claimData.status === "CLAIMED") {
       document.getElementById(
         "googleVerifyBox"
       ).style.display = "none";
@@ -13008,9 +13050,17 @@ async function loadClaimPage() {
         "btnClaimGoogle"
       ).style.display = "none";
 
-      document.getElementById(
-        "receiveOptions"
-      ).style.display = "block";
+      if (isPaymentIntentChoiceClaim) {
+        document.getElementById("paymentIntentChoiceBox").style.display = "block";
+        const info = document.getElementById("paymentIntentChoiceInfo");
+        if (info) {
+          info.textContent = `Verified recipient: ${result.email}. Choose local bank or USDC.`;
+        }
+      } else {
+        document.getElementById(
+          "receiveOptions"
+        ).style.display = "block";
+      }
 
       return true;
     } catch (err) {
@@ -13038,9 +13088,13 @@ async function loadClaimPage() {
 
     if (verified) return;
 
+    // Preserve the claim through the Google OAuth redirect.
+    // Vite local dev does not serve /claim/:id as app.html on a full reload,
+    // so resume through app.html?claim=... and let loadClaimPage() restore
+    // the clean /claim/:id URL with history.replaceState().
     localStorage.setItem(
       "claimReturnPath",
-      window.location.pathname
+      `/app.html?claim=${encodeURIComponent(claimId)}`
     );
 
     await connectGoogleCircle();
@@ -13048,7 +13102,62 @@ async function loadClaimPage() {
 
   await verifyCurrentGoogleUser();
 
-  await loadClaimWithdrawalStatus(claimData.id);
+  if (!isPaymentIntentChoiceClaim) {
+    await loadClaimWithdrawalStatus(claimData.id);
+  }
+
+  let paymentIntentChoiceSubmitting = false;
+
+  const saveVerifiedPaymentIntentChoice = async (recipientChoice) => {
+    if (paymentIntentChoiceSubmitting) return;
+
+    const bankButton = document.getElementById("btnPaymentIntentChoiceBank");
+    const usdcButton = document.getElementById("btnPaymentIntentChoiceUsdc");
+
+    try {
+      if (!googleVerified) {
+        throw new Error("Verify the recipient Gmail account first.");
+      }
+
+      paymentIntentChoiceSubmitting = true;
+      if (bankButton) bankButton.disabled = true;
+      if (usdcButton) usdcButton.disabled = true;
+
+      const googleAccessToken = localStorage.getItem("googleToken");
+      if (!googleAccessToken) {
+        throw new Error("Google verification expired. Please verify Gmail again.");
+      }
+
+      const result = await api(
+        `/api/claims/${claimId}/payment-intent-choice`,
+        {
+          method: "POST",
+          body: JSON.stringify({ googleAccessToken, recipientChoice })
+        }
+      );
+
+      document.getElementById("paymentIntentChoiceBox").style.display = "none";
+      document.getElementById("claimStatus").innerText =
+        result?.message || "Recipient choice recorded.";
+    } catch (err) {
+      paymentIntentChoiceSubmitting = false;
+      if (bankButton) bankButton.disabled = false;
+      if (usdcButton) usdcButton.disabled = false;
+
+      document.getElementById("claimStatus").innerText =
+        err?.message || "Unable to record recipient choice.";
+    }
+  };
+
+  document.getElementById("btnPaymentIntentChoiceBank")?.addEventListener(
+    "click",
+    () => saveVerifiedPaymentIntentChoice("FIAT")
+  );
+
+  document.getElementById("btnPaymentIntentChoiceUsdc")?.addEventListener(
+    "click",
+    () => saveVerifiedPaymentIntentChoice("USDC")
+  );
 
   document.getElementById(
     "btnWalletOption"
@@ -13935,6 +14044,324 @@ async function requestTrorMoneyRoute(direction) {
 
 window.requestTrorMoneyRoute = requestTrorMoneyRoute;
 
+const TROR_COUNTRY_DEFAULT_CURRENCY = {
+  US: "USD", CA: "CAD", GB: "GBP", AU: "AUD", NZ: "NZD",
+  JP: "JPY", KR: "KRW", SG: "SGD", HK: "HKD", VN: "VND",
+  TH: "THB", PH: "PHP", ID: "IDR", MY: "MYR", IN: "INR",
+  AE: "AED", SA: "SAR", MX: "MXN", BR: "BRL", ZA: "ZAR",
+  CH: "CHF", FR: "EUR", DE: "EUR", IT: "EUR", ES: "EUR",
+  NL: "EUR", IE: "EUR", BE: "EUR", AT: "EUR", PT: "EUR",
+  PL: "PLN", SE: "SEK", NO: "NOK", DK: "DKK", TR: "TRY"
+};
+
+function setSelectValueIfAvailable(selectId, value) {
+  const select = document.getElementById(selectId);
+  if (!select || !value) return;
+
+  const hasOption = Array.from(select.options || []).some(
+    (option) => option.value === value
+  );
+
+  if (hasOption) select.value = value;
+}
+
+function syncSendMoneySenderCurrency() {
+  const country = normalizeMoveMoneyCode(
+    document.getElementById("sendMoneySenderCountry")?.value,
+    2
+  );
+  const currency = TROR_COUNTRY_DEFAULT_CURRENCY[country];
+  setSelectValueIfAvailable("sendMoneyCurrency", currency);
+}
+
+function syncSendMoneyRecipientCurrency() {
+  const country = normalizeMoveMoneyCode(
+    document.getElementById("sendMoneyRecipientCountry")?.value,
+    2
+  );
+  const currency = TROR_COUNTRY_DEFAULT_CURRENCY[country];
+  setSelectValueIfAvailable("sendMoneyReceiveCurrency", currency);
+}
+
+function syncSendMoneyReceiveMethodUI() {
+  const receiveMethod = String(
+    document.getElementById("sendMoneyReceiveMethod")?.value || "FIAT"
+  ).toUpperCase();
+  const wrap = document.getElementById("sendMoneyReceiveCurrencyWrap");
+  if (wrap) wrap.style.display = receiveMethod === "FIAT" ? "block" : "none";
+}
+
+document
+  .getElementById("sendMoneySenderCountry")
+  ?.addEventListener("change", syncSendMoneySenderCurrency);
+
+document
+  .getElementById("sendMoneyRecipientCountry")
+  ?.addEventListener("change", syncSendMoneyRecipientCurrency);
+
+document
+  .getElementById("sendMoneyReceiveMethod")
+  ?.addEventListener("change", syncSendMoneyReceiveMethodUI);
+
+syncSendMoneySenderCurrency();
+syncSendMoneyRecipientCurrency();
+syncSendMoneyReceiveMethodUI();
+
+let currentSendMoneyIntent = null;
+
+function getSendMoneyIntentStepText(status) {
+  const normalized = String(status || "").toUpperCase();
+
+  if (["READY_FOR_RECIPIENT", "RECIPIENT_SELECTED", "PROCESSING", "COMPLETED"].includes(normalized)) {
+    return "Sender payment funded";
+  }
+
+  if (["AWAITING_SENDER_PAYMENT", "FUNDED"].includes(normalized)) {
+    return "Sender payment in progress";
+  }
+
+  return "Provider / sender payment pending";
+}
+
+function buildRecipientClaimHref(claimId) {
+  const safeId = encodeURIComponent(String(claimId || "").trim());
+  if (!safeId) return "#";
+
+  // Vite dev server serves /claim/* through index.html, not app.html.
+  // Enter through app.html first so the TROR app bundle can detect ?claim=,
+  // then main.jsx rewrites the visible URL to /claim/:id.
+  if (window.location.port === "5173") {
+    return `/app.html?claim=${safeId}`;
+  }
+
+  return `/claim/${safeId}`;
+}
+
+function renderSendMoneyIntentResult(intent) {
+  const el = document.getElementById("sendMoneyIntentResult");
+  if (!el || !intent) return;
+
+  currentSendMoneyIntent = intent;
+
+  const preferredText =
+    intent.receiveMethod === "FIAT"
+      ? `${intent.receiveCurrency} to local bank`
+      : "USDC";
+
+  const recipientReady = intent.status === "READY_FOR_RECIPIENT";
+  const recipientSelected = intent.status === "RECIPIENT_SELECTED";
+  const choiceText =
+    intent.recipientChoice === "FIAT"
+      ? `${intent.receiveCurrency} to local bank`
+      : intent.recipientChoice === "USDC"
+        ? "USDC wallet"
+        : "Not selected yet";
+
+  const sandboxControls = intent.sandboxActionsAvailable
+    ? `
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(0,0,0,.08);">
+        <span>Local Sandbox Test</span>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+          ${!recipientReady && !recipientSelected ? `
+            <button id="btnSandboxFundPaymentIntent" type="button">Simulate funded</button>
+          ` : ""}
+          ${recipientReady ? `
+            <button id="btnSandboxSendRecipientClaim" type="button">Send recipient test claim</button>
+            ${intent.recipientClaimId ? `<a href="${buildRecipientClaimHref(intent.recipientClaimId)}" target="_blank" style="display:inline-flex;align-items:center;padding:9px 12px;border-radius:10px;text-decoration:none;font-weight:700;">Open recipient claim</a>` : ""}
+          ` : ""}
+        </div>
+        <div class="muted" style="margin-top:7px;font-size:12px;">
+          Test controls only. They do not collect fiat, send USDC, or contact a bank.
+        </div>
+      </div>
+    `
+    : "";
+
+  el.innerHTML = `
+    <div class="mini-box">
+      <span>Payment Intent</span>
+      <div style="margin-top:8px;"><b>${escapeHtml(
+        String(intent.sendAmount)
+      )} ${escapeHtml(intent.sendCurrency)}</b> → ${escapeHtml(
+        intent.recipientEmail
+      )}</div>
+      <div style="margin-top:6px;">Recipient: ${escapeHtml(
+        intent.recipientCountry
+      )} · Preferred: ${escapeHtml(preferredText)}</div>
+      <div style="margin-top:6px;">Settlement: USDC · Status: <b>${escapeHtml(
+        intent.status
+      )}</b></div>
+
+      <div style="margin-top:12px;padding:10px;border-radius:12px;background:rgba(255,255,255,.45);">
+        <div><b>1. Intent created</b> ✓</div>
+        <div style="margin-top:5px;"><b>2. ${escapeHtml(getSendMoneyIntentStepText(intent.status))}</b></div>
+        <div style="margin-top:5px;"><b>3. Recipient choice:</b> ${escapeHtml(choiceText)}</div>
+      </div>
+
+      ${recipientReady ? `
+        <div style="margin-top:12px;">
+          <b>Recipient can now choose:</b>
+          <div class="muted" style="margin-top:4px;">Send the verified recipient claim, then the recipient chooses local bank or USDC.</div>
+        </div>
+      ` : recipientSelected ? `
+        <div class="muted" style="margin-top:10px;">
+          Recipient selected ${escapeHtml(choiceText)}. Delivery has not started yet.
+        </div>
+      ` : `
+        <div class="muted" style="margin-top:10px;">
+          Recipient choice stays locked until sender funding is confirmed.
+        </div>
+      `}
+
+      ${sandboxControls}
+    </div>
+  `;
+
+  document
+    .getElementById("btnSandboxFundPaymentIntent")
+    ?.addEventListener("click", async () => {
+      try {
+        const workspaceId = getCurrentWorkspace()?.id || null;
+        if (!workspaceId || !currentSendMoneyIntent?.id) return;
+
+        setMoveMoneyStatus("Simulating funded state for local sandbox test...");
+
+        const result = await api(
+          `/api/money/payment-intents/${encodeURIComponent(currentSendMoneyIntent.id)}/sandbox/fund`,
+          {
+            method: "POST",
+            body: JSON.stringify({ workspaceId })
+          }
+        );
+
+        renderSendMoneyIntentResult(result?.intent);
+        setMoveMoneyStatus(result?.message || "Sandbox funded state recorded.");
+      } catch (error) {
+        setMoveMoneyStatus(error?.message || "Unable to simulate funding.", "error");
+      }
+    });
+
+  document
+    .getElementById("btnSandboxSendRecipientClaim")
+    ?.addEventListener("click", async () => {
+      try {
+        const workspaceId = getCurrentWorkspace()?.id || null;
+        if (!workspaceId || !currentSendMoneyIntent?.id) return;
+
+        setMoveMoneyStatus("Creating verified recipient test claim...");
+
+        const result = await api(
+          `/api/money/payment-intents/${encodeURIComponent(currentSendMoneyIntent.id)}/sandbox/send-recipient-claim`,
+          {
+            method: "POST",
+            body: JSON.stringify({ workspaceId })
+          }
+        );
+
+        renderSendMoneyIntentResult(result?.intent);
+
+        if (result?.claimLink) {
+          const currentOrigin = window.location.origin;
+          const localClaimLink = `${currentOrigin}${buildRecipientClaimHref(result.claimId)}`;
+          setMoveMoneyStatus(
+            result?.emailSent
+              ? `Recipient choice email sent. Local test link: ${localClaimLink}`
+              : `Recipient claim created. Open local test link: ${localClaimLink}`
+          );
+        } else {
+          setMoveMoneyStatus(result?.message || "Recipient claim created.");
+        }
+      } catch (error) {
+        setMoveMoneyStatus(
+          error?.message || "Unable to create recipient choice claim.",
+          "error"
+        );
+      }
+    });
+
+}
+
+document
+  .getElementById("btnCreateSendMoneyIntent")
+  ?.addEventListener("click", async () => {
+    try {
+      const workspaceId = getCurrentWorkspace()?.id || null;
+
+      if (!workspaceId) {
+        throw new Error("Select a TROR workspace first.");
+      }
+
+      const sendAmount = Number(
+        document.getElementById("sendMoneyAmount")?.value || 0
+      );
+      const sendCurrency = normalizeMoveMoneyCode(
+        document.getElementById("sendMoneyCurrency")?.value,
+        3
+      );
+      const senderCountry = normalizeMoveMoneyCode(
+        document.getElementById("sendMoneySenderCountry")?.value,
+        2
+      );
+      const recipientEmail = String(
+        document.getElementById("sendMoneyRecipientEmail")?.value || ""
+      ).trim();
+      const recipientCountry = normalizeMoveMoneyCode(
+        document.getElementById("sendMoneyRecipientCountry")?.value,
+        2
+      );
+      const receiveMethod = String(
+        document.getElementById("sendMoneyReceiveMethod")?.value || "FIAT"
+      ).toUpperCase();
+      const receiveCurrency = normalizeMoveMoneyCode(
+        document.getElementById("sendMoneyReceiveCurrency")?.value,
+        3
+      );
+
+      if (!Number.isFinite(sendAmount) || sendAmount <= 0) {
+        throw new Error("Enter an amount greater than 0.");
+      }
+      if (sendCurrency.length !== 3) {
+        throw new Error("Enter a 3-letter send currency, for example USD.");
+      }
+      if (senderCountry.length !== 2 || recipientCountry.length !== 2) {
+        throw new Error("Use 2-letter country codes, for example US and VN.");
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
+        throw new Error("Enter a valid recipient email.");
+      }
+      if (receiveMethod === "FIAT" && receiveCurrency.length !== 3) {
+        throw new Error("Enter a 3-letter receive currency, for example VND.");
+      }
+
+      setMoveMoneyStatus("Creating payment intent...");
+
+      const result = await api("/api/money/payment-intents", {
+        method: "POST",
+        body: JSON.stringify({
+          workspaceId,
+          senderCountry,
+          sendAmount,
+          sendCurrency,
+          recipientEmail,
+          recipientCountry,
+          receiveMethod,
+          receiveCurrency
+        })
+      });
+
+      renderSendMoneyIntentResult(result?.intent);
+      setMoveMoneyStatus(
+        result?.message ||
+          "Payment intent created. Provider routing is the next step."
+      );
+    } catch (error) {
+      setMoveMoneyStatus(
+        error?.message || "Unable to create payment intent.",
+        "error"
+      );
+    }
+  });
+
 document
   .getElementById("btnMoveMoneySendUsdc")
   ?.addEventListener("click", () => {
@@ -14635,9 +15062,10 @@ const isClaimRoute =
   window.location.pathname.startsWith("/claim/") ||
   new URLSearchParams(window.location.search).get("claim");
 
-if (isClaimRoute) {
-  loadClaimPage();
-} else {
+// Claim pages are already initialized once in the PAGE INIT block above.
+// Do not call loadClaimPage() a second time: duplicate initialization can
+// attach duplicate recipient-choice handlers and submit the same choice twice.
+if (!isClaimRoute) {
   showTab(window.location.hash.replace("#", "") || "dashboard");
 }
 

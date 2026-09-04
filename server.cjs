@@ -539,6 +539,24 @@ db.prepare(`
   ON claims(workspace_id)
 `).run();
 
+/* Payment-intent recipient choice claims are verification-only.
+   They never authorize wallet delivery or bank payout by themselves. */
+for (const columnSql of [
+  `ALTER TABLE claims ADD COLUMN payment_intent_id TEXT`,
+  `ALTER TABLE claims ADD COLUMN claim_type TEXT`,
+  `ALTER TABLE claims ADD COLUMN display_currency TEXT`,
+  `ALTER TABLE claims ADD COLUMN choice_recorded_at TEXT`
+]) {
+  try {
+    db.prepare(columnSql).run();
+  } catch {}
+}
+
+db.prepare(`
+  CREATE INDEX IF NOT EXISTS idx_claims_payment_intent_id
+  ON claims(payment_intent_id)
+`).run();
+
 db.prepare(`
 CREATE TABLE IF NOT EXISTS withdrawals (
     id TEXT PRIMARY KEY,
@@ -597,6 +615,62 @@ db.prepare(`
 CREATE INDEX IF NOT EXISTS idx_money_orders_provider_order_id
 ON money_orders(provider_order_id)
 `).run();
+
+
+/* =========================
+   SEND MONEY PAYMENT INTENTS
+
+   A payment intent records user intent only.
+   It does not mean fiat was collected or USDC was settled.
+========================= */
+
+db.prepare(`
+CREATE TABLE IF NOT EXISTS payment_intents (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  sender_country TEXT NOT NULL,
+  send_amount REAL NOT NULL,
+  send_currency TEXT NOT NULL,
+  recipient_email TEXT NOT NULL,
+  recipient_country TEXT NOT NULL,
+  receive_method TEXT NOT NULL,
+  receive_currency TEXT,
+  settlement_asset TEXT NOT NULL DEFAULT 'USDC',
+  provider TEXT,
+  provider_order_id TEXT,
+  status TEXT NOT NULL DEFAULT 'AWAITING_PROVIDER',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+)
+`).run();
+
+db.prepare(`
+CREATE INDEX IF NOT EXISTS idx_payment_intents_workspace_id
+ON payment_intents(workspace_id)
+`).run();
+
+db.prepare(`
+CREATE INDEX IF NOT EXISTS idx_payment_intents_recipient_email
+ON payment_intents(recipient_email)
+`).run();
+
+/*
+  Recipient delivery is intentionally separate from sender preference.
+  These additive columns keep existing databases compatible.
+*/
+for (const columnSql of [
+  `ALTER TABLE payment_intents ADD COLUMN recipient_choice TEXT`,
+  `ALTER TABLE payment_intents ADD COLUMN recipient_choice_at TEXT`,
+  `ALTER TABLE payment_intents ADD COLUMN funded_at TEXT`,
+  `ALTER TABLE payment_intents ADD COLUMN ready_at TEXT`,
+  `ALTER TABLE payment_intents ADD COLUMN completed_at TEXT`,
+  `ALTER TABLE payment_intents ADD COLUMN recipient_claim_id TEXT`,
+  `ALTER TABLE payment_intents ADD COLUMN recipient_claim_sent_at TEXT`
+]) {
+  try {
+    db.prepare(columnSql).run();
+  } catch {}
+}
 
 // employees master table
 db.prepare(`
@@ -6265,6 +6339,13 @@ app.post(
         googleAccessToken
       );
 
+      if (String(claim.claim_type || "").toUpperCase() === "PAYMENT_INTENT_CHOICE") {
+        return res.status(409).json({
+          success: false,
+          error: "This claim records a recipient delivery choice only. No wallet claim is available yet."
+        });
+      }
+
       if (claim.status === "CLAIMED") {
         return res.status(400).json({
           success: false,
@@ -8495,6 +8576,606 @@ function selectOffRampProvider({ country }) {
 
 
 /* =========================
+   SEND MONEY — PAYMENT INTENT
+
+   Fast path for cross-border send UX.
+   No card, bank credential or KYC document is collected here.
+   Provider execution is intentionally a later Money Router step.
+========================= */
+
+app.post("/api/money/payment-intents", (req, res) => {
+  try {
+    const workspaceId = String(req.body?.workspaceId || "").trim();
+    const senderCountry = normalizeMoneyCode(req.body?.senderCountry, 2);
+    const sendAmount = Number(req.body?.sendAmount);
+    const sendCurrency = normalizeMoneyCode(req.body?.sendCurrency, 3);
+    const recipientEmail = String(req.body?.recipientEmail || "")
+      .trim()
+      .toLowerCase();
+    const recipientCountry = normalizeMoneyCode(
+      req.body?.recipientCountry,
+      2
+    );
+    const receiveMethod = String(req.body?.receiveMethod || "")
+      .trim()
+      .toUpperCase();
+    const receiveCurrency =
+      receiveMethod === "FIAT"
+        ? normalizeMoneyCode(req.body?.receiveCurrency, 3)
+        : "USDC";
+
+    if (!workspaceId) {
+      throw new Error("Workspace is required");
+    }
+
+    const workspace = db.prepare(`
+      SELECT id
+      FROM workspaces
+      WHERE id = ?
+        AND status = 'ACTIVE'
+      LIMIT 1
+    `).get(workspaceId);
+
+    if (!workspace) {
+      throw new Error("Active workspace was not found");
+    }
+
+    if (!Number.isFinite(sendAmount) || sendAmount <= 0) {
+      throw new Error("Send amount must be greater than 0");
+    }
+
+    if (senderCountry.length !== 2 || recipientCountry.length !== 2) {
+      throw new Error("Countries must use 2-letter codes");
+    }
+
+    if (sendCurrency.length !== 3) {
+      throw new Error("Send currency must use a 3-letter code");
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
+      throw new Error("A valid recipient email is required");
+    }
+
+    if (!["FIAT", "USDC"].includes(receiveMethod)) {
+      throw new Error("Receive method must be FIAT or USDC");
+    }
+
+    if (receiveMethod === "FIAT" && receiveCurrency.length !== 3) {
+      throw new Error("Receive currency must use a 3-letter code");
+    }
+
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const status = "AWAITING_PROVIDER";
+
+    db.prepare(`
+      INSERT INTO payment_intents (
+        id,
+        workspace_id,
+        sender_country,
+        send_amount,
+        send_currency,
+        recipient_email,
+        recipient_country,
+        receive_method,
+        receive_currency,
+        settlement_asset,
+        provider,
+        provider_order_id,
+        status,
+        created_at,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'USDC', NULL, NULL, ?, ?, ?)
+    `).run(
+      id,
+      workspaceId,
+      senderCountry,
+      sendAmount,
+      sendCurrency,
+      recipientEmail,
+      recipientCountry,
+      receiveMethod,
+      receiveCurrency,
+      status,
+      now,
+      now
+    );
+
+    return res.status(201).json({
+      success: true,
+      intent: {
+        id,
+        workspaceId,
+        senderCountry,
+        sendAmount,
+        sendCurrency,
+        recipientEmail,
+        recipientCountry,
+        receiveMethod,
+        receiveCurrency,
+        settlementAsset: "USDC",
+        status,
+        recipientChoice: null,
+        sandboxActionsAvailable: PAYMENT_INTENT_SANDBOX
+      },
+      nextAction: "PROVIDER_ROUTE",
+      message: "Payment intent created. A provider route is required before collecting fiat or settling funds."
+    });
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      error: err?.message || "Failed to create payment intent"
+    });
+  }
+});
+
+/* =========================
+   PAYMENT INTENT STATE / RECIPIENT CHOICE
+
+   Real provider integration will move intents through:
+   AWAITING_PROVIDER -> AWAITING_SENDER_PAYMENT -> FUNDED
+   -> READY_FOR_RECIPIENT -> RECIPIENT_SELECTED -> PROCESSING -> COMPLETED
+
+   The sandbox transition below is opt-in and disabled in production.
+========================= */
+
+const PAYMENT_INTENT_STATUSES = new Set([
+  "AWAITING_PROVIDER",
+  "AWAITING_SENDER_PAYMENT",
+  "FUNDED",
+  "READY_FOR_RECIPIENT",
+  "RECIPIENT_SELECTED",
+  "PROCESSING",
+  "COMPLETED",
+  "FAILED",
+  "CANCELED"
+]);
+
+const PAYMENT_INTENT_SANDBOX =
+  String(process.env.TROR_PAYMENT_INTENT_SANDBOX || "")
+    .trim()
+    .toLowerCase() === "true" &&
+  String(process.env.NODE_ENV || "").trim().toLowerCase() !== "production";
+
+function getPaymentIntentForWorkspace(id, workspaceId) {
+  return db.prepare(`
+    SELECT *
+    FROM payment_intents
+    WHERE id = ?
+      AND workspace_id = ?
+    LIMIT 1
+  `).get(id, workspaceId);
+}
+
+function serializePaymentIntent(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    senderCountry: row.sender_country,
+    sendAmount: row.send_amount,
+    sendCurrency: row.send_currency,
+    recipientEmail: row.recipient_email,
+    recipientCountry: row.recipient_country,
+    receiveMethod: row.receive_method,
+    receiveCurrency: row.receive_currency,
+    settlementAsset: row.settlement_asset || "USDC",
+    provider: row.provider || null,
+    providerOrderId: row.provider_order_id || null,
+    status: row.status,
+    recipientChoice: row.recipient_choice || null,
+    recipientChoiceAt: row.recipient_choice_at || null,
+    fundedAt: row.funded_at || null,
+    readyAt: row.ready_at || null,
+    completedAt: row.completed_at || null,
+    recipientClaimId: row.recipient_claim_id || null,
+    recipientClaimSentAt: row.recipient_claim_sent_at || null,
+    sandboxActionsAvailable: PAYMENT_INTENT_SANDBOX
+  };
+}
+
+app.get("/api/money/payment-intents/:id", (req, res) => {
+  try {
+    const id = String(req.params.id || "").trim();
+    const workspaceId = String(req.query.workspaceId || "").trim();
+
+    if (!id || !workspaceId) {
+      throw new Error("Payment intent id and workspace are required");
+    }
+
+    const row = getPaymentIntentForWorkspace(id, workspaceId);
+
+    if (!row) {
+      return res.status(404).json({
+        success: false,
+        error: "Payment intent was not found"
+      });
+    }
+
+    return res.json({
+      success: true,
+      intent: serializePaymentIntent(row)
+    });
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      error: err?.message || "Failed to load payment intent"
+    });
+  }
+});
+
+app.post("/api/money/payment-intents/:id/sandbox/fund", (req, res) => {
+  try {
+    if (!PAYMENT_INTENT_SANDBOX) {
+      return res.status(403).json({
+        success: false,
+        error: "Payment intent sandbox transitions are disabled"
+      });
+    }
+
+    const id = String(req.params.id || "").trim();
+    const workspaceId = String(req.body?.workspaceId || "").trim();
+    const row = getPaymentIntentForWorkspace(id, workspaceId);
+
+    if (!row) {
+      return res.status(404).json({
+        success: false,
+        error: "Payment intent was not found"
+      });
+    }
+
+    if (!["AWAITING_PROVIDER", "AWAITING_SENDER_PAYMENT", "FUNDED"].includes(row.status)) {
+      throw new Error(`Intent cannot be funded from status ${row.status}`);
+    }
+
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      UPDATE payment_intents
+      SET status = 'READY_FOR_RECIPIENT',
+          funded_at = COALESCE(funded_at, ?),
+          ready_at = ?,
+          updated_at = ?
+      WHERE id = ?
+        AND workspace_id = ?
+    `).run(now, now, now, id, workspaceId);
+
+    const updated = getPaymentIntentForWorkspace(id, workspaceId);
+
+    return res.json({
+      success: true,
+      intent: serializePaymentIntent(updated),
+      message: "Sandbox funding recorded. Recipient choice is now available."
+    });
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      error: err?.message || "Failed to simulate funding"
+    });
+  }
+});
+
+function buildRecipientClaimLink(appUrl, claimId) {
+  const base = String(appUrl || "http://localhost:5173").replace(/\/+$/, "");
+  const encodedId = encodeURIComponent(String(claimId || "").trim());
+
+  // Vite dev server routes unknown paths to index.html. Enter through app.html
+  // during local development so main.jsx can process ?claim= and render the claim UI.
+  if (/^https?:\/\/localhost:5173$/i.test(base) || /^https?:\/\/127\.0\.0\.1:5173$/i.test(base)) {
+    return `${base}/app.html?claim=${encodedId}`;
+  }
+
+  return `${base}/claim/${encodedId}`;
+}
+
+app.post("/api/money/payment-intents/:id/sandbox/send-recipient-claim", async (req, res) => {
+  try {
+    if (!PAYMENT_INTENT_SANDBOX) {
+      return res.status(403).json({
+        success: false,
+        error: "Payment intent sandbox transitions are disabled"
+      });
+    }
+
+    const id = String(req.params.id || "").trim();
+    const workspaceId = String(req.body?.workspaceId || "").trim();
+    const row = getPaymentIntentForWorkspace(id, workspaceId);
+
+    if (!row) {
+      return res.status(404).json({
+        success: false,
+        error: "Payment intent was not found"
+      });
+    }
+
+    if (row.status !== "READY_FOR_RECIPIENT") {
+      throw new Error("Recipient claim is only available after sender funding is confirmed");
+    }
+
+    let claim = db.prepare(`
+      SELECT *
+      FROM claims
+      WHERE payment_intent_id = ?
+        AND claim_type = 'PAYMENT_INTENT_CHOICE'
+      ORDER BY createdAt DESC
+      LIMIT 1
+    `).get(id);
+
+    const now = new Date().toISOString();
+
+    if (!claim) {
+      const claimId = crypto.randomUUID();
+
+      db.prepare(`
+        INSERT INTO claims (
+          id,
+          recipientEmail,
+          amount,
+          message,
+          status,
+          createdAt,
+          workspace_id,
+          payment_intent_id,
+          claim_type,
+          display_currency
+        ) VALUES (?, ?, ?, ?, 'CHOICE_PENDING', ?, ?, ?, 'PAYMENT_INTENT_CHOICE', ?)
+      `).run(
+        claimId,
+        row.recipient_email,
+        Number(row.send_amount),
+        `TROR recipient choice for ${row.send_amount} ${row.send_currency}`,
+        now,
+        workspaceId,
+        id,
+        row.send_currency
+      );
+
+      db.prepare(`
+        UPDATE payment_intents
+        SET recipient_claim_id = ?,
+            recipient_claim_sent_at = ?,
+            updated_at = ?
+        WHERE id = ?
+          AND workspace_id = ?
+      `).run(claimId, now, now, id, workspaceId);
+
+      claim = db.prepare("SELECT * FROM claims WHERE id = ?").get(claimId);
+    }
+
+    const appUrl = String(process.env.APP_URL || "http://localhost:5173")
+      .replace(/\/+$/, "");
+    const claimLink = buildRecipientClaimLink(appUrl, claim.id);
+
+    let emailSent = false;
+    let emailError = null;
+
+    try {
+      const { error } = await resend.emails.send({
+        from: "TROR <no-reply@mail.tror.app>",
+        to: row.recipient_email,
+        subject: "Choose how to receive your TROR transfer",
+        html: `
+          <div style="font-family:Arial,sans-serif;padding:20px;color:#111;">
+            <h2>TROR recipient choice</h2>
+            <p>A transfer intent is ready for your verified recipient choice.</p>
+            <div style="margin-top:16px;padding:14px;background:#f3f4f6;border-radius:12px;">
+              <p><b>Sender amount:</b> ${row.send_amount} ${row.send_currency}</p>
+              <p><b>Destination:</b> ${row.recipient_country}</p>
+              <p><b>Settlement layer:</b> USDC</p>
+            </div>
+            <p style="margin-top:18px;">Verify the Gmail account that received this message, then choose local bank or USDC.</p>
+            <a href="${claimLink}" style="display:inline-block;padding:12px 18px;background:#d4a62a;color:#111;text-decoration:none;border-radius:10px;font-weight:bold;">Open recipient choice</a>
+            <p style="margin-top:20px;font-size:12px;color:#6b7280;">Sandbox test: this message does not deliver fiat or USDC and does not contact a bank.</p>
+          </div>
+        `
+      });
+
+      if (error) throw new Error(error.message || "Email provider rejected the message");
+      emailSent = true;
+    } catch (err) {
+      emailError = err?.message || "Failed to send sandbox recipient email";
+      console.error("Sandbox recipient choice email error:", err);
+    }
+
+    const updated = getPaymentIntentForWorkspace(id, workspaceId);
+
+    return res.json({
+      success: true,
+      intent: serializePaymentIntent(updated),
+      claimId: claim.id,
+      claimLink,
+      emailSent,
+      emailError,
+      message: emailSent
+        ? "Recipient choice email sent. The verified recipient can now choose Bank or USDC."
+        : "Recipient choice claim created. Email was not sent, but the local claim link is available for testing."
+    });
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      error: err?.message || "Failed to create recipient choice claim"
+    });
+  }
+});
+
+app.post("/api/money/payment-intents/:id/sandbox/recipient-choice", (req, res) => {
+  try {
+    if (!PAYMENT_INTENT_SANDBOX) {
+      return res.status(403).json({
+        success: false,
+        error: "Payment intent sandbox transitions are disabled"
+      });
+    }
+
+    const id = String(req.params.id || "").trim();
+    const workspaceId = String(req.body?.workspaceId || "").trim();
+    const recipientChoice = String(req.body?.recipientChoice || "")
+      .trim()
+      .toUpperCase();
+    const row = getPaymentIntentForWorkspace(id, workspaceId);
+
+    if (!row) {
+      return res.status(404).json({
+        success: false,
+        error: "Payment intent was not found"
+      });
+    }
+
+    if (row.status !== "READY_FOR_RECIPIENT") {
+      throw new Error("Recipient choice is only available after funding is confirmed");
+    }
+
+    if (!["FIAT", "USDC"].includes(recipientChoice)) {
+      throw new Error("Recipient choice must be FIAT or USDC");
+    }
+
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      UPDATE payment_intents
+      SET recipient_choice = ?,
+          recipient_choice_at = ?,
+          status = 'RECIPIENT_SELECTED',
+          updated_at = ?
+      WHERE id = ?
+        AND workspace_id = ?
+    `).run(recipientChoice, now, now, id, workspaceId);
+
+    const updated = getPaymentIntentForWorkspace(id, workspaceId);
+
+    return res.json({
+      success: true,
+      intent: serializePaymentIntent(updated),
+      message: recipientChoice === "FIAT"
+        ? "Recipient selected local bank delivery. Provider off-ramp is the next step."
+        : "Recipient selected USDC. Wallet delivery is the next step."
+    });
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      error: err?.message || "Failed to save recipient choice"
+    });
+  }
+});
+
+app.post("/api/claims/:id/payment-intent-choice", async (req, res) => {
+  try {
+    const googleAccessToken = String(req.body?.googleAccessToken || "").trim();
+    const recipientChoice = String(req.body?.recipientChoice || "")
+      .trim()
+      .toUpperCase();
+
+    if (!googleAccessToken) {
+      return res.status(403).json({ success: false, error: "Google verification is required" });
+    }
+
+    if (!["FIAT", "USDC"].includes(recipientChoice)) {
+      throw new Error("Recipient choice must be FIAT or USDC");
+    }
+
+    const { claim } = await verifyClaimRecipient(req.params.id, googleAccessToken);
+
+    if (String(claim.claim_type || "").toUpperCase() !== "PAYMENT_INTENT_CHOICE") {
+      throw new Error("This claim is not a payment-intent recipient choice");
+    }
+
+    const paymentIntentId = String(claim.payment_intent_id || "").trim();
+    if (!paymentIntentId) {
+      throw new Error("Payment intent is missing from this recipient claim");
+    }
+
+    const intent = db.prepare(`
+      SELECT * FROM payment_intents
+      WHERE id = ?
+        AND workspace_id = ?
+      LIMIT 1
+    `).get(paymentIntentId, claim.workspace_id);
+
+    if (!intent) {
+      throw new Error("Payment intent was not found");
+    }
+
+    if (intent.status === "RECIPIENT_SELECTED") {
+      const existingChoice = String(intent.recipient_choice || "").trim().toUpperCase();
+
+      // Safe idempotency: browser retries/double-clicks for the SAME verified
+      // choice return success instead of surfacing a false error.
+      if (existingChoice === recipientChoice) {
+        const now = new Date().toISOString();
+
+        db.prepare(`
+          UPDATE claims
+          SET status = 'CHOICE_RECORDED',
+              choice_recorded_at = COALESCE(choice_recorded_at, ?)
+          WHERE id = ?
+        `).run(now, claim.id);
+
+        return res.json({
+          success: true,
+          recipientChoice,
+          intent: serializePaymentIntent(intent),
+          idempotent: true,
+          message: recipientChoice === "FIAT"
+            ? "Recipient selected local bank delivery. No bank payout has started yet."
+            : "Recipient selected USDC delivery. No USDC transfer has started yet."
+        });
+      }
+
+      // Once a delivery rail is selected, a different rail cannot replace it.
+      throw new Error("Recipient delivery choice is already locked");
+    }
+
+    if (intent.status !== "READY_FOR_RECIPIENT") {
+      throw new Error(`Recipient choice is not available from status ${intent.status}`);
+    }
+
+    const now = new Date().toISOString();
+    const updateIntent = db.prepare(`
+      UPDATE payment_intents
+      SET recipient_choice = ?,
+          recipient_choice_at = ?,
+          status = 'RECIPIENT_SELECTED',
+          updated_at = ?
+      WHERE id = ?
+        AND workspace_id = ?
+        AND status = 'READY_FOR_RECIPIENT'
+    `).run(recipientChoice, now, now, paymentIntentId, claim.workspace_id);
+
+    if (updateIntent.changes !== 1) {
+      throw new Error("Recipient choice could not be recorded");
+    }
+
+    db.prepare(`
+      UPDATE claims
+      SET status = 'CHOICE_RECORDED',
+          choice_recorded_at = ?
+      WHERE id = ?
+    `).run(now, claim.id);
+
+    const updatedIntent = db.prepare(`
+      SELECT * FROM payment_intents
+      WHERE id = ?
+      LIMIT 1
+    `).get(paymentIntentId);
+
+    return res.json({
+      success: true,
+      recipientChoice,
+      intent: serializePaymentIntent(updatedIntent),
+      message: recipientChoice === "FIAT"
+        ? "Recipient selected local bank delivery. No bank payout has started yet."
+        : "Recipient selected USDC delivery. No USDC transfer has started yet."
+    });
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      error: err?.message || "Failed to record recipient choice"
+    });
+  }
+});
+
+/* =========================
    MONEY ROUTER
 
    Provider-neutral fiat route discovery.
@@ -8784,6 +9465,13 @@ app.post("/api/withdrawals", async (req, res) => {
         claimId,
         googleAccessToken
       );
+
+if (String(claim.claim_type || "").toUpperCase() === "PAYMENT_INTENT_CHOICE") {
+  return res.status(409).json({
+    success: false,
+    error: "This recipient-choice claim cannot create a bank withdrawal. Select the delivery method first; provider payout is a later step."
+  });
+}
 
 if (String(claim.status || "").toUpperCase() === "CLAIMED") {
   return res.status(409).json({
@@ -9757,6 +10445,13 @@ app.post("/api/claims/:id/claim", async (req, res) => {
       return res.status(404).json({
         success: false,
         error: "Claim not found"
+      });
+    }
+
+    if (String(claim.claim_type || "").toUpperCase() === "PAYMENT_INTENT_CHOICE") {
+      return res.status(409).json({
+        success: false,
+        error: "This claim is for recipient delivery choice only. No USDC claim has been funded for wallet delivery."
       });
     }
 

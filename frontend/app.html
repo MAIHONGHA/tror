@@ -341,6 +341,187 @@
             </div>
           </div>
 
+          <div class="mini-box" style="margin-top:20px;">
+            <span>Send Money</span>
+            <h3 style="margin:8px 0;">Fiat or USDC → Person</h3>
+            <p class="muted">
+              Create one payment intent. The sender pays with local fiat or USDC, while the recipient can later choose local fiat or USDC. Provider-hosted KYC/payment will be connected behind the Money Router.
+            </p>
+
+            <div class="split-grid" style="margin-top:16px;">
+              <div>
+                <label for="sendMoneyAmount">You Send</label>
+                <input id="sendMoneyAmount" type="number" min="0" step="0.01" placeholder="500" />
+              </div>
+              <div>
+                <label for="sendMoneyCurrency">Currency</label>
+                <select id="sendMoneyCurrency">
+                  <option value="USD">USD — US Dollar</option>
+                  <option value="EUR">EUR — Euro</option>
+                  <option value="GBP">GBP — British Pound</option>
+                  <option value="CAD">CAD — Canadian Dollar</option>
+                  <option value="AUD">AUD — Australian Dollar</option>
+                  <option value="NZD">NZD — New Zealand Dollar</option>
+                  <option value="JPY">JPY — Japanese Yen</option>
+                  <option value="KRW">KRW — South Korean Won</option>
+                  <option value="SGD">SGD — Singapore Dollar</option>
+                  <option value="HKD">HKD — Hong Kong Dollar</option>
+                  <option value="VND">VND — Vietnamese Dong</option>
+                  <option value="THB">THB — Thai Baht</option>
+                  <option value="PHP">PHP — Philippine Peso</option>
+                  <option value="IDR">IDR — Indonesian Rupiah</option>
+                  <option value="MYR">MYR — Malaysian Ringgit</option>
+                  <option value="INR">INR — Indian Rupee</option>
+                  <option value="AED">AED — UAE Dirham</option>
+                  <option value="SAR">SAR — Saudi Riyal</option>
+                  <option value="CHF">CHF — Swiss Franc</option>
+                  <option value="MXN">MXN — Mexican Peso</option>
+                  <option value="BRL">BRL — Brazilian Real</option>
+                  <option value="ZAR">ZAR — South African Rand</option>
+                  <option value="TRY">TRY — Turkish Lira</option>
+                  <option value="PLN">PLN — Polish Zloty</option>
+                  <option value="SEK">SEK — Swedish Krona</option>
+                  <option value="NOK">NOK — Norwegian Krone</option>
+                  <option value="DKK">DKK — Danish Krone</option>
+                </select>
+              </div>
+              <div>
+                <label for="sendMoneySenderCountry">From Country</label>
+                <select id="sendMoneySenderCountry">
+                  <option value="US">United States</option>
+                  <option value="CA">Canada</option>
+                  <option value="GB">United Kingdom</option>
+                  <option value="AU">Australia</option>
+                  <option value="NZ">New Zealand</option>
+                  <option value="JP">Japan</option>
+                  <option value="KR">South Korea</option>
+                  <option value="SG">Singapore</option>
+                  <option value="HK">Hong Kong</option>
+                  <option value="VN">Vietnam</option>
+                  <option value="TH">Thailand</option>
+                  <option value="PH">Philippines</option>
+                  <option value="ID">Indonesia</option>
+                  <option value="MY">Malaysia</option>
+                  <option value="IN">India</option>
+                  <option value="AE">United Arab Emirates</option>
+                  <option value="SA">Saudi Arabia</option>
+                  <option value="MX">Mexico</option>
+                  <option value="BR">Brazil</option>
+                  <option value="ZA">South Africa</option>
+                  <option value="CH">Switzerland</option>
+                  <option value="FR">France</option>
+                  <option value="DE">Germany</option>
+                  <option value="IT">Italy</option>
+                  <option value="ES">Spain</option>
+                  <option value="NL">Netherlands</option>
+                  <option value="IE">Ireland</option>
+                  <option value="BE">Belgium</option>
+                  <option value="AT">Austria</option>
+                  <option value="PT">Portugal</option>
+                  <option value="PL">Poland</option>
+                  <option value="SE">Sweden</option>
+                  <option value="NO">Norway</option>
+                  <option value="DK">Denmark</option>
+                  <option value="TR">Türkiye</option>
+                </select>
+              </div>
+              <div>
+                <label for="sendMoneyRecipientEmail">Send To</label>
+                <input id="sendMoneyRecipientEmail" type="email" placeholder="recipient@gmail.com" />
+              </div>
+              <div>
+                <label for="sendMoneyRecipientCountry">Recipient Country</label>
+                <select id="sendMoneyRecipientCountry">
+                  <option value="VN">Vietnam</option>
+                  <option value="US">United States</option>
+                  <option value="CA">Canada</option>
+                  <option value="GB">United Kingdom</option>
+                  <option value="AU">Australia</option>
+                  <option value="NZ">New Zealand</option>
+                  <option value="JP">Japan</option>
+                  <option value="KR">South Korea</option>
+                  <option value="SG">Singapore</option>
+                  <option value="HK">Hong Kong</option>
+                  <option value="TH">Thailand</option>
+                  <option value="PH">Philippines</option>
+                  <option value="ID">Indonesia</option>
+                  <option value="MY">Malaysia</option>
+                  <option value="IN">India</option>
+                  <option value="AE">United Arab Emirates</option>
+                  <option value="SA">Saudi Arabia</option>
+                  <option value="MX">Mexico</option>
+                  <option value="BR">Brazil</option>
+                  <option value="ZA">South Africa</option>
+                  <option value="CH">Switzerland</option>
+                  <option value="FR">France</option>
+                  <option value="DE">Germany</option>
+                  <option value="IT">Italy</option>
+                  <option value="ES">Spain</option>
+                  <option value="NL">Netherlands</option>
+                  <option value="IE">Ireland</option>
+                  <option value="BE">Belgium</option>
+                  <option value="AT">Austria</option>
+                  <option value="PT">Portugal</option>
+                  <option value="PL">Poland</option>
+                  <option value="SE">Sweden</option>
+                  <option value="NO">Norway</option>
+                  <option value="DK">Denmark</option>
+                  <option value="TR">Türkiye</option>
+                </select>
+              </div>
+              <div id="sendMoneyReceiveCurrencyWrap">
+                <label for="sendMoneyReceiveCurrency">Local Receive Currency</label>
+                <select id="sendMoneyReceiveCurrency">
+                  <option value="VND">VND — Vietnamese Dong</option>
+                  <option value="USD">USD — US Dollar</option>
+                  <option value="EUR">EUR — Euro</option>
+                  <option value="GBP">GBP — British Pound</option>
+                  <option value="CAD">CAD — Canadian Dollar</option>
+                  <option value="AUD">AUD — Australian Dollar</option>
+                  <option value="NZD">NZD — New Zealand Dollar</option>
+                  <option value="JPY">JPY — Japanese Yen</option>
+                  <option value="KRW">KRW — South Korean Won</option>
+                  <option value="SGD">SGD — Singapore Dollar</option>
+                  <option value="HKD">HKD — Hong Kong Dollar</option>
+                  <option value="THB">THB — Thai Baht</option>
+                  <option value="PHP">PHP — Philippine Peso</option>
+                  <option value="IDR">IDR — Indonesian Rupiah</option>
+                  <option value="MYR">MYR — Malaysian Ringgit</option>
+                  <option value="INR">INR — Indian Rupee</option>
+                  <option value="AED">AED — UAE Dirham</option>
+                  <option value="SAR">SAR — Saudi Riyal</option>
+                  <option value="CHF">CHF — Swiss Franc</option>
+                  <option value="MXN">MXN — Mexican Peso</option>
+                  <option value="BRL">BRL — Brazilian Real</option>
+                  <option value="ZAR">ZAR — South African Rand</option>
+                  <option value="TRY">TRY — Turkish Lira</option>
+                  <option value="PLN">PLN — Polish Zloty</option>
+                  <option value="SEK">SEK — Swedish Krona</option>
+                  <option value="NOK">NOK — Norwegian Krone</option>
+                  <option value="DKK">DKK — Danish Krone</option>
+                </select>
+              </div>
+            </div>
+
+            <label for="sendMoneyReceiveMethod">Recipient Preference</label>
+            <select id="sendMoneyReceiveMethod">
+              <option value="FIAT">Local Fiat to Bank</option>
+              <option value="USDC">USDC</option>
+            </select>
+            <p class="muted" style="margin-top:7px;font-size:12px;">
+              This is the sender's preferred delivery method. After funding is confirmed, the verified recipient can choose Bank or USDC.
+            </p>
+
+            <button id="btnCreateSendMoneyIntent" type="button" style="margin-top:12px;">
+              Continue
+            </button>
+
+            <div id="sendMoneyIntentResult" style="margin-top:12px;"></div>
+          </div>
+
+          <details style="margin-top:24px;">
+            <summary class="eyebrow" style="cursor:pointer; user-select:none;">Advanced Money Tools</summary>
+            <p class="muted" style="margin-top:8px;">Optional wallet and fiat rails for advanced users.</p>
           <div class="split-grid" style="margin-top:20px;">
             <div class="mini-box">
               <span>Add Money</span>
@@ -363,14 +544,6 @@
               </button>
             </div>
 
-            <div class="mini-box">
-              <span>Send</span>
-              <h3 style="margin:8px 0;">USDC → Wallet</h3>
-              <p class="muted">
-                Uses the active Web3 or Circle Wallet and the existing TROR USDC transfer rail.
-              </p>
-              <button id="btnMoveMoneySendUsdc" type="button">Send USDC</button>
-            </div>
 
             <div class="mini-box">
               <span>Withdraw</span>
@@ -393,6 +566,7 @@
               </button>
             </div>
           </div>
+          </details>
 
           <div id="moveMoneyStatus" class="mini-box" style="margin-top:20px;">
             <span>Status</span>
