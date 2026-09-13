@@ -13537,10 +13537,12 @@ async function loadClaimPage() {
       "
     />
 
-    <input
-      id="bankAccount"
-      placeholder="Account Number"
-      autocomplete="off"
+     <input
+       id="bankAccount"
+       placeholder="Account Number"
+       autocomplete="off"
+       inputmode="text"
+       pattern="[A-Za-z0-9]+"
       style="
         padding:14px;
         border-radius:12px;
@@ -14640,9 +14642,15 @@ if (!confirmResult?.success) {
   }
 
   if (country !== "VN" || fiatCurrency !== "VND") {
-    statusEl.innerText =
-      "Bank withdrawal currently supports VN / VND only.";
-    return;
+  statusEl.innerText =
+    "Bank withdrawal currently supports VN / VND only.";
+  return;
+  }
+
+  if (!/^[A-Za-z0-9]+$/.test(accountNumber)) {
+  statusEl.innerText =
+    "Bank account number may contain letters and numbers only.";
+  return;
   }
 
   try {
