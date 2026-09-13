@@ -285,6 +285,193 @@ const TROR_PAYOUT_QUOTE_SOURCE = String(
   "TROR_TREASURY_MANUAL"
 ).trim();
 
+const TROR_TREASURY_PROVIDER = String(
+  process.env.TROR_TREASURY_PROVIDER ||
+  "manual"
+)
+  .trim()
+  .toLowerCase();
+
+function normalizeTreasuryQuote(quote) {
+  const rate = Number(quote?.rate);
+  const destinationAmount =
+    Number(quote?.destinationAmount);
+
+  const sourceCurrency = String(
+    quote?.sourceCurrency || "USDC"
+  )
+    .trim()
+    .toUpperCase();
+
+  const destinationCurrency = String(
+    quote?.destinationCurrency || "VND"
+  )
+    .trim()
+    .toUpperCase();
+
+  const source = String(
+    quote?.source || ""
+  ).trim();
+
+  const provider = String(
+    quote?.provider || ""
+  )
+    .trim()
+    .toLowerCase();
+
+  const quoteId = String(
+    quote?.quoteId || ""
+  ).trim();
+
+  const expiresAt = String(
+    quote?.expiresAt || ""
+  ).trim();
+
+  if (
+    !Number.isFinite(rate) ||
+    rate <= 0
+  ) {
+    throw new Error(
+      "Treasury provider returned an invalid FX rate"
+    );
+  }
+
+  if (
+    !Number.isFinite(destinationAmount) ||
+    destinationAmount <= 0
+  ) {
+    throw new Error(
+      "Treasury provider returned an invalid destination amount"
+    );
+  }
+
+  if (!quoteId) {
+    throw new Error(
+      "Treasury provider quote ID is missing"
+    );
+  }
+
+  if (
+    !expiresAt ||
+    Number.isNaN(
+      new Date(expiresAt).getTime()
+    )
+  ) {
+    throw new Error(
+      "Treasury provider quote expiry is invalid"
+    );
+  }
+
+  return {
+    provider,
+    source,
+    sourceCurrency,
+    destinationCurrency,
+    rate,
+    destinationAmount,
+    quoteId,
+    expiresAt
+  };
+}
+
+async function getManualTreasuryQuote({
+  amount,
+  sourceCurrency = "USDC",
+  destinationCurrency = "VND",
+  referenceId
+}) {
+  const sourceAmount = Number(amount);
+
+  if (
+    !Number.isFinite(sourceAmount) ||
+    sourceAmount <= 0
+  ) {
+    throw new Error(
+      "Treasury quote amount is invalid"
+    );
+  }
+
+  if (
+    !Number.isFinite(TROR_USDC_VND_RATE) ||
+    TROR_USDC_VND_RATE <= 0
+  ) {
+    throw new Error(
+      "Server-side USDC/VND payout rate is not configured"
+    );
+  }
+
+  if (
+    sourceCurrency !== "USDC" ||
+    destinationCurrency !== "VND"
+  ) {
+    throw new Error(
+      "Manual treasury currently supports USDC to VND only"
+    );
+  }
+
+  if (
+    !Number.isInteger(
+      TROR_PAYOUT_QUOTE_TTL_SECONDS
+    ) ||
+    TROR_PAYOUT_QUOTE_TTL_SECONDS < 60 ||
+    TROR_PAYOUT_QUOTE_TTL_SECONDS > 3600
+  ) {
+    throw new Error(
+      "Invalid payout quote TTL configuration"
+    );
+  }
+
+  const rate =
+    TROR_USDC_VND_RATE;
+
+  const destinationAmount =
+    Math.round(
+      sourceAmount * rate
+    );
+
+  const expiresAt =
+    new Date(
+      Date.now() +
+        TROR_PAYOUT_QUOTE_TTL_SECONDS *
+          1000
+    ).toISOString();
+
+  return normalizeTreasuryQuote({
+    provider: "manual",
+    source:
+      TROR_PAYOUT_QUOTE_SOURCE,
+    sourceCurrency,
+    destinationCurrency,
+    rate,
+    destinationAmount,
+    quoteId:
+      `${referenceId}-${crypto.randomUUID()}`,
+    expiresAt
+  });
+}
+
+async function getTreasuryQuote({
+  amount,
+  sourceCurrency = "USDC",
+  destinationCurrency = "VND",
+  referenceId
+}) {
+  switch (TROR_TREASURY_PROVIDER) {
+    case "manual":
+      return getManualTreasuryQuote({
+        amount,
+        sourceCurrency,
+        destinationCurrency,
+        referenceId
+      });
+
+    default:
+      throw new Error(
+        `Unsupported treasury provider: ${TROR_TREASURY_PROVIDER}`
+      );
+  }
+}
+
 const TROR_TREASURY_CONTROL_TOKEN = String(
   process.env.TROR_TREASURY_CONTROL_TOKEN || ""
 ).trim();
@@ -14258,59 +14445,33 @@ if (
   });
 }
 
-if (
-  !Number.isFinite(TROR_USDC_VND_RATE) ||
-  TROR_USDC_VND_RATE <= 0
-) {
-  return res.status(503).json({
-    success: false,
-    error:
-      "Server-side USDC/VND payout rate is not configured"
-  });
-}
-
-if (
-  !Number.isInteger(
-    TROR_PAYOUT_QUOTE_TTL_SECONDS
-  ) ||
-  TROR_PAYOUT_QUOTE_TTL_SECONDS < 60 ||
-  TROR_PAYOUT_QUOTE_TTL_SECONDS > 3600
-) {
-  return res.status(500).json({
-    success: false,
-    error:
-      "Invalid payout quote TTL configuration"
-  });
-}
-
 const payoutCurrency = "VND";
 
+const treasuryQuote =
+  await getTreasuryQuote({
+    amount: usdcAmount,
+    sourceCurrency: "USDC",
+    destinationCurrency:
+      payoutCurrency,
+    referenceId:
+      `tror-claim-${withdrawal.claim_id}`
+  });
+
 const quoteRate =
-  TROR_USDC_VND_RATE;
+  treasuryQuote.rate;
 
 const payoutAmount =
-  Math.round(
-    usdcAmount * quoteRate
-  );
-
-if (payoutAmount <= 0) {
-  return res.status(500).json({
-    success: false,
-    error:
-      "Calculated payout amount is invalid"
-  });
-}
+  treasuryQuote.destinationAmount;
 
 const quoteSource =
-  TROR_PAYOUT_QUOTE_SOURCE;
+  treasuryQuote.source;
 
 const quoteId =
-  `tror-claim-${withdrawal.claim_id}-${crypto.randomUUID()}`;
+  treasuryQuote.quoteId;
 
 const expiresAt =
   new Date(
-    Date.now() +
-    TROR_PAYOUT_QUOTE_TTL_SECONDS * 1000
+    treasuryQuote.expiresAt
   );
 
       const updateResult = db.prepare(`
