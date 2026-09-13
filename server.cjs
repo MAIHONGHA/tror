@@ -472,6 +472,175 @@ async function getTreasuryQuote({
   }
 }
 
+function normalizeTreasuryFundingResult(result) {
+  const provider = String(
+    result?.provider || ""
+  )
+    .trim()
+    .toLowerCase();
+
+  const operationId = String(
+    result?.operationId || ""
+  ).trim();
+
+  const status = String(
+    result?.status || ""
+  )
+    .trim()
+    .toUpperCase();
+
+  const reference = String(
+    result?.reference || ""
+  ).trim();
+
+  if (!provider) {
+    throw new Error(
+      "Treasury funding provider is missing"
+    );
+  }
+
+  if (!operationId) {
+    throw new Error(
+      "Treasury funding operation ID is missing"
+    );
+  }
+
+  if (
+    ![
+      "PROCESSING",
+      "CONFIRMED",
+      "FAILED"
+    ].includes(status)
+  ) {
+    throw new Error(
+      "Treasury funding status is invalid"
+    );
+  }
+
+  return {
+    provider,
+    operationId,
+    status,
+    reference
+  };
+}
+
+async function startManualTreasuryFunding({
+  withdrawalId,
+  reference,
+  idempotencyKey
+}) {
+  const safeWithdrawalId = String(
+    withdrawalId || ""
+  ).trim();
+
+  const safeReference = String(
+    reference || ""
+  ).trim();
+
+  const safeIdempotencyKey = String(
+    idempotencyKey || ""
+  ).trim();
+
+  if (!safeWithdrawalId) {
+    throw new Error(
+      "Treasury withdrawal ID is required"
+    );
+  }
+
+  if (!safeReference) {
+    throw new Error(
+      "Treasury funding reference is required"
+    );
+  }
+
+  if (!safeIdempotencyKey) {
+    throw new Error(
+      "Treasury funding idempotency key is required"
+    );
+  }
+
+  return normalizeTreasuryFundingResult({
+    provider: "manual",
+    operationId:
+      `manual-${safeIdempotencyKey}`,
+    status: "CONFIRMED",
+    reference: safeReference
+  });
+}
+
+async function startTreasuryFunding({
+  withdrawalId,
+  reference,
+  idempotencyKey
+}) {
+  switch (TROR_TREASURY_PROVIDER) {
+    case "manual":
+      return startManualTreasuryFunding({
+        withdrawalId,
+        reference,
+        idempotencyKey
+      });
+
+    default:
+      throw new Error(
+        `Unsupported treasury provider: ${TROR_TREASURY_PROVIDER}`
+      );
+  }
+}
+
+async function getManualTreasuryFundingStatus({
+  operationId,
+  reference
+}) {
+  const safeOperationId = String(
+    operationId || ""
+  ).trim();
+
+  const safeReference = String(
+    reference || ""
+  ).trim();
+
+  if (!safeOperationId) {
+    throw new Error(
+      "Treasury funding operation ID is required"
+    );
+  }
+
+  return normalizeTreasuryFundingResult({
+    provider: "manual",
+    operationId: safeOperationId,
+    status: "CONFIRMED",
+    reference: safeReference
+  });
+}
+
+async function getTreasuryFundingStatus({
+  provider,
+  operationId,
+  reference
+}) {
+  const safeProvider = String(
+    provider ||
+    TROR_TREASURY_PROVIDER
+  )
+    .trim()
+    .toLowerCase();
+
+  switch (safeProvider) {
+    case "manual":
+      return getManualTreasuryFundingStatus({
+        operationId,
+        reference
+      });
+
+    default:
+      throw new Error(
+        `Unsupported treasury provider: ${safeProvider}`
+      );
+  }
+}
+
 const TROR_TREASURY_CONTROL_TOKEN = String(
   process.env.TROR_TREASURY_CONTROL_TOKEN || ""
 ).trim();
@@ -2396,6 +2565,40 @@ try {
     ADD COLUMN treasury_updated_at TEXT
   `).run();
 } catch {}
+
+try {
+  db.prepare(`
+    ALTER TABLE withdrawals
+    ADD COLUMN treasury_provider TEXT
+  `).run();
+} catch {}
+
+try {
+  db.prepare(`
+    ALTER TABLE withdrawals
+    ADD COLUMN treasury_operation_id TEXT
+  `).run();
+} catch {}
+
+try {
+  db.prepare(`
+    ALTER TABLE withdrawals
+    ADD COLUMN treasury_started_at TEXT
+  `).run();
+} catch {}
+
+try {
+  db.prepare(`
+    ALTER TABLE withdrawals
+    ADD COLUMN treasury_idempotency_key TEXT
+  `).run();
+} catch {}
+
+db.prepare(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_withdrawals_treasury_idempotency
+  ON withdrawals(treasury_idempotency_key)
+  WHERE treasury_idempotency_key IS NOT NULL
+`).run();
 
 db.prepare(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_withdrawals_payout_idempotency
@@ -14150,32 +14353,307 @@ if (
         });
       }
 
-      const now =
-        new Date().toISOString();
+const now =
+  new Date().toISOString();
+
+const requestedTreasuryIdempotencyKey =
+  String(
+    withdrawal.treasury_idempotency_key ||
+    crypto.randomUUID()
+  ).trim();
+
+db.prepare(`
+  UPDATE withdrawals
+  SET treasury_idempotency_key =
+        COALESCE(
+          treasury_idempotency_key,
+          ?
+        ),
+      treasury_provider =
+        CASE
+          WHEN treasury_provider IS NULL
+            OR treasury_provider = ''
+          THEN ?
+          ELSE treasury_provider
+        END,
+      treasury_updated_at = ?
+  WHERE id = ?
+    AND workspace_id = ?
+    AND status = 'AWAITING_TREASURY'
+    AND settlement_status = 'CONFIRMED'
+    AND (
+      treasury_status IS NULL
+      OR treasury_status = ''
+      OR treasury_status = 'PENDING'
+      OR treasury_status = 'PROCESSING'
+    )
+`).run(
+  requestedTreasuryIdempotencyKey,
+  TROR_TREASURY_PROVIDER,
+  now,
+  id,
+  workspaceId
+);
+
+const reservedWithdrawal =
+  db.prepare(`
+    SELECT *
+    FROM withdrawals
+    WHERE id = ?
+      AND workspace_id = ?
+    LIMIT 1
+  `).get(
+    id,
+    workspaceId
+  );
+
+if (!reservedWithdrawal) {
+  return res.status(404).json({
+    success: false,
+    error:
+      "Withdrawal was not found after treasury reservation"
+  });
+}
+
+const existingTreasuryProvider =
+  String(
+    reservedWithdrawal.treasury_provider ||
+    TROR_TREASURY_PROVIDER
+  )
+    .trim()
+    .toLowerCase();
+
+const existingTreasuryOperationId =
+  String(
+    reservedWithdrawal.treasury_operation_id ||
+    ""
+  ).trim();
+
+const treasuryIdempotencyKey =
+  String(
+    reservedWithdrawal.treasury_idempotency_key ||
+    ""
+  ).trim();
+
+const existingTreasuryReference =
+  String(
+    reservedWithdrawal.treasury_reference ||
+    treasuryReference
+  ).trim();
+
+if (!treasuryIdempotencyKey) {
+  return res.status(409).json({
+    success: false,
+    error:
+      "Treasury funding idempotency key could not be reserved"
+  });
+}
+
+const treasuryFunding =
+  existingTreasuryOperationId
+    ? await getTreasuryFundingStatus({
+        provider:
+          existingTreasuryProvider,
+        operationId:
+          existingTreasuryOperationId,
+        reference:
+          existingTreasuryReference
+      })
+    : await startTreasuryFunding({
+        withdrawalId:
+          reservedWithdrawal.id,
+        reference:
+          treasuryReference,
+        idempotencyKey:
+          treasuryIdempotencyKey
+      });
+
+if (!existingTreasuryOperationId) {
+  const initialTreasuryStatus =
+    treasuryFunding.status === "FAILED"
+      ? "FAILED"
+      : "PROCESSING";
+
+  const startResult = db.prepare(`
+    UPDATE withdrawals
+    SET treasury_status = ?,
+        treasury_provider = ?,
+        treasury_operation_id = ?,
+        treasury_reference = ?,
+        treasury_started_at =
+          COALESCE(
+            treasury_started_at,
+            ?
+          ),
+        treasury_updated_at = ?
+    WHERE id = ?
+      AND workspace_id = ?
+      AND status = 'AWAITING_TREASURY'
+      AND settlement_status = 'CONFIRMED'
+      AND treasury_idempotency_key = ?
+      AND treasury_operation_id IS NULL
+      AND (
+        treasury_status IS NULL
+        OR treasury_status = ''
+        OR treasury_status = 'PENDING'
+        OR treasury_status = 'PROCESSING'
+      )
+  `).run(
+    initialTreasuryStatus,
+    treasuryFunding.provider,
+    treasuryFunding.operationId,
+    treasuryFunding.reference,
+    now,
+    now,
+    id,
+    workspaceId,
+    treasuryIdempotencyKey
+  );
+
+  if (startResult.changes !== 1) {
+    const latestTreasury =
+      db.prepare(`
+        SELECT *
+        FROM withdrawals
+        WHERE id = ?
+          AND workspace_id = ?
+        LIMIT 1
+      `).get(
+        id,
+        workspaceId
+      );
+
+    if (
+      String(
+        latestTreasury?.treasury_operation_id ||
+        ""
+      ).trim() !== ""
+    ) {
+      return res.status(202).json({
+        success: true,
+        processing: true,
+        withdrawal:
+          sanitizeWithdrawalForClient(
+            latestTreasury
+          ),
+        message:
+          "Treasury funding operation is already being processed."
+      });
+    }
+
+    return res.status(409).json({
+      success: false,
+      error:
+        "Treasury funding operation could not be persisted"
+    });
+  }
+}
+
+if (
+  treasuryFunding.status ===
+  "PROCESSING"
+) {
+  db.prepare(`
+    UPDATE withdrawals
+    SET treasury_status = 'PROCESSING',
+        treasury_updated_at = ?
+    WHERE id = ?
+      AND workspace_id = ?
+      AND status = 'AWAITING_TREASURY'
+      AND settlement_status = 'CONFIRMED'
+      AND treasury_operation_id = ?
+  `).run(
+    now,
+    id,
+    workspaceId,
+    treasuryFunding.operationId
+  );
+
+  const processingWithdrawal =
+    db.prepare(`
+      SELECT *
+      FROM withdrawals
+      WHERE id = ?
+        AND workspace_id = ?
+      LIMIT 1
+    `).get(
+      id,
+      workspaceId
+    );
+
+  return res.status(202).json({
+    success: true,
+    processing: true,
+    withdrawal:
+      sanitizeWithdrawalForClient(
+        processingWithdrawal
+      ),
+    message:
+      "Treasury funding is still processing."
+  });
+}
+
+if (
+  treasuryFunding.status ===
+  "FAILED"
+) {
+  db.prepare(`
+    UPDATE withdrawals
+    SET treasury_status = 'FAILED',
+        treasury_updated_at = ?
+    WHERE id = ?
+      AND workspace_id = ?
+      AND status = 'AWAITING_TREASURY'
+      AND settlement_status = 'CONFIRMED'
+      AND treasury_operation_id = ?
+  `).run(
+    now,
+    id,
+    workspaceId,
+    treasuryFunding.operationId
+  );
+
+  return res.status(502).json({
+    success: false,
+    error:
+      "Treasury funding failed"
+  });
+}
 
       const updateResult = db.prepare(`
         UPDATE withdrawals
         SET treasury_status = 'CONFIRMED',
-            treasury_reference = ?,
-            treasury_confirmed_at = ?,
-            treasury_updated_at = ?,
-            status = 'READY_FOR_PAYOUT'
+    treasury_provider = ?,
+    treasury_operation_id = ?,
+    treasury_reference = ?,
+    treasury_started_at =
+      COALESCE(
+        treasury_started_at,
+        ?
+      ),
+    treasury_confirmed_at = ?,
+    treasury_updated_at = ?,
+    status = 'READY_FOR_PAYOUT'
         WHERE id = ?
           AND workspace_id = ?
           AND status = 'AWAITING_TREASURY'
           AND settlement_status = 'CONFIRMED'
-          AND (
-            treasury_status IS NULL
-            OR treasury_status = ''
-            OR treasury_status = 'PENDING'
+          AND treasury_operation_id = ?
+          AND treasury_status IN (
+            'PENDING',
+            'PROCESSING'
           )
       `).run(
-        treasuryReference,
-        now,
-        now,
-        id,
-        workspaceId
-      );
+  treasuryFunding.provider,
+  treasuryFunding.operationId,
+  treasuryFunding.reference,
+  now,
+  now,
+  now,
+  id,
+  workspaceId,
+  treasuryFunding.operationId
+);
 
       if (updateResult.changes !== 1) {
         const latest = db.prepare(`
