@@ -12602,7 +12602,7 @@ app.post("/api/withdrawals", async (req, res) => {
     const safeStreetLine1 =
       String(streetLine1 || "").trim();
 
-    if (
+        if (
       !safeRecipientName ||
       !safeRecipientPhone ||
       !safeBankName ||
@@ -12617,6 +12617,14 @@ app.post("/api/withdrawals", async (req, res) => {
         success: false,
         error:
           "Please complete all recipient and bank information."
+      });
+    }
+
+    if (!/^[A-Za-z0-9]+$/.test(safeAccountNumber)) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "Bank account number may contain letters and numbers only."
       });
     }
 
