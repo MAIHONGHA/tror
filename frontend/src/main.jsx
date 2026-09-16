@@ -220,11 +220,57 @@ function positionWalletMenu(chip) {
 
   const rect = chip.getBoundingClientRect();
 
+  const viewportWidth =
+    window.visualViewport?.width ||
+    window.innerWidth;
+
+  const viewportHeight =
+    window.visualViewport?.height ||
+    window.innerHeight;
+
+  const edge = 8;
+  const gap = 8;
+
   menu.style.position = "fixed";
-  menu.style.top = `${rect.bottom + 8}px`;
-  menu.style.left = `${Math.max(8, rect.left)}px`;
   menu.style.right = "auto";
   menu.style.zIndex = "1000000";
+
+  const menuWidth =
+    menu.offsetWidth || 190;
+
+  const menuHeight =
+    menu.offsetHeight || 0;
+
+  const left = Math.min(
+    Math.max(edge, rect.left),
+    Math.max(edge, viewportWidth - menuWidth - edge)
+  );
+
+  const spaceBelow =
+    viewportHeight - rect.bottom - gap - edge;
+
+  const spaceAbove =
+    rect.top - gap - edge;
+
+  const openAbove =
+    menuHeight > 0 &&
+    menuHeight > spaceBelow &&
+    spaceAbove > spaceBelow;
+
+  let top = openAbove
+    ? rect.top - menuHeight - gap
+    : rect.bottom + gap;
+
+  top = Math.max(
+    edge,
+    Math.min(
+      top,
+      viewportHeight - menuHeight - edge
+    )
+  );
+
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
 }
 
 document
