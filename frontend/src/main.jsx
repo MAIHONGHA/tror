@@ -121,19 +121,6 @@ window.getTrorCallStatus =
 window.testTrorGasExecutor =
   testTrorGasExecutor;
 
-setTimeout(() => {
-  alert(
-    [
-      `innerWidth: ${window.innerWidth}`,
-      `clientWidth: ${document.documentElement.clientWidth}`,
-      `screenWidth: ${window.screen.width}`,
-      `DPR: ${window.devicePixelRatio}`,
-      `<=900: ${window.matchMedia("(max-width: 900px)").matches}`,
-      `>=901: ${window.matchMedia("(min-width: 901px)").matches}`
-    ].join("\n")
-  );
-}, 1500);
-
 /* =========================
    WALLET CONNECT UI PATCH
    Integrated into main.jsx
