@@ -15445,22 +15445,25 @@ document
    EVENT LISTENERS + INIT
 ========================= */
 
-document.getElementById("btnMobileMenu")
-  ?.addEventListener("click", () => {
-    document.querySelector(".sidebar")?.classList.toggle("open");
-  });
+const btnMobileMenu =
+  document.getElementById("btnMobileMenu");
 
-document.addEventListener("click", (e) => {
-  const sidebar = document.querySelector(".sidebar");
-  const btnMobileMenu = document.getElementById("btnMobileMenu");
+const mobileSidebar =
+  document.querySelector(".sidebar");
 
-  if (
-    sidebar?.classList.contains("open") &&
-    !sidebar.contains(e.target) &&
-    !btnMobileMenu?.contains(e.target)
-  ) {
-    sidebar.classList.remove("open");
-  }
+btnMobileMenu?.addEventListener("click", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+
+  mobileSidebar?.classList.toggle("open");
+});
+
+mobileSidebar?.addEventListener("click", (e) => {
+  e.stopPropagation();
+});
+
+document.addEventListener("click", () => {
+  mobileSidebar?.classList.remove("open");
 });
 
 btnSaveCustomer?.addEventListener("click", saveCustomer);
