@@ -1391,3 +1391,75 @@ select::selection,
 
   object-fit: contain !important;
 }
+
+/* =========================================================
+   TROR COMPACT DESKTOP HEADER
+   Keeps wallet visible on narrow desktop / mobile Desktop Site
+   ========================================================= */
+
+@media (min-width:901px) and (max-width:1200px){
+
+  .sidebar{
+    grid-template-columns:auto minmax(0,1fr) auto!important;
+    gap:10px!important;
+    padding-left:14px!important;
+    padding-right:14px!important;
+  }
+
+  .brand{
+    gap:7px!important;
+    flex-shrink:0!important;
+  }
+
+  .brand-logo-svg{
+    width:36px!important;
+    height:36px!important;
+  }
+
+  .brand-title{
+    font-size:18px!important;
+  }
+
+  .brand-subtitle{
+    font-size:8px!important;
+    letter-spacing:.7px!important;
+  }
+
+  .sidebar-menu{
+    min-width:0!important;
+    gap:2px!important;
+  }
+
+  .sidebar-menu a{
+    padding:8px 7px!important;
+    font-size:11px!important;
+    white-space:nowrap!important;
+  }
+
+  .nav-wallet{
+    min-width:0!important;
+    flex-shrink:1!important;
+    gap:5px!important;
+  }
+
+  #workspaceSwitcher.tror-custom-select{
+    width:150px!important;
+    max-width:150px!important;
+    flex:0 1 150px!important;
+    margin-right:0!important;
+  }
+
+  .nav-wallet .wallet-chip{
+    max-width:145px!important;
+    min-width:0!important;
+    padding-left:9px!important;
+    padding-right:9px!important;
+  }
+
+  .nav-wallet .wc-addr{
+    min-width:0!important;
+    overflow:hidden!important;
+    text-overflow:ellipsis!important;
+    white-space:nowrap!important;
+  }
+}
