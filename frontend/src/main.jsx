@@ -23,9 +23,73 @@ import {
   arcTestnet,
   TROR_NETWORKS
 } from "./appkit.js";
-import { getAccount, readContract, writeContract, waitForTransactionReceipt } from "@wagmi/core";
+import {
+  getAccount,
+  getConnections,
+  readContract,
+  writeContract,
+  waitForTransactionReceipt
+} from "@wagmi/core";
 import { parseUnits } from "viem";
 window.openAppKitWallet = openAppKitWallet;
+
+async function getTrorActiveWeb3Provider() {
+  const config = wagmiAdapter.wagmiConfig;
+
+  const account = getAccount(config);
+
+  if (!account?.isConnected || !account?.address) {
+    throw new Error(
+      "Connect your Web3 wallet first."
+    );
+  }
+
+  const connections =
+    getConnections(config);
+
+  const accountAddress =
+    account.address.toLowerCase();
+
+  const connection =
+    connections.find((item) =>
+      item.accounts?.some(
+        (address) =>
+          address.toLowerCase() ===
+          accountAddress
+      )
+    ) ||
+    connections.find(
+      (item) =>
+        Number(item.chainId) ===
+        Number(account.chainId)
+    ) ||
+    connections[0];
+
+  if (!connection?.connector) {
+    throw new Error(
+      "Active Web3 wallet connection was not found."
+    );
+  }
+
+  const provider =
+    await connection.connector.getProvider({
+      chainId:
+        Number(account.chainId) ||
+        Number(connection.chainId)
+    });
+
+  if (
+    !provider ||
+    typeof provider.request !== "function"
+  ) {
+    throw new Error(
+      "Connected wallet provider is unavailable."
+    );
+  }
+
+  return provider;
+}
+
 import {
   getTrorUnifiedBalance,
   depositToTrorUnifiedBalance,
@@ -17459,18 +17523,35 @@ document
   "Checking Web3 wallet capabilities..."
 );
 
-const capabilities =
-  await checkTrorWeb3Capabilities();
-
-console.log(
-  "TROR Web3 capabilities before Unified deposit:",
-  capabilities
-);
-
-let gasAnalysis = null;
+// ---------------------------------------------------------
+// Optional Web3 / gas / EIP-7702 diagnostics.
+//
+// These checks are useful for TROR capability testing,
+// but they must never block a normal Unified Balance
+// deposit.
+//
+// Mobile AppKit / WalletConnect connections may provide
+// an EIP-1193 provider through the active wagmi connector
+// without exposing window.ethereum.
+// ---------------------------------------------------------
 
 try {
-  gasAnalysis =
+  const capabilities =
+    await checkTrorWeb3Capabilities();
+
+  console.log(
+    "TROR Web3 capabilities before Unified deposit:",
+    capabilities
+  );
+} catch (error) {
+  console.warn(
+    "TROR Web3 capability check skipped:",
+    error
+  );
+}
+
+try {
+  const gasAnalysis =
     await analyzeTrorWeb3GasCapabilities();
 
   console.log(
@@ -17484,10 +17565,8 @@ try {
   );
 }
 
-let support7702 = null;
-
 try {
-  support7702 =
+  const support7702 =
     await checkTror7702BrowserSupport();
 
   console.log(
@@ -17496,80 +17575,123 @@ try {
   );
 } catch (error) {
   console.warn(
-    "TROR EIP-7702 browser test failed:",
+    "TROR EIP-7702 browser test skipped:",
     error
   );
 }
 
-const account7702 =
-  await createTror7702Account();
+try {
+  const account7702 =
+    await createTror7702Account();
 
-const providerInspection =
-  await inspectTrorWalletProvider();
+  console.log(
+    "TROR 7702 same-address test:",
+    {
+      ownerAddress:
+        account7702.ownerAddress,
 
-const atomicInspection =
-  await inspectTrorAtomicCapabilities();
+      smartAccountAddress:
+        account7702.smartAccountAddress,
 
-console.log(
-  "TROR atomic capability test:",
-  atomicInspection
-);
+      sameAddress:
+        account7702.sameAddress,
 
-const rpc7702Inspection =
-  await inspectTror7702RpcSupport();
+      chainId:
+        account7702.chainId,
 
-console.log(
-  "TROR 7702 RPC test:",
-  rpc7702Inspection
-);
+      chainName:
+        account7702.chainName
+    }
+  );
+} catch (error) {
+  console.warn(
+    "TROR 7702 account test skipped:",
+    error
+  );
+}
 
-console.log(
-  "TROR wallet provider test:",
-  providerInspection
-);
+try {
+  const providerInspection =
+    await inspectTrorWalletProvider();
 
-console.log(
-  "TROR 7702 same-address test:",
-  {
-    ownerAddress:
-      account7702.ownerAddress,
+  console.log(
+    "TROR wallet provider test:",
+    providerInspection
+  );
+} catch (error) {
+  console.warn(
+    "TROR wallet provider test skipped:",
+    error
+  );
+}
 
-    smartAccountAddress:
-      account7702.smartAccountAddress,
+try {
+  const atomicInspection =
+    await inspectTrorAtomicCapabilities();
 
-    sameAddress:
-      account7702.sameAddress,
+  console.log(
+    "TROR atomic capability test:",
+    atomicInspection
+  );
+} catch (error) {
+  console.warn(
+    "TROR atomic capability test skipped:",
+    error
+  );
+}
 
-    chainId:
-      account7702.chainId,
+try {
+  const rpc7702Inspection =
+    await inspectTror7702RpcSupport();
 
-    chainName:
-      account7702.chainName
-  }
-);
+  console.log(
+    "TROR 7702 RPC test:",
+    rpc7702Inspection
+  );
+} catch (error) {
+  console.warn(
+    "TROR 7702 RPC test skipped:",
+    error
+  );
+}
 
 setStatus(
   `Depositing ${amount} USDC to Unified Balance...`
 );
 
-const result =
-  await depositToTrorUnifiedBalance(
-    amount
+const provider =
+  await getTrorActiveWeb3Provider();
+
+const activeAccount =
+  getAccount(
+    wagmiAdapter.wagmiConfig
   );
 
-        console.log(
-          "TROR Unified deposit result:",
-          result
-        );
+if (!activeAccount?.address) {
+  throw new Error(
+    "Connect your Web3 wallet first."
+  );
+}
 
-        await loadTrorUnifiedBalance(
-          account.address
-        );
+const result =
+  await depositToTrorUnifiedBalance(
+    amount,
+    provider
+  );
 
-        setStatus(
-          `Deposited ${amount} USDC to Unified Balance.`,
-          "success"
-        );
+console.log(
+  "TROR Unified deposit result:",
+  result
+);
+
+await loadTrorUnifiedBalance(
+  activeAccount.address
+);
+
+setStatus(
+  `Deposited ${amount} USDC to Unified Balance.`,
+  "success"
+);
       } catch (err) {
         console.error(
           "TROR Unified deposit error:",

@@ -116,16 +116,20 @@ const CIRCLE_TESTNET_CHAINS = {
 ========================================================= */
 
 export async function depositToTrorUnifiedBalance(
-  amount = "0.10"
+  amount = "0.10",
+  provider
 ) {
-  if (!window.ethereum) {
+  if (
+    !provider ||
+    typeof provider.request !== "function"
+  ) {
     throw new Error(
-      "No wallet provider found"
+      "No wallet provider found."
     );
   }
 
   const accounts =
-    await window.ethereum.request({
+    await provider.request({
       method: "eth_accounts"
     });
 
@@ -138,7 +142,7 @@ export async function depositToTrorUnifiedBalance(
   }
 
   const chainIdHex =
-    await window.ethereum.request({
+    await provider.request({
       method: "eth_chainId"
     });
 
@@ -156,7 +160,7 @@ export async function depositToTrorUnifiedBalance(
 
   const adapter =
     await createViemAdapterFromProvider({
-      provider: window.ethereum,
+      provider,
 
       capabilities: {
         addressContext: "user-controlled",
