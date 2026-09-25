@@ -147,7 +147,10 @@ export async function depositToTrorUnifiedBalance(
     });
 
   const currentChainId =
-    Number.parseInt(chainIdHex, 16);
+  typeof chainIdHex === "string" &&
+  chainIdHex.toLowerCase().startsWith("0x")
+    ? Number.parseInt(chainIdHex, 16)
+    : Number(chainIdHex);
 
   const circleChain =
     CIRCLE_TESTNET_CHAINS[currentChainId];
