@@ -90,6 +90,64 @@ async function getTrorActiveWeb3Provider() {
   return provider;
 }
 
+function openTrorConnectedWalletForApproval() {
+  try {
+    const isMobile =
+      /Android|iPhone|iPad|iPod/i.test(
+        navigator.userAgent
+      );
+
+    if (!isMobile) {
+      return false;
+    }
+
+    const raw =
+      window.localStorage.getItem(
+        "WALLETCONNECT_DEEPLINK_CHOICE"
+      );
+
+    if (!raw) {
+      console.log(
+        "TROR wallet deep link not found."
+      );
+
+      return false;
+    }
+
+    const walletLink =
+      JSON.parse(raw);
+
+    const href =
+      walletLink?.href;
+
+    if (
+      !href ||
+      typeof href !== "string"
+    ) {
+      return false;
+    }
+
+    console.log(
+      "TROR opening connected wallet:",
+      {
+        name: walletLink?.name,
+        href
+      }
+    );
+
+    window.location.href = href;
+
+    return true;
+  } catch (error) {
+    console.warn(
+      "TROR could not open connected wallet:",
+      error
+    );
+
+    return false;
+  }
+}
+
 import {
   getTrorUnifiedBalance,
   depositToTrorUnifiedBalance,
@@ -17673,11 +17731,24 @@ if (!activeAccount?.address) {
   );
 }
 
-const result =
-  await depositToTrorUnifiedBalance(
+const depositPromise =
+  depositToTrorUnifiedBalance(
     amount,
     provider
   );
+
+setStatus(
+  `Waiting for wallet approval for ${amount} USDC...`
+);
+
+await new Promise((resolve) =>
+  setTimeout(resolve, 700)
+);
+
+openTrorConnectedWalletForApproval();
+
+const result =
+  await depositPromise;
 
 console.log(
   "TROR Unified deposit result:",
